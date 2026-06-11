@@ -1,0 +1,71 @@
+@import "tailwindcss";
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css");
+
+@theme {
+  --color-primary: #6B8A47;
+  --color-primary-dark: #4F6A34;
+  --color-primary-light: #EDF3E6;
+
+  --color-accent: #F6C915;
+  --color-accent-light: #FFF6CF;
+
+  --color-bg: #F8F6EE;
+  --color-bg-warm: #EAE3C0;
+  --color-surface: #FFFFFF;
+
+  --color-price: #E05D44;
+  --color-price-bg: #FFF0EA;
+
+  --color-title: #1F241A;
+  --color-body: #4A4A42;
+  --color-sub: #8A8778;
+  --color-line: #E4E0D2;
+
+  --radius-card: 20px;
+  --radius-card-lg: 24px;
+  --radius-btn: 16px;
+  --radius-pill: 999px;
+
+  --font-sans: "Pretendard", -apple-system, BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+}
+
+:root {
+  --primary: #6B8A47;
+  --primary-dark: #4F6A34;
+  --primary-light: #EDF3E6;
+
+  --accent: #F6C915;
+  --accent-light: #FFF6CF;
+
+  --background: #F8F6EE;
+  --background-warm: #EAE3C0;
+  --surface: #FFFFFF;
+
+  --price: #E05D44;
+  --price-bg: #FFF0EA;
+
+  --title: #1F241A;
+  --body: #4A4A42;
+  --sub: #8A8778;
+  --border: #E4E0D2;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--body);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom Utilities or Micro-animations */
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
