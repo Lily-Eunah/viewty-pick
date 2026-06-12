@@ -3,7 +3,9 @@
  * Example: 9900 -> '9,900원'
  */
 export function won(price: number | null | undefined): string {
-  if (price === null || price === undefined || isNaN(price)) return '-원';
+  if (price === null || price === undefined || price <= 0 || isNaN(price)) {
+    return '가격 확인 중';
+  }
   return `${price.toLocaleString('ko-KR')}원`;
 }
 
