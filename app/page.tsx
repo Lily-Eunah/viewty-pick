@@ -8,7 +8,7 @@ import SearchBar from '../components/common/SearchBar';
 import Chip from '../components/common/Chip';
 import ProductCarousel from '../components/product/ProductCarousel';
 import ProductListCard from '../components/product/ProductListCard';
-import { getRecommendedProducts, getTodayBestPriceProducts, getProducts } from '../lib/queries';
+import { getProducts } from '../lib/queries';
 import { UIProduct } from '../lib/types';
 
 export default function Home() {
@@ -21,13 +21,14 @@ export default function Home() {
   useEffect(() => {
     async function loadData() {
       try {
-        const recs = await getRecommendedProducts(8);
-        const drops = await getTodayBestPriceProducts(5);
+        const allProds = await getProducts();
+        const recs = [...allProds].sort((a, b) => b.viewtyScore - a.viewtyScore).slice(0, 8);
+        const drops = allProds
+          .filter((p) => (p.priceDropAmount || 0) > 0)
+          .sort((a, b) => (b.priceDropAmount || 0) - (a.priceDropAmount || 0))
+          .slice(0, 5);
         setRecommended(recs);
         setBestDrops(drops);
-        
-        // Load default filtered items
-        const allProds = await getProducts();
         setFilteredProducts(allProds);
       } catch (e) {
         console.error('Failed to load home data', e);
