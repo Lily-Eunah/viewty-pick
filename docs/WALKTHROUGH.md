@@ -101,3 +101,27 @@ To commit these modifications, follow these recommended semantic commit groups:
 
 ## 9. Security & Agent Workflow Guidance
 Refer to [GEMINI.md](file:///c:/Users/yua12/Desktop/Project/viewty-pick/GEMINI.md) at the repository root for security guidelines regarding personal access tokens (PATs), credential protection, and safe git workflows.
+
+---
+
+## 10. GitHub Actions Workflows
+
+Two workflows exist under `.github/workflows/`:
+
+### `ci.yml` — Safe Mock/Offline CI
+- Triggers: every `push`, `pull_request` targeting `main`, and `workflow_dispatch`.
+- Runs: `typecheck`, `lint`, `build`, `crawler:test` — all in **mock/offline mode**.
+- Sets `CRAWLER_MODE=mock` and `VIEWTYPICK_MOCK_MODE=true` to prevent any real external calls.
+- Uses **safe placeholder env values** (not real secrets). No repository secrets are required.
+- Safe to trigger at any time; does not touch Supabase, Google Sheets, Coupang, Naver, or Discord.
+
+### `crawl.yml` — Real Scheduled Crawler (requires secrets)
+- Triggers: daily cron at KST 04:00 and `workflow_dispatch`.
+- Runs: `sheets:import` and `crawler:sync` against live external services.
+- Requires **all 12 repository secrets** to be configured before dispatching:
+  `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
+  `GOOGLE_SERVICE_ACCOUNT_JSON`, `GOOGLE_SHEETS_SPREADSHEET_ID`, `DISCORD_WEBHOOK_URL`,
+  `REVALIDATE_SECRET`, `CRAWLER_USER_AGENT`, `COUPANG_ACCESS_KEY`, `COUPANG_SECRET_KEY`,
+  `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`.
+- **Do not dispatch `crawl.yml` until all secrets are set** in repository Settings → Secrets → Actions.
+- CI must never call real external services.
