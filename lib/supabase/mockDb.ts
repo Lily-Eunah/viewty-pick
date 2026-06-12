@@ -1,10 +1,14 @@
-import fs from 'fs';
-import path from 'path';
-import { Category, Seller, Product, Badge, ProductBadge, Listing, RetailerAllowlist, PriceSnapshot, CurrentPrice, ManualOverride, SeoPage, ScoreConfig } from '../types';
+import { Category, Seller, Product, Badge, ProductBadge, Listing, RetailerAllowlist, PriceSnapshot, CurrentPrice, ManualOverride, SeoPage, ScoreConfig, AffiliateClick } from '../types';
 import { categories as defaultCategories } from '../data/categories';
 import { products as defaultUiProducts } from '../data/products';
 
-const MOCK_DB_FILE = path.join(process.cwd(), 'lib/data/db_mock.json');
+// Conditional Node requires to prevent browser bundler errors
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const fs = typeof window === 'undefined' ? require('fs') : null;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const path = typeof window === 'undefined' ? require('path') : null;
+
+const MOCK_DB_FILE = path ? path.join(process.cwd(), 'lib/data/db_mock.json') : '';
 
 export interface MockDBState {
   categories: Category[];
@@ -19,6 +23,7 @@ export interface MockDBState {
   manual_overrides: ManualOverride[];
   seo_pages: SeoPage[];
   score_config: ScoreConfig[];
+  affiliate_clicks: AffiliateClick[];
 }
 
 // 1. Initial State Seed Generator
@@ -154,12 +159,16 @@ function getInitialState(): MockDBState {
       { id: 1, slug: 'directorpi-sunscreen', page_type: 'curation', title: '2026 디렉터파이 추천 선크림 TOP 10 최저가 비교', h1: '디렉터파이 추천 선크림 최저가 비교', description: '디렉터파이가 추천한 선크림 중 민감성 피부도 참고하기 좋은 제품을 모아 최저가 기준으로 비교했어요.', category: 'sunscreen', skin_type: null, badge_type: 'directorpi', is_active: true },
       { id: 2, slug: 'sensitive-sunscreen', page_type: 'skin', title: '민감성 피부 추천 선크림 최저가 한눈에 보기', h1: '민감성 피부 선크림 추천', description: '민감한 피부 타입을 위한 디렉터파이 합격 선크림의 판매처별 가격비교 정보입니다.', category: 'sunscreen', skin_type: '민감성', badge_type: null, is_active: true }
     ],
-    score_config
+    score_config,
+    affiliate_clicks: []
   };
 }
 
 // Load current mock DB state
 export function loadMockDB(): MockDBState {
+  if (!fs || !path) {
+    return getInitialState();
+  }
   try {
     if (!fs.existsSync(path.dirname(MOCK_DB_FILE))) {
       fs.mkdirSync(path.dirname(MOCK_DB_FILE), { recursive: true });
@@ -179,6 +188,9 @@ export function loadMockDB(): MockDBState {
 
 // Save mock DB state
 export function saveMockDB(state: MockDBState): void {
+  if (!fs || !path) {
+    return;
+  }
   try {
     if (!fs.existsSync(path.dirname(MOCK_DB_FILE))) {
       fs.mkdirSync(path.dirname(MOCK_DB_FILE), { recursive: true });

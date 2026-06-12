@@ -17,7 +17,7 @@ export const productRowSchema = z.object({
   volume_ml: z.number().or(z.string().transform((v) => parseFloat(v) || 0)).default(0),
   image_url: z.string().url().or(z.literal('')).optional(),
   features: z.string().optional(),
-  skin_types: z.string().transform((v) => v.split(',').map((s) => s.trim()).filter(Boolean)).default(''),
+  skin_types: z.string().transform((v) => v.split(',').map((s) => s.trim()).filter(Boolean)).default([]),
   hwahae_url: z.string().url().or(z.literal('')).optional(),
   official_info_url: z.string().url().or(z.literal('')).optional(),
   is_active: z.union([z.boolean(), z.string().transform((v) => v.toLowerCase() === 'true')]).default(true),
@@ -34,7 +34,7 @@ export const listingRowSchema = z.object({
   is_official_store: z.union([z.boolean(), z.string().transform((v) => v.toLowerCase() === 'true')]).default(false),
   is_rocket: z.union([z.boolean(), z.string().transform((v) => v.toLowerCase() === 'true')]).default(false),
   crawl_enabled: z.union([z.boolean(), z.string().transform((v) => v.toLowerCase() === 'true')]).default(true),
-  crawl_method: z.enum(['api', 'html', 'playwright', 'manual']).default('crawl'),
+  crawl_method: z.enum(['api', 'html', 'playwright', 'manual']).default('manual'),
   is_active: z.union([z.boolean(), z.string().transform((v) => v.toLowerCase() === 'true')]).default(true),
 });
 

@@ -2,6 +2,7 @@ import { isSupabaseServerConfigured, supabaseServer } from '../../lib/supabase/s
 import { loadMockDB, saveMockDB } from '../../lib/supabase/mockDb';
 import * as validate from './validate';
 import * as mockSheets from './mock_sheets_data';
+import { ProductBadge } from '../../lib/types';
 
 interface ImportStats {
   productsCount: number;
@@ -180,10 +181,11 @@ export async function runSheetImport(): Promise<ImportStats> {
         summary: stats,
       });
 
-    } catch (e: any) {
-      console.error('[Sheet Import] Import to Supabase failed:', e);
+    } catch (e: unknown) {
+      const err = e as Error;
+      console.error('[Sheet Import] Import to Supabase failed:', err);
       stats.errorCount++;
-      stats.errors.push(`Critical import error: ${e.message}`);
+      stats.errors.push(`Critical import error: ${err.message}`);
       
       await supabaseServer.from('sheet_import_runs').insert({
         started_at: startedAt,
@@ -193,7 +195,7 @@ export async function runSheetImport(): Promise<ImportStats> {
         links_count: stats.linksCount,
         badges_count: stats.badgesCount,
         error_count: stats.errorCount,
-        summary: { error: e.message, ...stats },
+        summary: { error: err.message, ...stats },
       });
     }
   } else {

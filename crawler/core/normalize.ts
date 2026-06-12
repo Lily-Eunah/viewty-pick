@@ -68,8 +68,8 @@ export function normalizePrice(product: Product, offer: PriceOffer): NormalizedP
 
   let base_unit_price = sale_price; // Single purchase base price
   let effective_unit_price = sale_price; // Promotion adjusted unit price
-  let promo_type = offer.promoType;
-  let promo_text = offer.promoText;
+  const promo_type = offer.promoType;
+  const promo_text = offer.promoText;
 
   let min_quantity = 1;
   let paid_quantity = 1;

@@ -24,7 +24,7 @@ export interface Product {
   slug: string;
   product_key: string;
   name: string;
-  brand: string;
+  brand: string | null;
   category_id: number | null;
   volume_ml: number;
   image_url: string | null;
@@ -161,7 +161,7 @@ export interface CrawlRun {
   success_count: number;
   warning_count: number;
   failure_count: number;
-  summary: Record<string, any> | null;
+  summary: Record<string, unknown> | null;
 }
 
 export interface CrawlError {
@@ -173,7 +173,7 @@ export interface CrawlError {
   error_type: string;
   severity: 'info' | 'warning' | 'critical';
   message: string;
-  raw_context: Record<string, any> | null;
+  raw_context: Record<string, unknown> | null;
   created_at: string;
 }
 
@@ -186,7 +186,7 @@ export interface SheetImportRun {
   links_count: number;
   badges_count: number;
   error_count: number;
-  summary: Record<string, any> | null;
+  summary: Record<string, unknown> | null;
 }
 
 export interface SeoPage {
