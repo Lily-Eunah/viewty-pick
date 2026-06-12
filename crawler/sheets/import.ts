@@ -147,10 +147,9 @@ export async function runSheetImport(): Promise<ImportStats> {
         }
 
         if (!badgeId) {
-          // Dynamically insert badge if missing
           const { data: newBadge, error: bInsErr } = await supabaseServer
             .from('badges')
-            .insert({ slug: parsed.data.badge_slug, name: parsed.data.badge_name })
+            .upsert({ slug: parsed.data.badge_slug, name: parsed.data.badge_name }, { onConflict: 'slug' })
             .select()
             .single();
           if (bInsErr) throw bInsErr;
