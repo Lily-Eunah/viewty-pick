@@ -252,10 +252,10 @@ export async function runSheetImport(): Promise<ImportStats> {
         const { error } = await supabaseServer.from('product_badges').upsert({
           product_id:   productId,
           badge_id:     badgeId,
-          detail:       p.data.detail       ?? null,
-          source_title: p.data.source_title ?? null,
-          ref_url:      p.data.ref_url      ?? null,
-          source_date:  p.data.source_date  ?? null,
+          detail:       p.data.detail       || null,
+          source_title: p.data.source_title || null,
+          ref_url:      p.data.ref_url      || null,
+          source_date:  p.data.source_date  || null,
         }, { onConflict: 'product_id,badge_id' });
         if (error) throw error;
         stats.badgesCount++;
