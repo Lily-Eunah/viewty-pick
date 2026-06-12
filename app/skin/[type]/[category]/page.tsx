@@ -1,74 +1,24 @@
-'use client';
-
-import React, { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import AppShell from '../../../../components/layout/AppShell';
 import Header from '../../../../components/layout/Header';
 import ProductListCard from '../../../../components/product/ProductListCard';
 import Badge from '../../../../components/common/Badge';
-import { getProducts, getCategoryBySlug } from '../../../../lib/queries';
-import { UIProduct, Category } from '../../../../lib/types';
+import { getSkinPageData } from '../../../../lib/queries';
 
-export default function SkinPage() {
-  const params = useParams();
-  const skinTypeSlug = params.type as string;
-  const categorySlug = params.category as string;
+interface PageProps {
+  params: Promise<{ type: string; category: string }>;
+}
 
-  const [category, setCategory] = useState<Category | null>(null);
-  const [products, setProducts] = useState<UIProduct[]>([]);
-  const [loading, setLoading] = useState(true);
+function getSkinDescription(slug: string, skinName: string): string {
+  if (slug === 'sensitive') return '자극에 취약해 쉽게 붉어지는 민감성 피부를 위해 유해 가능 성분을 배제한 안전 선크림 목록입니다.';
+  if (slug === 'oily') return '과다 피지 분비와 유분기가 고민인 지성 피부를 위한 보송보송하고 번들거림 없는 산뜻 케어 제품입니다.';
+  if (slug === 'dry') return '피부 속 당김과 각질 부각이 잦은 건성 타입을 위한 고보습 오일 함유 물광 스킨 케어 제품입니다.';
+  return `${skinName} 피부에 최적화된 저자극 안심 추천 리스트입니다.`;
+}
 
-  // Translate URL param slug to Korean skin concern key
-  const translateSkinType = (slug: string): string => {
-    const map: Record<string, string> = {
-      sensitive: '민감성',
-      dry: '건성',
-      oily: '지성',
-      dehydrated: '수부지',
-      combination: '복합성',
-      acne: '여드름성',
-    };
-    return map[slug] || '민감성';
-  };
-
-  const skinName = translateSkinType(skinTypeSlug);
-
-  useEffect(() => {
-    async function loadSkinData() {
-      setLoading(true);
-      try {
-        const cat = await getCategoryBySlug(categorySlug);
-        setCategory(cat);
-
-        const filtered = await getProducts({
-          category: categorySlug,
-          skinType: skinName,
-          sortBy: 'recommend',
-        });
-
-        setProducts(filtered);
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadSkinData();
-  }, [skinTypeSlug, categorySlug, skinName]);
-
-  const getSkinDescription = () => {
-    if (skinTypeSlug === 'sensitive') {
-      return '자극에 취약해 쉽게 붉어지는 민감성 피부를 위해 유해 가능 성분을 배제한 안전 선크림 목록입니다.';
-    }
-    if (skinTypeSlug === 'oily') {
-      return '과다 피지 분비와 유분기가 고민인 지성 피부를 위한 보송보송하고 번들거림 없는 산뜻 케어 제품입니다.';
-    }
-    if (skinTypeSlug === 'dry') {
-      return '피부 속 당김과 각질 부각이 잦은 건성 타입을 위한 고보습 오일 함유 물광 스킨 케어 제품입니다.';
-    }
-    return `${skinName} 피부에 최적화된 저자극 안심 추천 리스트입니다.`;
-  };
+export default async function SkinPage({ params }: PageProps) {
+  const { type: skinTypeSlug, category: categorySlug } = await params;
+  const { category, products, skinName } = await getSkinPageData(skinTypeSlug, categorySlug);
 
   const faqs = [
     {
@@ -85,7 +35,6 @@ export default function SkinPage() {
     <AppShell activeTab="category">
       <Header showBack title="피부타입 솔루션" />
 
-      {/* SEO Banner Hero */}
       <section className="bg-background-warm px-4 py-8 border-b border-line rounded-b-[28px] shadow-sm">
         <div className="flex flex-col gap-1.5">
           <Badge type="trust" className="w-fit bg-white text-primary-dark">
@@ -96,56 +45,39 @@ export default function SkinPage() {
             실시간 최저가 비교
           </h2>
           <p className="text-[12px] text-body opacity-85 mt-2 font-semibold leading-relaxed">
-            {getSkinDescription()}
+            {getSkinDescription(skinTypeSlug, skinName)}
           </p>
         </div>
       </section>
 
-      {/* Product list */}
       <section className="px-4 py-5 bg-bg flex flex-col gap-3.5">
         <h3 className="text-[15px] font-black text-title tracking-tight">
           추천 제품 리스트 ({products.length}개)
         </h3>
-
-        {loading ? (
-          <div className="w-full h-32 flex justify-center items-center text-sub font-bold">
-            로딩 중...
-          </div>
-        ) : (
-          <div className="flex flex-col gap-3">
-            {products.map((prod, idx) => (
-              <ProductListCard key={prod.id} product={prod} rank={idx + 1} />
-            ))}
-            {products.length === 0 && (
-              <div className="w-full text-center py-12 text-sub font-bold border border-dashed border-line rounded-card bg-white">
-                제품 목록을 준비하고 있습니다.
-              </div>
-            )}
-          </div>
-        )}
+        <div className="flex flex-col gap-3">
+          {products.map((prod, idx) => (
+            <ProductListCard key={prod.id} product={prod} rank={idx + 1} />
+          ))}
+          {products.length === 0 && (
+            <div className="w-full text-center py-12 text-sub font-bold border border-dashed border-line rounded-card bg-white">
+              제품 목록을 준비하고 있습니다.
+            </div>
+          )}
+        </div>
       </section>
 
-      {/* SEO FAQ */}
       <section className="px-4 py-4.5 bg-bg flex flex-col gap-3">
-        <h3 className="text-[14px] font-black text-title tracking-tight">
-          자주 묻는 질문 (FAQ)
-        </h3>
-        
+        <h3 className="text-[14px] font-black text-title tracking-tight">자주 묻는 질문 (FAQ)</h3>
         <div className="flex flex-col gap-3">
           {faqs.map((faq, idx) => (
             <div key={idx} className="bg-white border border-line rounded-card p-4 flex flex-col gap-1.5 shadow-sm">
-              <h4 className="text-[13px] font-black text-title leading-snug">
-                {faq.q}
-              </h4>
-              <p className="text-[12px] text-body opacity-85 font-semibold leading-relaxed pt-1.5 border-t border-[#F8F6EE]">
-                {faq.a}
-              </p>
+              <h4 className="text-[13px] font-black text-title leading-snug">{faq.q}</h4>
+              <p className="text-[12px] text-body opacity-85 font-semibold leading-relaxed pt-1.5 border-t border-[#F8F6EE]">{faq.a}</p>
             </div>
           ))}
         </div>
       </section>
 
-      {/* Related links */}
       <section className="px-4 py-6 bg-[#F0EEE2] text-center border-t border-line text-[11px] text-[#A2A08E] font-bold">
         <p className="mb-2">다른 피부 타입 맞춤형 가이드 둘러보기</p>
         <div className="flex justify-center gap-3.5 flex-wrap">
