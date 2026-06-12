@@ -6,9 +6,16 @@ import { recalculateViewtyScores } from './core/score';
 import { sendDailySummary, sendCriticalAlarm } from './core/notify';
 import { isSupabaseServerConfigured, supabaseServer } from '../lib/supabase/server';
 import { loadMockDB, saveMockDB } from '../lib/supabase/mockDb';
-import { Listing, Product, PriceSnapshot, CurrentPrice, PromoType, ManualOverride, RetailerAllowlist, Badge, ProductBadge, ScoreConfig } from '../lib/types';
+import { Listing, Product, PriceSnapshot, CurrentPrice, ManualOverride, RetailerAllowlist, Badge, ProductBadge, ScoreConfig } from '../lib/types';
 
 export async function crawlPipeline(): Promise<void> {
+  // Set test/mock environment override if --test flag is passed
+  if (typeof process !== 'undefined' && process.argv && process.argv.includes('--test')) {
+    process.env.VIEWTYPICK_MOCK_MODE = 'true';
+    process.env.CRAWLER_MODE = 'mock';
+    console.log('[Pipeline] Enforcing TEST/MOCK mode via CLI argument.');
+  }
+
   const startTime = Date.now();
   console.log('[Pipeline] Starting daily price sync pipeline...');
 
@@ -18,9 +25,10 @@ export async function crawlPipeline(): Promise<void> {
     if (importStats.errorCount > 0) {
       console.warn(`[Pipeline] Sheet import finished with ${importStats.errorCount} validation warnings.`);
     }
-  } catch (e: any) {
-    console.error('[Pipeline] Sheet Import failed. Proceeding with existing database state...', e);
-    await sendCriticalAlarm('Sheet Import Failure', `Import run crashed: ${e.message}`);
+  } catch (e: unknown) {
+    const err = e as Error;
+    console.error('[Pipeline] Sheet Import failed. Proceeding with existing database state...', err);
+    await sendCriticalAlarm('Sheet Import Failure', `Import run crashed: ${err.message}`);
   }
 
   const useSupabase = isSupabaseServerConfigured();
@@ -69,7 +77,7 @@ export async function crawlPipeline(): Promise<void> {
         .order('crawled_at', { ascending: false });
       previousSnapshots = snapRes.data || [];
 
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('[Pipeline] Supabase connection failed:', e);
       return;
     }
@@ -96,8 +104,6 @@ export async function crawlPipeline(): Promise<void> {
 
   const newSnapshots: PriceSnapshot[] = [];
   const updatedListings: Listing[] = [...listings];
-  const mockDbLogs: any[] = [];
-
   let successCount = 0;
   let warningCount = 0;
   let failureCount = 0;
@@ -209,7 +215,7 @@ export async function crawlPipeline(): Promise<void> {
         newSnapshots.push(snapshot);
       }
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(`[Pipeline] Failed to gather details for listing ${listing.link_key}:`, err);
       failureCount++;
 
@@ -229,7 +235,11 @@ export async function crawlPipeline(): Promise<void> {
   for (const prod of products) {
     const prodListings = updatedListings.filter((l) => l.product_id === prod.id && l.is_active);
     const prodSnaps = newSnapshots.filter(
-      (s) => prodListings.some((l) => l.id === s.listing_id) && s.status !== 'failed'
+      (s) =>
+        prodListings.some((l) => l.id === s.listing_id) &&
+        s.status === 'ok' &&
+        s.in_stock !== false &&
+        s.parse_confidence !== 'low'
     );
 
     if (prodSnaps.length === 0) {
@@ -329,7 +339,8 @@ export async function crawlPipeline(): Promise<void> {
       // Bulk insert snapshots
       if (newSnapshots.length > 0) {
         // Strip out temporary client IDs if necessary, though generate_always identity handles id
-        const snapsToInsert = newSnapshots.map(({ id, ...rest }) => rest);
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const snapsToInsert = newSnapshots.map(({ id: _, ...rest }) => rest);
         const { error } = await supabaseServer.from('price_snapshots').insert(snapsToInsert);
         if (error) throw error;
       }
@@ -352,9 +363,10 @@ export async function crawlPipeline(): Promise<void> {
         summary: { durationMs: Date.now() - startTime },
       });
 
-    } catch (e: any) {
-      console.error('[Pipeline] Supabase persistence crashed:', e);
-      await sendCriticalAlarm('Supabase Pipeline Error', `Failed to write crawl results: ${e.message}`);
+    } catch (e: unknown) {
+      const err = e as Error;
+      console.error('[Pipeline] Supabase persistence crashed:', err);
+      await sendCriticalAlarm('Supabase Pipeline Error', `Failed to write crawl results: ${err.message}`);
       return;
     }
   } else {

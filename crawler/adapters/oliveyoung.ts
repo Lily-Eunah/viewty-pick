@@ -6,10 +6,20 @@ export class OliveYoungAdapter implements RetailerAdapter {
   code = 'oliveyoung';
 
   async fetchOffer(listing: Listing): Promise<PriceOffer> {
-    // Check if we should use mock fallback (always safe fallback if playwright is running locally without net, or OY blocks us)
-    const isMock = process.env.NODE_ENV === 'test' || !listing.url.includes('oliveyoung.co.kr') && !listing.url.includes('oy.run');
+    const userAgent = process.env.CRAWLER_USER_AGENT;
+    const isMockMode =
+      process.env.VIEWTYPICK_MOCK_MODE === 'true' ||
+      process.env.CRAWLER_MODE === 'mock' ||
+      process.env.NODE_ENV === 'test' ||
+      !userAgent ||
+      userAgent.includes('placeholder') ||
+      userAgent.includes('example') ||
+      userAgent.includes('dummy') ||
+      userAgent.trim() === '' ||
+      (!listing.url.includes('oliveyoung.co.kr') && !listing.url.includes('oy.run'));
 
-    if (isMock) {
+    if (isMockMode) {
+      console.log(`[Olive Young Scraper] Mock/offline mode enabled. Using mock data for: ${listing.url}`);
       return this.getMockOffer(listing);
     }
 
@@ -56,7 +66,7 @@ export class OliveYoungAdapter implements RetailerAdapter {
 
       // Selectors based on Olive Young Web structure
       // Note: OY classes often change, so we try multiple common selectors
-      let regularPriceStr = await page.locator('.price-normal, strike, .prd_detail_price .price-normal, .prd_price .tx_org, .price_info .price-normal').first().textContent().catch(() => null);
+      const regularPriceStr = await page.locator('.price-normal, strike, .prd_detail_price .price-normal, .prd_price .tx_org, .price_info .price-normal').first().textContent().catch(() => null);
       let salePriceStr = await page.locator('.price-sale, .price-2, .prd_detail_price .price-2, .prd_price .tx_cur .tx_num, .price_info .price-sale').first().textContent().catch(() => null);
       
       // If salePrice is missing, see if there is any price text
@@ -105,8 +115,9 @@ export class OliveYoungAdapter implements RetailerAdapter {
         promoText,
         sourceText: `Page title: ${title}. Parsed prices: Regular=${regularPrice}, Sale=${salePrice}`,
       };
-    } catch (e: any) {
-      console.warn(`[Olive Young Scraper] Crawling failed for ${listing.url}: ${e.message}. Falling back to mock data...`);
+    } catch (e: unknown) {
+      const err = e as Error;
+      console.warn(`[Olive Young Scraper] Crawling failed for ${listing.url}: ${err.message}. Falling back to mock data...`);
       if (browser) {
         await browser.close().catch(() => {});
       }

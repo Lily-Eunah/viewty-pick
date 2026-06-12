@@ -1,4 +1,4 @@
-import { Listing, PromoType } from '../../lib/types';
+import { Listing } from '../../lib/types';
 import { PriceOffer, RetailerAdapter } from './index';
 
 export class NaverAdapter implements RetailerAdapter {
@@ -8,9 +8,21 @@ export class NaverAdapter implements RetailerAdapter {
     const clientId = process.env.NAVER_CLIENT_ID;
     const clientSecret = process.env.NAVER_CLIENT_SECRET;
 
-    const isConfigured = clientId && clientId !== 'placeholder-client-id' && clientSecret && clientSecret !== 'placeholder-client-secret';
+    const isMock =
+      process.env.VIEWTYPICK_MOCK_MODE === 'true' ||
+      process.env.CRAWLER_MODE === 'mock' ||
+      !clientId ||
+      clientId.includes('placeholder') ||
+      clientId.includes('example') ||
+      clientId.includes('dummy') ||
+      clientId.trim() === '' ||
+      !clientSecret ||
+      clientSecret.includes('placeholder') ||
+      clientSecret.includes('example') ||
+      clientSecret.includes('dummy') ||
+      clientSecret.trim() === '';
 
-    if (!isConfigured) {
+    if (isMock) {
       // Mock Fallback (Seed values for Naver listings)
       console.log(`[Naver Adapter] Keys missing. Generating mock price for URL: ${listing.url}`);
 
@@ -68,7 +80,7 @@ export class NaverAdapter implements RetailerAdapter {
         sourceText: 'Naver API response',
         storeName: listing.store_name || '네이버 공식스토어',
       };
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(`[Naver Adapter] Error:`, e);
       throw e;
     }

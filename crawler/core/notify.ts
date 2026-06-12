@@ -1,8 +1,16 @@
 export async function sendDiscordMessage(content: string): Promise<boolean> {
   const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
-  const isConfigured = webhookUrl && webhookUrl.startsWith('https://discord.com/api/webhooks/');
+  const isMock =
+    process.env.VIEWTYPICK_MOCK_MODE === 'true' ||
+    process.env.CRAWLER_MODE === 'mock' ||
+    !webhookUrl ||
+    webhookUrl.includes('placeholder') ||
+    webhookUrl.includes('example') ||
+    webhookUrl.includes('dummy') ||
+    webhookUrl.trim() === '' ||
+    !webhookUrl.startsWith('https://discord.com/api/webhooks/');
 
-  if (!isConfigured) {
+  if (isMock) {
     console.log(`[Discord Notification (Mock)]:\n${content}\n`);
     return true;
   }

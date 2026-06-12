@@ -8,15 +8,27 @@ export class CoupangAdapter implements RetailerAdapter {
     const accessKey = process.env.COUPANG_ACCESS_KEY;
     const secretKey = process.env.COUPANG_SECRET_KEY;
 
-    const isConfigured = accessKey && accessKey !== 'placeholder-access-key' && secretKey && secretKey !== 'placeholder-secret-key';
+    const isMock =
+      process.env.VIEWTYPICK_MOCK_MODE === 'true' ||
+      process.env.CRAWLER_MODE === 'mock' ||
+      !accessKey ||
+      accessKey.includes('placeholder') ||
+      accessKey.includes('example') ||
+      accessKey.includes('dummy') ||
+      accessKey.trim() === '' ||
+      !secretKey ||
+      secretKey.includes('placeholder') ||
+      secretKey.includes('example') ||
+      secretKey.includes('dummy') ||
+      secretKey.trim() === '';
 
-    if (!isConfigured) {
+    if (isMock) {
       // Mock Fallback (Seed values for Coupang listings)
       console.log(`[Coupang Adapter] Keys missing. Generating mock price for URL: ${listing.url}`);
       
       let basePrice = 19800;
-      let promoType: PromoType = 'none';
-      let promoText: string | null = null;
+      const promoType: PromoType = 'none';
+      const promoText: string | null = null;
 
       // Adjust mock prices based on product ID to make them realistic
       if (listing.product_id === 1) basePrice = 19800;
@@ -56,7 +68,7 @@ export class CoupangAdapter implements RetailerAdapter {
         promoText: null,
         sourceText: 'Coupang API response',
       };
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(`[Coupang Adapter] Error:`, e);
       throw e;
     }
