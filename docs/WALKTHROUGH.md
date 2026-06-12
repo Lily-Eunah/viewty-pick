@@ -96,3 +96,8 @@ To commit these modifications, follow these recommended semantic commit groups:
    - File changes: `app/*`, `components/*`, `lib/data/db_mock.json`
 6. **`docs(worklog): document design specs and pass walkthrough report`**
    - File changes: `DESIGN.md`, `docs/*`
+
+---
+
+## 9. Security & Agent Workflow Guidance
+Refer to [GEMINI.md](file:///c:/Users/yua12/Desktop/Project/viewty-pick/GEMINI.md) at the repository root for security guidelines regarding personal access tokens (PATs), credential protection, and safe git workflows.
