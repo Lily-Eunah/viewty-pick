@@ -1,0 +1,58 @@
+name: CI (Mock / Offline)
+
+on:
+  push:
+    branches-ignore:
+      - "dependabot/**"
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch: {}
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    env:
+      # Force offline/mock mode — no real external calls
+      CRAWLER_MODE: mock
+      VIEWTYPICK_MOCK_MODE: "true"
+
+      # Safe placeholder values so build/test succeed without real secrets
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder
+      SUPABASE_SERVICE_ROLE_KEY: placeholder
+      GOOGLE_SERVICE_ACCOUNT_JSON: "{}"
+      GOOGLE_SHEETS_SPREADSHEET_ID: placeholder
+      DISCORD_WEBHOOK_URL: placeholder
+      REVALIDATE_SECRET: placeholder
+      CRAWLER_USER_AGENT: ViewtyPick-CI-Mock/1.0
+      COUPANG_ACCESS_KEY: placeholder
+      COUPANG_SECRET_KEY: placeholder
+      NAVER_CLIENT_ID: placeholder
+      NAVER_CLIENT_SECRET: placeholder
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Crawler test (mock/offline)
+        run: npm run crawler:test
