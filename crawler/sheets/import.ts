@@ -169,7 +169,7 @@ export async function runSheetImport(): Promise<ImportStats> {
         const p = v.simpleProductRowSchema.safeParse(row);
         if (!p.success) { stats.errorCount++; stats.errors.push(`Product: ${p.error.message}`); continue; }
         const productKey = p.data.product_key?.trim() || makeProductKey(p.data.brand, p.data.name);
-        const categoryId = dbCategories?.find((c) => c.slug === p.data.category)?.id ?? null;
+        const categoryId = dbCategories?.find((c) => c.slug === p.data.category || c.name === p.data.category)?.id ?? null;
 
         const { error } = await supabaseServer.from('products').upsert({
           product_key: productKey,
@@ -178,10 +178,11 @@ export async function runSheetImport(): Promise<ImportStats> {
           brand:       p.data.brand || null,
           category_id: categoryId,
           volume_ml:   p.data.volume_ml,
-          image_url:   p.data.image_url || null,
-          features:    p.data.features  || null,
+          hwahae_url:  p.data.hwahae_url  || null,
+          image_url:   p.data.image_url   || null,
+          features:    p.data.features    || null,
           skin_types:  p.data.skin_types,
-          is_active:   p.data.is_active,
+          is_active:   !p.data.is_disabled,
         }, { onConflict: 'product_key' });
         if (error) throw error;
         stats.productsCount++;
@@ -353,9 +354,9 @@ export async function runSheetImport(): Promise<ImportStats> {
       const p = v.simpleProductRowSchema.safeParse(row);
       if (!p.success) { stats.errorCount++; stats.errors.push(`Product: ${p.error.message}`); continue; }
       const productKey = p.data.product_key?.trim() || makeProductKey(p.data.brand, p.data.name);
-      const categoryId = db.categories.find((c) => c.slug === p.data.category)?.id ?? null;
+      const categoryId = db.categories.find((c) => c.slug === p.data.category || c.name === p.data.category)?.id ?? null;
       const existing   = db.products.find((pr) => pr.product_key === productKey);
-      const data = { product_key: productKey, slug: productKey, name: p.data.name, brand: p.data.brand || null, category_id: categoryId, volume_ml: p.data.volume_ml, image_url: p.data.image_url || null, features: p.data.features || null, skin_types: p.data.skin_types, hwahae_url: null, official_info_url: null, viewty_score: 0, source: 'sheet', is_active: p.data.is_active };
+      const data = { product_key: productKey, slug: productKey, name: p.data.name, brand: p.data.brand || null, category_id: categoryId, volume_ml: p.data.volume_ml, hwahae_url: p.data.hwahae_url || null, image_url: p.data.image_url || null, features: p.data.features || null, skin_types: p.data.skin_types, official_info_url: null, viewty_score: 0, source: 'sheet', is_active: !p.data.is_disabled };
       if (existing) { Object.assign(existing, data); }
       else { db.products.push({ id: (db.products.length ? Math.max(...db.products.map((pr) => pr.id)) + 1 : 1), ...data }); }
       nameToKey.set(p.data.name.trim(), productKey);

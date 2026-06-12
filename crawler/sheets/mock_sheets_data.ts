@@ -11,13 +11,13 @@ export const mockCategoriesSheet = [
 ];
 
 export const mockProductsSheet = [
-  { product_key: '', name: '엑설런트 선크림',                    brand: '몽디에스',           category: 'sunscreen', volume_ml: '50', skin_types: '건성,민감성',           features: 'SPF50+ PA++++, 무기자차, 피부 저자극',       image_url: '', is_active: 'true' },
-  { product_key: '', name: '더마 트러블 징크 카밍 선크림',       brand: '후시다딘 (동화약품)', category: 'sunscreen', volume_ml: '50', skin_types: '수부지,지성,복합성',     features: 'SPF50+ PA++++, 무기자차, 트러블 진정',       image_url: '', is_active: 'true' },
-  { product_key: '', name: '피디알엔 스킨핏 수분 선크림',        brand: '스타라이크',          category: 'sunscreen', volume_ml: '50', skin_types: '수부지,지성',           features: 'SPF50+ PA++++, 유기자차, 물광 에센스 제형',  image_url: '', is_active: 'true' },
-  { product_key: '', name: '멜라 TXA 선세럼',                   brand: '아로셀',             category: 'sunscreen', volume_ml: '50', skin_types: '건성,복합성',           features: 'SPF50+ PA++++, 유기자차, 미백/주름/자외선 3중', image_url: '', is_active: 'true' },
-  { product_key: '', name: '데일리 유브이 톤업 노세범 선크림',   brand: '이니스프리',          category: 'sunscreen', volume_ml: '50', skin_types: '지성,복합성,민감성',     features: 'SPF50+ PA++++, 무기자차, 오일컨트롤',       image_url: '', is_active: 'true' },
-  { product_key: '', name: '스테이 프레쉬 톤업 선크림 퍼플',    brand: '조선미녀',            category: 'sunscreen', volume_ml: '50', skin_types: '건성,민감성,복합성',     features: 'SPF50+ PA++++, 혼합자차, 톤 보정',          image_url: '', is_active: 'true' },
-  { product_key: '', name: '3번 도자기결 톤업베이지 선크림',     brand: '넘버즈인',            category: 'sunscreen', volume_ml: '50', skin_types: '민감성,복합성,지성,건성', features: 'SPF50+ PA++++, 혼합자차, 파데프리 톤업',    image_url: '', is_active: 'true' },
+  { product_key: '', name: '엑설런트 선크림',                    brand: '몽디에스',           category: '선크림', volume_ml: '50', skin_types: '건성,민감성',            features: 'SPF50+ PA++++, 무기자차, 피부 저자극',          hwahae_url: '', image_url: '', is_disabled: '' },
+  { product_key: '', name: '더마 트러블 징크 카밍 선크림',       brand: '후시다딘 (동화약품)', category: '선크림', volume_ml: '50', skin_types: '수부지,지성,복합성',      features: 'SPF50+ PA++++, 무기자차, 트러블 진정',          hwahae_url: '', image_url: '', is_disabled: '' },
+  { product_key: '', name: '피디알엔 스킨핏 수분 선크림',        brand: '스타라이크',          category: '선크림', volume_ml: '50', skin_types: '수부지,지성',            features: 'SPF50+ PA++++, 유기자차, 물광 에센스 제형',     hwahae_url: '', image_url: '', is_disabled: '' },
+  { product_key: '', name: '멜라 TXA 선세럼',                   brand: '아로셀',             category: '선크림', volume_ml: '50', skin_types: '건성,복합성',            features: 'SPF50+ PA++++, 유기자차, 미백/주름/자외선 3중', hwahae_url: '', image_url: '', is_disabled: '' },
+  { product_key: '', name: '데일리 유브이 톤업 노세범 선크림',   brand: '이니스프리',          category: '선크림', volume_ml: '50', skin_types: '지성,복합성,민감성',      features: 'SPF50+ PA++++, 무기자차, 오일컨트롤',          hwahae_url: '', image_url: '', is_disabled: '' },
+  { product_key: '', name: '스테이 프레쉬 톤업 선크림 퍼플',    brand: '조선미녀',            category: '선크림', volume_ml: '50', skin_types: '건성,민감성,복합성',      features: 'SPF50+ PA++++, 혼합자차, 톤 보정',             hwahae_url: '', image_url: '', is_disabled: '' },
+  { product_key: '', name: '3번 도자기결 톤업베이지 선크림',     brand: '넘버즈인',            category: '선크림', volume_ml: '50', skin_types: '민감성,복합성,지성,건성', features: 'SPF50+ PA++++, 혼합자차, 파데프리 톤업',       hwahae_url: '', image_url: '', is_disabled: '' },
 ];
 
 // Wide format: one row per product, one URL column per seller
