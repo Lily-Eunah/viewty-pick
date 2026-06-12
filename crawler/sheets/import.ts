@@ -1,8 +1,37 @@
+import { google } from 'googleapis';
 import { isSupabaseServerConfigured, supabaseServer } from '../../lib/supabase/server';
 import { loadMockDB, saveMockDB } from '../../lib/supabase/mockDb';
 import * as validate from './validate';
 import * as mockSheets from './mock_sheets_data';
 import { ProductBadge } from '../../lib/types';
+
+// ---------------------------------------------------------------------------
+// Google Sheets helpers
+// ---------------------------------------------------------------------------
+
+function isGoogleConfigured(): boolean {
+  const json = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  const id = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
+  return !!(json && json !== 'your-google-service-account-credentials-json-string' && id && id !== 'placeholder-sheet-id');
+}
+
+async function fetchSheet(spreadsheetId: string, range: string): Promise<Record<string, string>[]> {
+  const creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON!);
+  const auth = new google.auth.GoogleAuth({
+    credentials: creds,
+    scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+  });
+  const sheets = google.sheets({ version: 'v4', auth });
+  const res = await sheets.spreadsheets.values.get({ spreadsheetId, range });
+  const rows = res.data.values ?? [];
+  if (rows.length < 2) return [];
+  const headers = rows[0].map((h: string) => h.trim());
+  return rows.slice(1).map((row) => {
+    const obj: Record<string, string> = {};
+    headers.forEach((h: string, i: number) => { obj[h] = row[i] ?? ''; });
+    return obj;
+  });
+}
 
 interface ImportStats {
   productsCount: number;
@@ -27,16 +56,41 @@ export async function runSheetImport(): Promise<ImportStats> {
   };
 
   const useSupabase = isSupabaseServerConfigured();
+  const useGoogleSheets = isGoogleConfigured();
   console.log(`[Sheet Import] Destination: ${useSupabase ? 'Supabase Database' : 'Local Mock Database File'}`);
+  console.log(`[Sheet Import] Source: ${useGoogleSheets ? 'Google Sheets' : 'Mock data'}`);
 
-  // Raw Sheets data loading (Using mock sheets since we are in mock setup or google creds are missing)
-  const rawCategories = mockSheets.mockCategoriesSheet;
-  const rawProducts = mockSheets.mockProductsSheet;
-  const rawListings = mockSheets.mockListingsSheet;
-  const rawBadges = mockSheets.mockBadgesSheet;
-  const rawAllowlist = mockSheets.mockAllowlistSheet;
-  const rawOverrides = mockSheets.mockOverridesSheet;
-  const rawSeoPages = mockSheets.mockSeoPagesSheet;
+  // Load raw data — prefer real Google Sheets when credentials are present
+  let rawCategories: Record<string, string>[];
+  let rawProducts: Record<string, string>[];
+  let rawListings: Record<string, string>[];
+  let rawBadges: Record<string, string>[];
+  let rawAllowlist: Record<string, string>[];
+  let rawOverrides: Record<string, string>[];
+  let rawSeoPages: Record<string, string>[];
+
+  if (useGoogleSheets) {
+    const id = process.env.GOOGLE_SHEETS_SPREADSHEET_ID!;
+    console.log('[Sheet Import] Fetching data from Google Sheets...');
+    [rawCategories, rawProducts, rawListings, rawBadges, rawAllowlist, rawOverrides, rawSeoPages] = await Promise.all([
+      fetchSheet(id, 'categories!A:Z'),
+      fetchSheet(id, 'products!A:Z'),
+      fetchSheet(id, 'product_links!A:Z'),
+      fetchSheet(id, 'badges!A:Z'),
+      fetchSheet(id, 'retailer_allowlist!A:Z'),
+      fetchSheet(id, 'manual_overrides!A:Z'),
+      fetchSheet(id, 'seo_pages!A:Z'),
+    ]);
+    console.log(`[Sheet Import] Fetched: ${rawProducts.length} products, ${rawListings.length} listings, ${rawBadges.length} badges`);
+  } else {
+    rawCategories = mockSheets.mockCategoriesSheet;
+    rawProducts = mockSheets.mockProductsSheet;
+    rawListings = mockSheets.mockListingsSheet;
+    rawBadges = mockSheets.mockBadgesSheet;
+    rawAllowlist = mockSheets.mockAllowlistSheet;
+    rawOverrides = mockSheets.mockOverridesSheet;
+    rawSeoPages = mockSheets.mockSeoPagesSheet;
+  }
 
   if (useSupabase) {
     try {
