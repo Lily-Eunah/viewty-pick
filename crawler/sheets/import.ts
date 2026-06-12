@@ -1,29 +1,29 @@
 import { google } from 'googleapis';
 import { isSupabaseServerConfigured, supabaseServer } from '../../lib/supabase/server';
 import { loadMockDB, saveMockDB } from '../../lib/supabase/mockDb';
-import * as validate from './validate';
+import * as v from './validate';
 import * as mockSheets from './mock_sheets_data';
 import { ProductBadge } from '../../lib/types';
 
 // ---------------------------------------------------------------------------
-// Google Sheets helpers
+// Helpers
 // ---------------------------------------------------------------------------
 
 function isGoogleConfigured(): boolean {
   const json = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
-  const id = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
-  return !!(json && json !== 'your-google-service-account-credentials-json-string' && id && id !== 'placeholder-sheet-id');
+  const id   = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
+  return !!(
+    json && json !== 'your-google-service-account-credentials-json-string' &&
+    id   && id   !== 'placeholder-sheet-id'
+  );
 }
 
 async function fetchSheet(spreadsheetId: string, range: string): Promise<Record<string, string>[]> {
   const creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON!);
-  const auth = new google.auth.GoogleAuth({
-    credentials: creds,
-    scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
-  });
+  const auth  = new google.auth.GoogleAuth({ credentials: creds, scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'] });
   const sheets = google.sheets({ version: 'v4', auth });
-  const res = await sheets.spreadsheets.values.get({ spreadsheetId, range });
-  const rows = res.data.values ?? [];
+  const res    = await sheets.spreadsheets.values.get({ spreadsheetId, range });
+  const rows   = res.data.values ?? [];
   if (rows.length < 2) return [];
   const headers = rows[0].map((h: string) => h.trim());
   return rows.slice(1).map((row) => {
@@ -32,6 +32,39 @@ async function fetchSheet(spreadsheetId: string, range: string): Promise<Record<
     return obj;
   });
 }
+
+// Stable product key from brand + name (djb2 hash → base36)
+function makeProductKey(brand: string, name: string): string {
+  let h = 5381;
+  for (const c of `${brand.trim()}|${name.trim()}`) {
+    h = (Math.imul(h, 33) ^ c.charCodeAt(0)) >>> 0;
+  }
+  return 'p' + h.toString(36);
+}
+
+// Seller defaults applied automatically
+const SELLER_META: Record<string, { crawl_method: 'api' | 'playwright'; store_name: string }> = {
+  oliveyoung: { crawl_method: 'playwright', store_name: '올리브영'  },
+  coupang:    { crawl_method: 'api',        store_name: '쿠팡'     },
+  naver:      { crawl_method: 'api',        store_name: '네이버'   },
+  zigzag:     { crawl_method: 'playwright', store_name: '지그재그' },
+  ably:       { crawl_method: 'playwright', store_name: '에이블리' },
+};
+
+// brand.naver.com/* = official brand store
+function inferIsOfficialStore(url: string, seller: string): boolean {
+  if (seller === 'naver') return url.includes('brand.naver.com/');
+  return false;
+}
+
+// Badge display names by type
+const BADGE_NAMES: Record<string, string> = {
+  directorpi:      '디렉터파이 추천',
+  hwahae_best:     '화해 베스트',
+  oliveyoung_best: '올리브영 베스트',
+};
+
+// ---------------------------------------------------------------------------
 
 interface ImportStats {
   productsCount: number;
@@ -46,33 +79,26 @@ export async function runSheetImport(): Promise<ImportStats> {
   const startedAt = new Date().toISOString();
   console.log(`[Sheet Import] Starting import run at ${startedAt}`);
 
-  const stats: ImportStats = {
-    productsCount: 0,
-    linksCount: 0,
-    badgesCount: 0,
-    categoriesCount: 0,
-    errorCount: 0,
-    errors: [],
-  };
+  const stats: ImportStats = { productsCount: 0, linksCount: 0, badgesCount: 0, categoriesCount: 0, errorCount: 0, errors: [] };
 
-  const useSupabase = isSupabaseServerConfigured();
+  const useSupabase    = isSupabaseServerConfigured();
   const useGoogleSheets = isGoogleConfigured();
   console.log(`[Sheet Import] Destination: ${useSupabase ? 'Supabase Database' : 'Local Mock Database File'}`);
   console.log(`[Sheet Import] Source: ${useGoogleSheets ? 'Google Sheets' : 'Mock data'}`);
 
-  // Load raw data — prefer real Google Sheets when credentials are present
+  // ── Load raw data ──────────────────────────────────────────────────────────
   let rawCategories: Record<string, string>[];
-  let rawProducts: Record<string, string>[];
-  let rawListings: Record<string, string>[];
-  let rawBadges: Record<string, string>[];
-  let rawAllowlist: Record<string, string>[];
-  let rawOverrides: Record<string, string>[];
-  let rawSeoPages: Record<string, string>[];
+  let rawProducts:   Record<string, string>[];
+  let rawLinks:      Record<string, string>[];
+  let rawBadges:     Record<string, string>[];
+  let rawAllowlist:  Record<string, string>[];
+  let rawOverrides:  Record<string, string>[];
+  let rawSeoPages:   Record<string, string>[];
 
   if (useGoogleSheets) {
     const id = process.env.GOOGLE_SHEETS_SPREADSHEET_ID!;
     console.log('[Sheet Import] Fetching data from Google Sheets...');
-    [rawCategories, rawProducts, rawListings, rawBadges, rawAllowlist, rawOverrides, rawSeoPages] = await Promise.all([
+    [rawCategories, rawProducts, rawLinks, rawBadges, rawAllowlist, rawOverrides, rawSeoPages] = await Promise.all([
       fetchSheet(id, 'categories!A:Z'),
       fetchSheet(id, 'products!A:Z'),
       fetchSheet(id, 'product_links!A:Z'),
@@ -81,157 +107,212 @@ export async function runSheetImport(): Promise<ImportStats> {
       fetchSheet(id, 'manual_overrides!A:Z'),
       fetchSheet(id, 'seo_pages!A:Z'),
     ]);
-    console.log(`[Sheet Import] Fetched: ${rawProducts.length} products, ${rawListings.length} listings, ${rawBadges.length} badges`);
+    console.log(`[Sheet Import] Fetched: ${rawProducts.length} products, ${rawLinks.length} listings, ${rawBadges.length} badges`);
   } else {
     rawCategories = mockSheets.mockCategoriesSheet;
-    rawProducts = mockSheets.mockProductsSheet;
-    rawListings = mockSheets.mockListingsSheet;
-    rawBadges = mockSheets.mockBadgesSheet;
-    rawAllowlist = mockSheets.mockAllowlistSheet;
-    rawOverrides = mockSheets.mockOverridesSheet;
-    rawSeoPages = mockSheets.mockSeoPagesSheet;
+    rawProducts   = mockSheets.mockProductsSheet;
+    rawLinks      = mockSheets.mockProductLinksSheet;
+    rawBadges     = mockSheets.mockBadgesSheet;
+    rawAllowlist  = mockSheets.mockAllowlistSheet;
+    rawOverrides  = mockSheets.mockOverridesSheet;
+    rawSeoPages   = mockSheets.mockSeoPagesSheet;
   }
 
+  // ── Build product_key map from raw products (name → key) ──────────────────
+  const nameToKey = new Map<string, string>();
+  for (const row of rawProducts) {
+    const p = v.simpleProductRowSchema.safeParse(row);
+    if (!p.success) continue;
+    const key = p.data.product_key?.trim() || makeProductKey(p.data.brand, p.data.name);
+    nameToKey.set(p.data.name.trim(), key);
+  }
+
+  // ── Expand wide product_links rows → flat listing records ─────────────────
+  interface FlatListing { link_key: string; product_key: string; seller: string; url: string }
+  const flatListings: FlatListing[] = [];
+  for (const row of rawLinks) {
+    const r = v.productLinksWideRowSchema.safeParse(row);
+    if (!r.success) continue;
+    const productKey = nameToKey.get(r.data.product_name.trim());
+    if (!productKey) continue;
+    for (const seller of ['oliveyoung', 'coupang', 'naver', 'zigzag', 'ably'] as const) {
+      const url = r.data[seller]?.trim();
+      if (!url) continue;
+      flatListings.push({ link_key: `${seller}_${productKey}`, product_key: productKey, seller, url });
+    }
+  }
+
+  // ==========================================================================
+  // PATH A — Supabase
+  // ==========================================================================
   if (useSupabase) {
     try {
+      // 1. Categories
       console.log('[Sheet Import] Syncing categories to Supabase...');
       for (const row of rawCategories) {
-        const parsed = validate.categoryRowSchema.safeParse(row);
-        if (!parsed.success) {
-          stats.errorCount++;
-          stats.errors.push(`Category validation failed: ${parsed.error.message}`);
-          continue;
-        }
-        const { error } = await supabaseServer
-          .from('categories')
-          .upsert({ slug: parsed.data.slug, name: parsed.data.name, sort_order: parsed.data.sort_order }, { onConflict: 'slug' });
+        const p = v.categoryRowSchema.safeParse(row);
+        if (!p.success) { stats.errorCount++; stats.errors.push(`Category: ${p.error.message}`); continue; }
+        const { error } = await supabaseServer.from('categories').upsert(
+          { slug: p.data.slug, name: p.data.name, sort_order: p.data.sort_order },
+          { onConflict: 'slug' }
+        );
         if (error) throw error;
         stats.categoriesCount++;
       }
 
-      // Sync Products
+      // 2. Products
       console.log('[Sheet Import] Syncing products to Supabase...');
-      // Load categories from DB first to get IDs
       const { data: dbCategories, error: catErr } = await supabaseServer.from('categories').select('*');
       if (catErr) throw catErr;
 
       for (const row of rawProducts) {
-        const parsed = validate.productRowSchema.safeParse(row);
-        if (!parsed.success) {
-          stats.errorCount++;
-          stats.errors.push(`Product validation failed: ${parsed.error.message}`);
-          continue;
-        }
-        const categoryId = dbCategories?.find((c) => c.slug === parsed.data.category_slug)?.id || null;
+        const p = v.simpleProductRowSchema.safeParse(row);
+        if (!p.success) { stats.errorCount++; stats.errors.push(`Product: ${p.error.message}`); continue; }
+        const productKey = p.data.product_key?.trim() || makeProductKey(p.data.brand, p.data.name);
+        const categoryId = dbCategories?.find((c) => c.slug === p.data.category)?.id ?? null;
 
         const { error } = await supabaseServer.from('products').upsert({
-          product_key: parsed.data.product_key,
-          slug: parsed.data.slug,
-          name: parsed.data.name,
-          brand: parsed.data.brand || null,
+          product_key: productKey,
+          slug:        productKey,
+          name:        p.data.name,
+          brand:       p.data.brand || null,
           category_id: categoryId,
-          volume_ml: parsed.data.volume_ml,
-          image_url: parsed.data.image_url || null,
-          features: parsed.data.features || null,
-          skin_types: parsed.data.skin_types,
-          hwahae_url: parsed.data.hwahae_url || null,
-          official_info_url: parsed.data.official_info_url || null,
-          is_active: parsed.data.is_active,
+          volume_ml:   p.data.volume_ml,
+          image_url:   p.data.image_url || null,
+          features:    p.data.features  || null,
+          skin_types:  p.data.skin_types,
+          is_active:   p.data.is_active,
         }, { onConflict: 'product_key' });
         if (error) throw error;
         stats.productsCount++;
       }
 
-      // Sync Listings, Badges, etc.
-      // Load products and sellers from DB
+      // 3. Listings (from expanded flat list)
       const { data: dbProducts } = await supabaseServer.from('products').select('*');
-      const { data: dbSellers } = await supabaseServer.from('sellers').select('*');
+      const { data: dbSellers  } = await supabaseServer.from('sellers').select('*');
 
       console.log('[Sheet Import] Syncing listings to Supabase...');
-      for (const row of rawListings) {
-        const parsed = validate.listingRowSchema.safeParse(row);
-        if (!parsed.success) {
-          stats.errorCount++;
-          stats.errors.push(`Listing validation failed: ${parsed.error.message}`);
-          continue;
-        }
-        const productId = dbProducts?.find((p) => p.product_key === parsed.data.product_key)?.id;
-        const sellerId = dbSellers?.find((s) => s.slug === parsed.data.seller_code)?.id;
-
+      for (const listing of flatListings) {
+        const productId = dbProducts?.find((p) => p.product_key === listing.product_key)?.id;
+        const sellerId  = dbSellers?.find((s) => s.slug === listing.seller)?.id;
         if (!productId || !sellerId) {
           stats.errorCount++;
-          stats.errors.push(`Listing failed: Product or Seller not found in DB for listing key ${parsed.data.link_key}`);
+          stats.errors.push(`Listing skipped: product_key=${listing.product_key} seller=${listing.seller}`);
           continue;
         }
-
+        const meta = SELLER_META[listing.seller];
         const { error } = await supabaseServer.from('listings').upsert({
-          link_key: parsed.data.link_key,
-          product_id: productId,
-          seller_id: sellerId,
-          url: parsed.data.url,
-          affiliate_url: parsed.data.affiliate_url || null,
-          store_name: parsed.data.store_name || null,
-          is_official_store: parsed.data.is_official_store,
-          is_rocket: parsed.data.is_rocket,
-          crawl_enabled: parsed.data.crawl_enabled,
-          crawl_method: parsed.data.crawl_method,
-          is_active: parsed.data.is_active,
+          link_key:          listing.link_key,
+          product_id:        productId,
+          seller_id:         sellerId,
+          url:               listing.url,
+          affiliate_url:     listing.url,
+          store_name:        meta.store_name,
+          is_official_store: inferIsOfficialStore(listing.url, listing.seller),
+          is_rocket:         false,
+          crawl_enabled:     true,
+          crawl_method:      meta.crawl_method,
+          is_active:         true,
         }, { onConflict: 'link_key' });
         if (error) throw error;
         stats.linksCount++;
       }
 
-      // Sync Badges
-      const { data: dbBadges } = await supabaseServer.from('badges').select('*');
+      // 4. Badges
+      const { data: dbBadgesRaw } = await supabaseServer.from('badges').select('*');
+      const badgeCache = new Map((dbBadgesRaw ?? []).map((b) => [b.slug, b.id as number]));
+
       console.log('[Sheet Import] Syncing product badges to Supabase...');
       for (const row of rawBadges) {
-        const parsed = validate.badgeRowSchema.safeParse(row);
-        if (!parsed.success) {
-          stats.errorCount++;
-          stats.errors.push(`Badge validation failed: ${parsed.error.message}`);
-          continue;
-        }
-        const productId = dbProducts?.find((p) => p.product_key === parsed.data.product_key)?.id;
-        let badgeId = dbBadges?.find((b) => b.slug === parsed.data.badge_slug)?.id;
+        const p = v.simpleBadgeRowSchema.safeParse(row);
+        if (!p.success) { stats.errorCount++; stats.errors.push(`Badge: ${p.error.message}`); continue; }
 
+        const productKey = nameToKey.get(p.data.product_name.trim());
+        const productId  = dbProducts?.find((pr) => pr.product_key === productKey)?.id;
         if (!productId) {
           stats.errorCount++;
-          stats.errors.push(`Badge failed: Product not found for product_key ${parsed.data.product_key}`);
+          stats.errors.push(`Badge skipped: product "${p.data.product_name}" not found`);
           continue;
         }
 
+        // Upsert badge master row
+        let badgeId = badgeCache.get(p.data.badge_type);
         if (!badgeId) {
-          const { data: newBadge, error: bInsErr } = await supabaseServer
+          const badgeName = BADGE_NAMES[p.data.badge_type] ?? p.data.badge_type;
+          const { data: nb, error: bErr } = await supabaseServer
             .from('badges')
-            .upsert({ slug: parsed.data.badge_slug, name: parsed.data.badge_name }, { onConflict: 'slug' })
-            .select()
-            .single();
-          if (bInsErr) throw bInsErr;
-          badgeId = newBadge.id;
+            .upsert({ slug: p.data.badge_type, name: badgeName }, { onConflict: 'slug' })
+            .select().single();
+          if (bErr) throw bErr;
+          badgeId = nb.id as number;
+          badgeCache.set(p.data.badge_type, badgeId);
         }
 
         const { error } = await supabaseServer.from('product_badges').upsert({
-          product_id: productId,
-          badge_id: badgeId,
-          detail: parsed.data.detail || null,
-          source_title: parsed.data.source_title || null,
-          ref_url: parsed.data.ref_url || null,
-          source_date: parsed.data.source_date || null,
+          product_id:   productId,
+          badge_id:     badgeId,
+          detail:       p.data.detail       ?? null,
+          source_title: p.data.source_title ?? null,
+          ref_url:      p.data.ref_url      ?? null,
+          source_date:  p.data.source_date  ?? null,
         }, { onConflict: 'product_id,badge_id' });
         if (error) throw error;
         stats.badgesCount++;
       }
 
-      // Record Sync Run in Supabase
+      // 5. Retailer allowlist
+      for (const row of rawAllowlist) {
+        const p = v.simpleAllowlistRowSchema.safeParse(row);
+        if (!p.success) { stats.errorCount++; continue; }
+        const sellerId = dbSellers?.find((s) => s.slug === p.data.seller)?.id;
+        if (!sellerId) continue;
+        await supabaseServer.from('retailer_allowlist').upsert(
+          { seller_id: sellerId, brand: p.data.brand, allowed_store_name: p.data.allowed_store_name, is_active: true },
+          { onConflict: 'seller_id,brand,allowed_store_name' } as never
+        );
+      }
+
+      // 6. Manual overrides
+      for (const row of rawOverrides) {
+        const p = v.simpleOverrideRowSchema.safeParse(row);
+        if (!p.success) { stats.errorCount++; continue; }
+        const productKey = nameToKey.get(p.data.product_name.trim());
+        const productId  = dbProducts?.find((pr) => pr.product_key === productKey)?.id;
+        const sellerId   = dbSellers?.find((s) => s.slug === p.data.seller)?.id;
+        if (!productId || !sellerId) continue;
+        await supabaseServer.from('manual_overrides').insert({
+          product_id:    productId,
+          seller_id:     sellerId,
+          override_type: p.data.override_type,
+          value:         p.data.value,
+          reason:        p.data.reason     ?? null,
+          expires_at:    p.data.expires_at ?? null,
+          is_active:     true,
+        });
+      }
+
+      // 7. SEO pages
+      for (const row of rawSeoPages) {
+        const p = v.seoPageRowSchema.safeParse(row);
+        if (!p.success) { stats.errorCount++; continue; }
+        await supabaseServer.from('seo_pages').upsert({
+          slug:        p.data.slug,
+          page_type:   p.data.page_type   ?? null,
+          title:       p.data.title       ?? null,
+          h1:          p.data.h1          ?? null,
+          description: p.data.description ?? null,
+          category:    p.data.category    ?? null,
+          skin_type:   p.data.skin_type   ?? null,
+          badge_type:  p.data.badge_type  ?? null,
+          is_active:   p.data.is_active,
+        }, { onConflict: 'slug' });
+      }
+
       await supabaseServer.from('sheet_import_runs').insert({
-        started_at: startedAt,
-        finished_at: new Date().toISOString(),
+        started_at: startedAt, finished_at: new Date().toISOString(),
         status: stats.errorCount > 0 ? 'completed_with_warnings' : 'completed',
-        products_count: stats.productsCount,
-        links_count: stats.linksCount,
-        badges_count: stats.badgesCount,
-        error_count: stats.errorCount,
-        summary: stats,
+        products_count: stats.productsCount, links_count: stats.linksCount,
+        badges_count: stats.badgesCount, error_count: stats.errorCount, summary: stats,
       });
 
     } catch (e: unknown) {
@@ -239,269 +320,118 @@ export async function runSheetImport(): Promise<ImportStats> {
       console.error('[Sheet Import] Import to Supabase failed:', err);
       stats.errorCount++;
       stats.errors.push(`Critical import error: ${err.message}`);
-      
       await supabaseServer.from('sheet_import_runs').insert({
-        started_at: startedAt,
-        finished_at: new Date().toISOString(),
-        status: 'failed',
-        products_count: stats.productsCount,
-        links_count: stats.linksCount,
-        badges_count: stats.badgesCount,
-        error_count: stats.errorCount,
+        started_at: startedAt, finished_at: new Date().toISOString(), status: 'failed',
+        products_count: stats.productsCount, links_count: stats.linksCount,
+        badges_count: stats.badgesCount, error_count: stats.errorCount,
         summary: { error: err.message, ...stats },
       });
     }
+
+  // ==========================================================================
+  // PATH B — Local mock DB
+  // ==========================================================================
   } else {
-    // ----------------------------------------------------
-    // Fallback to Local Mock JSON database
-    // ----------------------------------------------------
     console.log('[Sheet Import] Running import process on local mock database file...');
     const db = loadMockDB();
 
-    // 1. Sync Categories
+    // Categories
     for (const row of rawCategories) {
-      const parsed = validate.categoryRowSchema.safeParse(row);
-      if (!parsed.success) {
-        stats.errorCount++;
-        stats.errors.push(`Category validation failed: ${parsed.error.message}`);
-        continue;
-      }
-      const existing = db.categories.find((c) => c.slug === parsed.data.slug);
-      if (existing) {
-        existing.name = parsed.data.name;
-        existing.sort_order = parsed.data.sort_order;
-      } else {
-        const id = db.categories.length > 0 ? Math.max(...db.categories.map(c => c.id)) + 1 : 1;
-        db.categories.push({ id, slug: parsed.data.slug, name: parsed.data.name, sort_order: parsed.data.sort_order });
+      const p = v.categoryRowSchema.safeParse(row);
+      if (!p.success) { stats.errorCount++; continue; }
+      const existing = db.categories.find((c) => c.slug === p.data.slug);
+      if (existing) { existing.name = p.data.name; existing.sort_order = p.data.sort_order; }
+      else {
+        const id = db.categories.length ? Math.max(...db.categories.map((c) => c.id)) + 1 : 1;
+        db.categories.push({ id, slug: p.data.slug, name: p.data.name, sort_order: p.data.sort_order });
       }
       stats.categoriesCount++;
     }
 
-    // 2. Sync Products
+    // Products
     for (const row of rawProducts) {
-      const parsed = validate.productRowSchema.safeParse(row);
-      if (!parsed.success) {
-        stats.errorCount++;
-        stats.errors.push(`Product validation failed: ${parsed.error.message}`);
-        continue;
-      }
-      const category = db.categories.find((c) => c.slug === parsed.data.category_slug);
-      const categoryId = category ? category.id : null;
-
-      const existing = db.products.find((p) => p.product_key === parsed.data.product_key);
-      if (existing) {
-        existing.slug = parsed.data.slug;
-        existing.name = parsed.data.name;
-        existing.brand = parsed.data.brand || null;
-        existing.category_id = categoryId;
-        existing.volume_ml = parsed.data.volume_ml;
-        existing.image_url = parsed.data.image_url || null;
-        existing.features = parsed.data.features || null;
-        existing.skin_types = parsed.data.skin_types;
-        existing.hwahae_url = parsed.data.hwahae_url || null;
-        existing.official_info_url = parsed.data.official_info_url || null;
-        existing.is_active = parsed.data.is_active;
-      } else {
-        const id = db.products.length > 0 ? Math.max(...db.products.map(p => p.id)) + 1 : 1;
-        db.products.push({
-          id,
-          product_key: parsed.data.product_key,
-          slug: parsed.data.slug,
-          name: parsed.data.name,
-          brand: parsed.data.brand || null,
-          category_id: categoryId,
-          volume_ml: parsed.data.volume_ml,
-          image_url: parsed.data.image_url || null,
-          features: parsed.data.features || null,
-          skin_types: parsed.data.skin_types,
-          hwahae_url: parsed.data.hwahae_url || null,
-          official_info_url: parsed.data.official_info_url || null,
-          viewty_score: 0,
-          source: 'sheet',
-          is_active: parsed.data.is_active,
-        });
-      }
+      const p = v.simpleProductRowSchema.safeParse(row);
+      if (!p.success) { stats.errorCount++; stats.errors.push(`Product: ${p.error.message}`); continue; }
+      const productKey = p.data.product_key?.trim() || makeProductKey(p.data.brand, p.data.name);
+      const categoryId = db.categories.find((c) => c.slug === p.data.category)?.id ?? null;
+      const existing   = db.products.find((pr) => pr.product_key === productKey);
+      const data = { product_key: productKey, slug: productKey, name: p.data.name, brand: p.data.brand || null, category_id: categoryId, volume_ml: p.data.volume_ml, image_url: p.data.image_url || null, features: p.data.features || null, skin_types: p.data.skin_types, hwahae_url: null, official_info_url: null, viewty_score: 0, source: 'sheet', is_active: p.data.is_active };
+      if (existing) { Object.assign(existing, data); }
+      else { db.products.push({ id: (db.products.length ? Math.max(...db.products.map((pr) => pr.id)) + 1 : 1), ...data }); }
+      nameToKey.set(p.data.name.trim(), productKey);
       stats.productsCount++;
     }
 
-    // 3. Sync Listings
-    for (const row of rawListings) {
-      const parsed = validate.listingRowSchema.safeParse(row);
-      if (!parsed.success) {
-        stats.errorCount++;
-        stats.errors.push(`Listing validation failed: ${parsed.error.message}`);
-        continue;
-      }
-      const product = db.products.find((p) => p.product_key === parsed.data.product_key);
-      const seller = db.sellers.find((s) => s.slug === parsed.data.seller_code);
-
-      if (!product || !seller) {
-        stats.errorCount++;
-        stats.errors.push(`Listing failed: Product (${parsed.data.product_key}) or Seller (${parsed.data.seller_code}) not found in mock DB`);
-        continue;
-      }
-
-      const existing = db.listings.find((l) => l.link_key === parsed.data.link_key);
-      if (existing) {
-        existing.product_id = product.id;
-        existing.seller_id = seller.id;
-        existing.url = parsed.data.url;
-        existing.affiliate_url = parsed.data.affiliate_url || null;
-        existing.store_name = parsed.data.store_name || null;
-        existing.is_official_store = parsed.data.is_official_store;
-        existing.is_rocket = parsed.data.is_rocket;
-        existing.crawl_enabled = parsed.data.crawl_enabled;
-        existing.crawl_method = parsed.data.crawl_method;
-        existing.is_active = parsed.data.is_active;
-      } else {
-        const id = db.listings.length > 0 ? Math.max(...db.listings.map(l => l.id)) + 1 : 1;
-        db.listings.push({
-          id,
-          link_key: parsed.data.link_key,
-          product_id: product.id,
-          seller_id: seller.id,
-          url: parsed.data.url,
-          affiliate_url: parsed.data.affiliate_url || null,
-          store_name: parsed.data.store_name || null,
-          is_official_store: parsed.data.is_official_store,
-          is_rocket: parsed.data.is_rocket,
-          crawl_enabled: parsed.data.crawl_enabled,
-          crawl_method: parsed.data.crawl_method,
-          last_crawled_at: null,
-          fail_count: 0,
-          is_active: parsed.data.is_active,
-        });
-      }
+    // Listings (from flat list)
+    for (const listing of flatListings) {
+      const product = db.products.find((pr) => pr.product_key === listing.product_key);
+      const seller  = db.sellers.find((s) => s.slug === listing.seller);
+      if (!product || !seller) { stats.errorCount++; continue; }
+      const meta     = SELLER_META[listing.seller];
+      const existing = db.listings.find((l) => l.link_key === listing.link_key);
+      const data = { link_key: listing.link_key, product_id: product.id, seller_id: seller.id, url: listing.url, affiliate_url: listing.url, store_name: meta.store_name, is_official_store: inferIsOfficialStore(listing.url, listing.seller), is_rocket: false, crawl_enabled: true, crawl_method: meta.crawl_method, last_crawled_at: null, fail_count: 0, is_active: true };
+      if (existing) { Object.assign(existing, data); }
+      else { db.listings.push({ id: (db.listings.length ? Math.max(...db.listings.map((l) => l.id)) + 1 : 1), ...data }); }
       stats.linksCount++;
     }
 
-    // 4. Sync Badges
+    // Badges
     for (const row of rawBadges) {
-      const parsed = validate.badgeRowSchema.safeParse(row);
-      if (!parsed.success) {
-        stats.errorCount++;
-        stats.errors.push(`Badge validation failed: ${parsed.error.message}`);
-        continue;
-      }
-      const product = db.products.find((p) => p.product_key === parsed.data.product_key);
-      if (!product) {
-        stats.errorCount++;
-        stats.errors.push(`Badge failed: Product not found for product_key ${parsed.data.product_key}`);
-        continue;
-      }
+      const p = v.simpleBadgeRowSchema.safeParse(row);
+      if (!p.success) { stats.errorCount++; continue; }
+      const productKey = nameToKey.get(p.data.product_name.trim());
+      const product    = db.products.find((pr) => pr.product_key === productKey);
+      if (!product) { stats.errorCount++; stats.errors.push(`Badge skipped: "${p.data.product_name}" not found`); continue; }
 
-      let badge = db.badges.find((b) => b.slug === parsed.data.badge_slug);
+      let badge = db.badges.find((b) => b.slug === p.data.badge_type);
       if (!badge) {
-        const id = db.badges.length > 0 ? Math.max(...db.badges.map(b => b.id)) + 1 : 1;
-        badge = { id, slug: parsed.data.badge_slug, name: parsed.data.badge_name };
+        const id = db.badges.length ? Math.max(...db.badges.map((b) => b.id)) + 1 : 1;
+        badge = { id, slug: p.data.badge_type, name: BADGE_NAMES[p.data.badge_type] ?? p.data.badge_type };
         db.badges.push(badge);
       }
-
-      const existingIdx = db.product_badges.findIndex((pb) => pb.product_id === product.id && pb.badge_id === badge!.id);
-      const pbData: ProductBadge = {
-        product_id: product.id,
-        badge_id: badge.id,
-        detail: parsed.data.detail || null,
-        source_title: parsed.data.source_title || null,
-        ref_url: parsed.data.ref_url || null,
-        source_date: parsed.data.source_date || null,
-      };
-
-      if (existingIdx >= 0) {
-        db.product_badges[existingIdx] = pbData;
-      } else {
-        db.product_badges.push(pbData);
-      }
+      const pbData: ProductBadge = { product_id: product.id, badge_id: badge.id, detail: p.data.detail ?? null, source_title: p.data.source_title ?? null, ref_url: p.data.ref_url ?? null, source_date: p.data.source_date ?? null };
+      const idx = db.product_badges.findIndex((pb) => pb.product_id === product.id && pb.badge_id === badge!.id);
+      if (idx >= 0) db.product_badges[idx] = pbData; else db.product_badges.push(pbData);
       stats.badgesCount++;
     }
 
-    // 5. Sync Retailer Allowlist
+    // Allowlist
     for (const row of rawAllowlist) {
-      const parsed = validate.allowlistRowSchema.safeParse(row);
-      if (!parsed.success) {
-        stats.errorCount++;
-        continue;
-      }
-      const seller = db.sellers.find((s) => s.slug === parsed.data.seller_code);
+      const p = v.simpleAllowlistRowSchema.safeParse(row);
+      if (!p.success) continue;
+      const seller = db.sellers.find((s) => s.slug === p.data.seller);
       if (!seller) continue;
-
-      const existing = db.retailer_allowlist.find((al) => al.seller_id === seller.id && al.brand === parsed.data.brand && al.allowed_store_name === parsed.data.allowed_store_name);
-      if (!existing) {
-        const id = db.retailer_allowlist.length > 0 ? Math.max(...db.retailer_allowlist.map(al => al.id)) + 1 : 1;
-        db.retailer_allowlist.push({
-          id,
-          seller_id: seller.id,
-          brand: parsed.data.brand,
-          allowed_store_name: parsed.data.allowed_store_name,
-          is_active: parsed.data.is_active
-        });
+      const exists = db.retailer_allowlist.some((al) => al.seller_id === seller.id && al.brand === p.data.brand && al.allowed_store_name === p.data.allowed_store_name);
+      if (!exists) {
+        const id = db.retailer_allowlist.length ? Math.max(...db.retailer_allowlist.map((al) => al.id)) + 1 : 1;
+        db.retailer_allowlist.push({ id, seller_id: seller.id, brand: p.data.brand, allowed_store_name: p.data.allowed_store_name, is_active: true });
       }
     }
 
-    // 6. Sync Manual Overrides
+    // Overrides
     for (const row of rawOverrides) {
-      const parsed = validate.overrideRowSchema.safeParse(row);
-      if (!parsed.success) {
-        stats.errorCount++;
-        continue;
-      }
-      const product = db.products.find((p) => p.product_key === parsed.data.product_key);
-      const seller = db.sellers.find((s) => s.slug === parsed.data.seller_code);
+      const p = v.simpleOverrideRowSchema.safeParse(row);
+      if (!p.success) continue;
+      const productKey = nameToKey.get(p.data.product_name.trim());
+      const product    = db.products.find((pr) => pr.product_key === productKey);
+      const seller     = db.sellers.find((s) => s.slug === p.data.seller);
       if (!product || !seller) continue;
-
-      const existing = db.manual_overrides.find((mo) => mo.product_id === product.id && mo.seller_id === seller.id && mo.override_type === parsed.data.override_type);
-      if (existing) {
-        existing.value = parsed.data.value;
-        existing.reason = parsed.data.reason || null;
-        existing.expires_at = parsed.data.expires_at || null;
-        existing.is_active = parsed.data.is_active;
-      } else {
-        const id = db.manual_overrides.length > 0 ? Math.max(...db.manual_overrides.map(mo => mo.id)) + 1 : 1;
-        db.manual_overrides.push({
-          id,
-          product_id: product.id,
-          seller_id: seller.id,
-          override_type: parsed.data.override_type,
-          value: parsed.data.value,
-          reason: parsed.data.reason || null,
-          expires_at: parsed.data.expires_at || null,
-          is_active: parsed.data.is_active
-        });
+      const existing = db.manual_overrides.find((mo) => mo.product_id === product.id && mo.seller_id === seller.id && mo.override_type === p.data.override_type);
+      if (existing) { existing.value = p.data.value; existing.reason = p.data.reason ?? null; existing.expires_at = p.data.expires_at ?? null; }
+      else {
+        const id = db.manual_overrides.length ? Math.max(...db.manual_overrides.map((mo) => mo.id)) + 1 : 1;
+        db.manual_overrides.push({ id, product_id: product.id, seller_id: seller.id, override_type: p.data.override_type, value: p.data.value, reason: p.data.reason ?? null, expires_at: p.data.expires_at ?? null, is_active: true });
       }
     }
 
-    // 7. Sync SEO Pages
+    // SEO pages
     for (const row of rawSeoPages) {
-      const parsed = validate.seoPageRowSchema.safeParse(row);
-      if (!parsed.success) {
-        stats.errorCount++;
-        continue;
-      }
-      const existing = db.seo_pages.find((sp) => sp.slug === parsed.data.slug);
-      if (existing) {
-        existing.page_type = parsed.data.page_type || null;
-        existing.title = parsed.data.title || null;
-        existing.h1 = parsed.data.h1 || null;
-        existing.description = parsed.data.description || null;
-        existing.category = parsed.data.category || null;
-        existing.skin_type = parsed.data.skin_type || null;
-        existing.badge_type = parsed.data.badge_type || null;
-        existing.is_active = parsed.data.is_active;
-      } else {
-        const id = db.seo_pages.length > 0 ? Math.max(...db.seo_pages.map(sp => sp.id)) + 1 : 1;
-        db.seo_pages.push({
-          id,
-          slug: parsed.data.slug,
-          page_type: parsed.data.page_type || null,
-          title: parsed.data.title || null,
-          h1: parsed.data.h1 || null,
-          description: parsed.data.description || null,
-          category: parsed.data.category || null,
-          skin_type: parsed.data.skin_type || null,
-          badge_type: parsed.data.badge_type || null,
-          is_active: parsed.data.is_active
-        });
-      }
+      const p = v.seoPageRowSchema.safeParse(row);
+      if (!p.success) continue;
+      const existing = db.seo_pages.find((sp) => sp.slug === p.data.slug);
+      const data = { slug: p.data.slug, page_type: p.data.page_type ?? null, title: p.data.title ?? null, h1: p.data.h1 ?? null, description: p.data.description ?? null, category: p.data.category ?? null, skin_type: p.data.skin_type ?? null, badge_type: p.data.badge_type ?? null, is_active: p.data.is_active };
+      if (existing) { Object.assign(existing, data); }
+      else { db.seo_pages.push({ id: (db.seo_pages.length ? Math.max(...db.seo_pages.map((sp) => sp.id)) + 1 : 1), ...data }); }
     }
 
     saveMockDB(db);
@@ -510,21 +440,11 @@ export async function runSheetImport(): Promise<ImportStats> {
 
   const finishedAt = new Date().toISOString();
   console.log(`[Sheet Import] Import finished at ${finishedAt}. Success: ${stats.productsCount} products, ${stats.linksCount} links, ${stats.badgesCount} badges. Errors: ${stats.errorCount}`);
-  
   return stats;
 }
 
-// Allow running directly via tsx
 if (require.main === module) {
   runSheetImport()
-    .then((stats) => {
-      if (stats.errorCount > 0) {
-        console.error('[Sheet Import] Warnings or errors detected during import!');
-      }
-      process.exit(0);
-    })
-    .catch((err) => {
-      console.error('[Sheet Import] Critical Sync Error:', err);
-      process.exit(1);
-    });
+    .then((stats) => { if (stats.errorCount > 0) console.error('[Sheet Import] Warnings detected!'); process.exit(0); })
+    .catch((err)  => { console.error('[Sheet Import] Critical Sync Error:', err); process.exit(1); });
 }

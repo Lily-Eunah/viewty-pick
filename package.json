@@ -8,6 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
+    "sheets:headers": "tsx -r dotenv/config crawler/sheets/setup_headers.ts",
+    "sheets:reseed": "tsx -r dotenv/config crawler/sheets/reseed_sheets.ts",
     "sheets:import": "tsx -r dotenv/config crawler/sheets/import.ts",
     "crawler:sync": "tsx -r dotenv/config crawler/run.ts",
     "crawler:test": "tsx -r dotenv/config crawler/run.ts --test"
