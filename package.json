@@ -13,7 +13,8 @@
     "sheets:import": "tsx -r dotenv/config crawler/sheets/import.ts",
     "crawler:sync": "tsx -r dotenv/config crawler/run.ts",
     "crawler:test": "tsx -r dotenv/config crawler/run.ts --test",
-    "naver:test": "tsx -r dotenv/config crawler/naver/test.ts"
+    "naver:test": "tsx -r dotenv/config crawler/naver/test.ts",
+    "package:extract:test": "tsx crawler/core/packageExtractor.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.1",

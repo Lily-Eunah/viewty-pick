@@ -1,5 +1,6 @@
 import { PriceOffer } from '../adapters/index';
 import { Listing, Product, ManualOverride, PromoType, ParseConfidence } from '../../lib/types';
+import { extractPackageFromTitle } from './packageExtractor';
 
 interface NormalizedPrice {
   regular_price: number | null;
@@ -68,8 +69,8 @@ export function normalizePrice(product: Product, offer: PriceOffer): NormalizedP
 
   let base_unit_price = sale_price; // Single purchase base price
   let effective_unit_price = sale_price; // Promotion adjusted unit price
-  const promo_type = offer.promoType;
-  const promo_text = offer.promoText;
+  let promo_type = offer.promoType;
+  let promo_text = offer.promoText;
 
   let min_quantity = 1;
   let paid_quantity = 1;
@@ -116,10 +117,52 @@ export function normalizePrice(product: Product, offer: PriceOffer): NormalizedP
     } else {
       parse_confidence = 'low';
     }
+  } else if (promo_type === 'none' && !promo_text && offer.sourceText) {
+    // 2. Integration Rule 3: Use title-derived package extractor if no explicit promo
+    const ext = extractPackageFromTitle(offer.sourceText);
+    if (ext.detected && ext.confidence === 'high') {
+      const uCount = ext.unitCount || 1;
+      const uAmount = ext.unitAmount;
+
+      // Sanity checks on parsed values based on parser safety rules
+      const isCountValid = uCount >= 1 && uCount <= 20;
+      const isAmountValid = uAmount === null || (uAmount >= 1 && uAmount <= 1000);
+
+      if (isCountValid && isAmountValid) {
+        total_quantity = uCount;
+        paid_quantity = uCount;
+        free_quantity = 0;
+        min_quantity = uCount;
+
+        if (sale_price !== null) {
+          base_unit_price = sale_price;
+          effective_unit_price = Math.round(sale_price / uCount);
+        }
+
+        promo_type = ext.promoType === 'bundle' ? 'bundle' : 'none';
+        promo_text = ext.evidence;
+      }
+    }
+  }
+
+  // Determine volume to use
+  let volume_ml = product.volume_ml || 50;
+
+  // Rule 5: If title volume differs from product.volume_ml, use title-derived volume and keep parse_confidence to 'high'
+  if (promo_type === 'bundle' || promo_type === 'none') {
+    if (offer.sourceText) {
+      const ext = extractPackageFromTitle(offer.sourceText);
+      if (ext.detected && ext.confidence === 'high' && ext.unitAmount !== null) {
+        volume_ml = ext.unitAmount;
+        if (product.volume_ml && ext.unitAmount !== product.volume_ml) {
+          console.warn(`[Normalization] Volume mismatch detected for product ID ${product.id}: Title indicates ${ext.unitAmount}ml, but DB indicates ${product.volume_ml}ml. Keeping parse_confidence='high'.`);
+          offer.sourceText = `${offer.sourceText} [volume_mismatch: ${ext.unitAmount}ml vs DB ${product.volume_ml}ml]`;
+        }
+      }
+    }
   }
 
   // Calculate volume-adjusted totals
-  const volume_ml = product.volume_ml || 50;
   const total_ml = volume_ml * total_quantity;
   
   // ml당 단가 (calculated using the effective unit price)
