@@ -156,6 +156,7 @@ export async function crawlPipeline(): Promise<void> {
         base_unit_price: norm.base_unit_price,
         effective_unit_price: norm.effective_unit_price,
         unit_price: norm.unit_price,
+        unit_price_reliable: norm.unit_price_reliable,
         promo_type: norm.promo_type,
         promo_text: norm.promo_text,
         min_quantity: norm.min_quantity,
@@ -197,6 +198,7 @@ export async function crawlPipeline(): Promise<void> {
           snapshot.base_unit_price = prevSnap.base_unit_price;
           snapshot.effective_unit_price = prevSnap.effective_unit_price;
           snapshot.unit_price = prevSnap.unit_price;
+          snapshot.unit_price_reliable = prevSnap.unit_price_reliable;
           snapshot.promo_type = prevSnap.promo_type;
           snapshot.promo_text = prevSnap.promo_text;
           snapshot.status = 'warning';
@@ -238,7 +240,11 @@ export async function crawlPipeline(): Promise<void> {
     const prodSnaps = newSnapshots.filter(
       (s) =>
         prodListings.some((l) => l.id === s.listing_id) &&
-        s.status === 'ok' &&
+        // §1 compromise: a price-sound row stays comparable even with a volume
+        // mismatch (status='warning', unit_price_reliable=false). Its base/effective
+        // prices feed the lowest-price comparison; only ml-based unit_price (null
+        // here) is excluded. Genuinely bad rows (failed / low confidence / OOS) drop.
+        (s.status === 'ok' || (s.status === 'warning' && s.unit_price_reliable === false)) &&
         s.in_stock !== false &&
         s.parse_confidence !== 'low'
     );

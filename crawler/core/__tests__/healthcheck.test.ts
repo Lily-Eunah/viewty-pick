@@ -35,6 +35,7 @@ function norm(overrides: Partial<NormalizedPrice> = {}): NormalizedPrice {
     base_unit_price: 18000,
     effective_unit_price: 18000,
     unit_price: 360,
+    unit_price_reliable: true,
     promo_type: 'none',
     promo_text: null,
     min_quantity: 1,
@@ -64,6 +65,7 @@ const PREV_SNAPSHOT: PriceSnapshot = {
   regular_price: 20000, sale_price: 18000, base_unit_price: 18000,
   promo_type: 'none', promo_text: null, min_quantity: 1, paid_quantity: 1,
   free_quantity: 0, total_quantity: 1, total_ml: 50, unit_price: 360,
+  unit_price_reliable: true,
   effective_unit_price: 18000, in_stock: true, source_text: null,
   parse_confidence: 'high', status: 'ok',
   shipping_fee: null, shipping_note: null,
@@ -154,13 +156,14 @@ it('price within ±49% → status=ok', () => {
 });
 
 console.log('\n--- volume_mismatch ---');
-it('volume_mismatch=true → status=failed', () => {
+it('volume_mismatch=true → status=warning (price kept, §1 compromise)', () => {
   const result = runHealthCheck(
     PRODUCT, LISTING, baseOffer(),
-    norm({ volume_mismatch: true, volume_mismatch_detail: 'Page 150ml ≠ DB 50ml', parse_confidence: 'low' }),
+    // §1: price is real and not gated; unit_price disabled, mismatch → inspection queue
+    norm({ volume_mismatch: true, volume_mismatch_detail: 'Page 150ml ≠ DB 50ml', unit_price: null, unit_price_reliable: false }),
     null, []
   );
-  expect(result.status).toBe('failed');
+  expect(result.status).toBe('warning');
   expect(result.message).toContain('mismatch');
 });
 

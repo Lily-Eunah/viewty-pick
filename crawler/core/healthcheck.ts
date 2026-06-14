@@ -54,11 +54,14 @@ export function runHealthCheck(
     };
   }
 
-  // Rule 5: Volume mismatch (different product size — possible bait-and-switch)
+  // Rule 5: Volume mismatch (§1 compromise) — the price is real, so we do NOT
+  // gate it. The listing surfaces base/effective prices normally; only the
+  // ml-based unit_price is nulled in normalize (unit_price_reliable=false). The
+  // mismatch is routed to the inspection queue / volume-audit (§1b) as a warning.
   if (normalized.volume_mismatch) {
     return {
-      status: 'failed',
-      message: `Volume mismatch: ${normalized.volume_mismatch_detail}`,
+      status: 'warning',
+      message: `Volume mismatch → inspection queue (price kept, unit_price disabled): ${normalized.volume_mismatch_detail}`,
       severity: 'warning',
     };
   }

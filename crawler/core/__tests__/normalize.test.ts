@@ -1,6 +1,6 @@
 /**
  * Normalize unit tests — covers:
- *  1+1 / 2+1 / N개 수량할인 / 번들 / 용량불일치 / 이상치 게이트
+ *  1+1 / 2+1 / N개 수량할인 / 번들 / 용량불일치(§1 절충: 가격유지·ml당 비활성) / 이상치 게이트
  *  조건부 혜택(쿠폰/멤버십/앱)이 기본가·혜택가에 섞이지 않는지
  *  배송비가 가격에 포함되지 않는지
  */
@@ -172,8 +172,8 @@ describe('Bundle (더블기획 / N개입)', () => {
   });
 });
 
-describe('Volume mismatch', () => {
-  it('parsedVolumeRaw ≠ product.volume_ml → parse_confidence=low, volume_mismatch=true', () => {
+describe('Volume mismatch (§1 compromise: price kept, unit_price disabled)', () => {
+  it('parsedVolumeRaw ≠ product.volume_ml → price kept (confidence=high), unit_price null, reliable=false', () => {
     const product200ml: Product = { ...BASE_PRODUCT, volume_ml: 50 };
     const result = normalizePrice(product200ml, offer({
       salePrice: 25000,
@@ -181,11 +181,17 @@ describe('Volume mismatch', () => {
       promoText: null,
       parsedVolumeRaw: 150, // different from 50ml
     }));
-    expect(result.parse_confidence).toBe('low');
+    // §1: do NOT gate the price — base/effective stay, confidence stays high
     expect(result.volume_mismatch).toBe(true);
+    expect(result.parse_confidence).toBe('high');
+    expect(result.base_unit_price).toBe(25000);
+    expect(result.effective_unit_price).toBe(25000);
+    // ml-based price is the only thing disabled
+    expect(result.unit_price).toBeNull();
+    expect(result.unit_price_reliable).toBe(false);
   });
 
-  it('parsedVolumeRaw matches product.volume_ml → no mismatch', () => {
+  it('parsedVolumeRaw matches product.volume_ml → no mismatch, unit_price reliable', () => {
     const result = normalizePrice(BASE_PRODUCT, offer({
       salePrice: 20000,
       promoType: 'none',
@@ -193,9 +199,11 @@ describe('Volume mismatch', () => {
     }));
     expect(result.volume_mismatch).toBe(false);
     expect(result.parse_confidence).toBe('high');
+    expect(result.unit_price_reliable).toBe(true);
+    expect(result.unit_price).toBe(400); // 20000 / 50
   });
 
-  it('volume mismatch from title (no parsedVolumeRaw) → parse_confidence=low', () => {
+  it('volume mismatch from title (no parsedVolumeRaw) → price kept, unit_price null, reliable=false', () => {
     const product50ml: Product = { ...BASE_PRODUCT, volume_ml: 50 };
     const result = normalizePrice(product50ml, offer({
       salePrice: 20000,
@@ -203,8 +211,11 @@ describe('Volume mismatch', () => {
       promoText: null,
       sourceText: '선크림 150ml', // 150 ≠ 50
     }));
-    expect(result.parse_confidence).toBe('low');
     expect(result.volume_mismatch).toBe(true);
+    expect(result.parse_confidence).toBe('high');
+    expect(result.base_unit_price).toBe(20000);
+    expect(result.unit_price).toBeNull();
+    expect(result.unit_price_reliable).toBe(false);
   });
 });
 

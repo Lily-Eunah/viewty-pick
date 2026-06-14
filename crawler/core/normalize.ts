@@ -7,7 +7,8 @@ export interface NormalizedPrice {
   sale_price: number | null;
   base_unit_price: number | null;
   effective_unit_price: number | null;
-  unit_price: number | null; // per ml
+  unit_price: number | null; // per ml — null when not reliable (§1 compromise)
+  unit_price_reliable: boolean; // false when volume mismatched/unverified
   promo_type: PromoType;
   promo_text: string | null;
   min_quantity: number;
@@ -161,12 +162,17 @@ export function normalizePrice(product: Product, offer: PriceOffer): NormalizedP
   let volume_mismatch = false;
   let volume_mismatch_detail: string | null = null;
 
+  // §1 compromise: a volume mismatch (or unverified volume) does NOT gate the
+  // price. base_unit_price / effective_unit_price stay as-is and parse_confidence
+  // stays 'high' when the price itself is sound. Only the ml-dependent unit_price
+  // is marked unreliable (null + unit_price_reliable=false) and the mismatch is
+  // flagged for the inspection queue / volume-audit (§1b).
+
   // Check 1: explicit parsedVolumeRaw from adapter (Naver crawl provides this)
   if (offer.parsedVolumeRaw !== undefined && offer.parsedVolumeRaw !== null) {
     if (product.volume_ml && offer.parsedVolumeRaw !== product.volume_ml) {
       volume_mismatch = true;
       volume_mismatch_detail = `Page volume ${offer.parsedVolumeRaw}ml ≠ DB ${product.volume_ml}ml`;
-      parse_confidence = 'low';
     } else {
       volume_ml = offer.parsedVolumeRaw;
     }
@@ -177,7 +183,6 @@ export function normalizePrice(product: Product, offer: PriceOffer): NormalizedP
       if (product.volume_ml && ext.unitAmount !== product.volume_ml) {
         volume_mismatch = true;
         volume_mismatch_detail = `Title volume ${ext.unitAmount}ml ≠ DB ${product.volume_ml}ml`;
-        parse_confidence = 'low';
       } else {
         volume_ml = ext.unitAmount;
       }
@@ -186,9 +191,13 @@ export function normalizePrice(product: Product, offer: PriceOffer): NormalizedP
 
   const total_ml = volume_ml * total_quantity;
 
-  // ml당 단가 (using effective unit price for cross-product comparison)
+  // ml당 단가 (using effective unit price for cross-product comparison).
+  // Gated: when volume is mismatched/unverified the ml normalization is not
+  // trustworthy, so unit_price is nulled and excluded from ml-based ranking /
+  // Viewty Score ml-항목. The actual prices remain visible and comparable.
+  const unit_price_reliable = !volume_mismatch;
   const unit_price =
-    effective_unit_price !== null
+    unit_price_reliable && effective_unit_price !== null
       ? Number((effective_unit_price / volume_ml).toFixed(4))
       : null;
 
@@ -198,6 +207,7 @@ export function normalizePrice(product: Product, offer: PriceOffer): NormalizedP
     base_unit_price,
     effective_unit_price,
     unit_price,
+    unit_price_reliable,
     promo_type,
     promo_text,
     min_quantity,

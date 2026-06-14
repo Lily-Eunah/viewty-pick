@@ -108,7 +108,8 @@ export interface PriceSnapshot {
   free_quantity: number | null;
   total_quantity: number | null;
   total_ml: number | null;
-  unit_price: number | null; // ml당 가격
+  unit_price: number | null; // ml당 가격 — null when volume unreliable (§1)
+  unit_price_reliable: boolean; // false → exclude from ml-based ranking/score
   effective_unit_price: number | null; // 1+1 등 실질 개당 가격
   in_stock: boolean;
   source_text: string | null;
