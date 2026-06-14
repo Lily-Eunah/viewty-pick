@@ -219,6 +219,25 @@ describe('Volume mismatch (§1 compromise: price kept, unit_price disabled)', ()
   });
 });
 
+describe('Volume unverified (§1b: LLM-seeded default → ml disabled, price kept)', () => {
+  it('volume_verified=false → unit_price null + reliable=false, base price kept, confidence high', () => {
+    const unverified: Product = { ...BASE_PRODUCT, volume_verified: false };
+    const result = normalizePrice(unverified, offer({ salePrice: 18000, promoType: 'none' }));
+    expect(result.base_unit_price).toBe(18000);
+    expect(result.parse_confidence).toBe('high');
+    expect(result.volume_mismatch).toBe(false); // unverified is not a mismatch
+    expect(result.unit_price).toBeNull();
+    expect(result.unit_price_reliable).toBe(false);
+  });
+
+  it('volume_verified=true → ml comparison enabled', () => {
+    const verified: Product = { ...BASE_PRODUCT, volume_verified: true };
+    const result = normalizePrice(verified, offer({ salePrice: 18000, promoType: 'none' }));
+    expect(result.unit_price).toBe(360);
+    expect(result.unit_price_reliable).toBe(true);
+  });
+});
+
 describe('Anomaly gate (비교 제외 케이스)', () => {
   it('buy_x_get_y with unparseable promo_text → parse_confidence=low', () => {
     const result = normalizePrice(BASE_PRODUCT, offer({

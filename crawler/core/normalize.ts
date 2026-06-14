@@ -195,7 +195,10 @@ export function normalizePrice(product: Product, offer: PriceOffer): NormalizedP
   // Gated: when volume is mismatched/unverified the ml normalization is not
   // trustworthy, so unit_price is nulled and excluded from ml-based ranking /
   // Viewty Score ml-항목. The actual prices remain visible and comparable.
-  const unit_price_reliable = !volume_mismatch;
+  // §1b: an explicitly-unverified DB volume (LLM-seeded default) is also unreliable
+  // for ml normalization, even without a detected mismatch. Price stays; ml off.
+  const volume_unverified = product.volume_verified === false;
+  const unit_price_reliable = !volume_mismatch && !volume_unverified;
   const unit_price =
     unit_price_reliable && effective_unit_price !== null
       ? Number((effective_unit_price / volume_ml).toFixed(4))

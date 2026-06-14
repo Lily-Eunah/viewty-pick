@@ -27,6 +27,10 @@ export interface Product {
   brand: string | null;
   category_id: number | null;
   volume_ml: number;
+  // §1b: when explicitly false, volume_ml is unverified (e.g. LLM-seeded default)
+  // → ml-based unit_price is disabled until an operator confirms the real volume.
+  // Absent/undefined keeps the legacy behavior (treated as usable).
+  volume_verified?: boolean;
   image_url: string | null;
   features: string | null;
   skin_types: string[]; // e.g. ['민감성', '지성', '건성', '수부지']
