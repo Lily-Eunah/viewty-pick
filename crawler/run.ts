@@ -1,4 +1,4 @@
-import { runSheetImport } from './sheets/import';
+﻿import { runSheetImport } from './sheets/import';
 import { CoupangAdapter, NaverAdapter, OliveYoungAdapter, RetailerAdapter, PriceOffer } from './adapters/index';
 import { applyManualOverrides, normalizePrice } from './core/normalize';
 import { runHealthCheck, handleConsecutiveFailures } from './core/healthcheck';
@@ -167,6 +167,8 @@ export async function crawlPipeline(): Promise<void> {
         source_text: offer.sourceText,
         parse_confidence: norm.parse_confidence,
         status: check.status,
+        shipping_fee: null,
+        shipping_note: norm.shipping_note,
       };
 
       if (check.status === 'failed') {
@@ -174,7 +176,7 @@ export async function crawlPipeline(): Promise<void> {
         failureCount++;
         
         // Handle failure count increment
-        const failMgmt = handleConsecutiveFailures(listing, prevSnap);
+        const failMgmt = handleConsecutiveFailures(listing);
         const listIdx = updatedListings.findIndex((l) => l.id === listing.id);
         if (listIdx >= 0) {
           updatedListings[listIdx].fail_count = failMgmt.fail_count;
@@ -220,8 +222,7 @@ export async function crawlPipeline(): Promise<void> {
       failureCount++;
 
       // Execute fail handler
-      const prevSnap = previousSnapshots.find((s) => s.listing_id === listing.id) || null;
-      const failMgmt = handleConsecutiveFailures(listing, prevSnap);
+      const failMgmt = handleConsecutiveFailures(listing);
       const listIdx = updatedListings.findIndex((l) => l.id === listing.id);
       if (listIdx >= 0) {
         updatedListings[listIdx].fail_count = failMgmt.fail_count;
@@ -261,7 +262,7 @@ export async function crawlPipeline(): Promise<void> {
       
       const cheapestListing = listings.find((l) => l.id === cheapest.listing_id);
       const cheapestSeller = cheapestListing ? sellers.find((s) => s.id === cheapestListing.seller_id) : null;
-      baseLowestSeller = cheapestSeller ? cheapestSeller.name : '미정';
+      baseLowestSeller = cheapestSeller ? cheapestSeller.name : '誘몄젙';
     }
 
     // Determine promotion-effective lowest unit price
@@ -280,7 +281,7 @@ export async function crawlPipeline(): Promise<void> {
 
       const cheapestListing = listings.find((l) => l.id === cheapestPromo.listing_id);
       const cheapestSeller = cheapestListing ? sellers.find((s) => s.id === cheapestListing.seller_id) : null;
-      promoLowestSeller = cheapestSeller ? cheapestSeller.name : '미정';
+      promoLowestSeller = cheapestSeller ? cheapestSeller.name : '誘몄젙';
     }
 
     currentPrices.push({
@@ -297,7 +298,7 @@ export async function crawlPipeline(): Promise<void> {
     });
   }
 
-  // Step 6: Recalculate Viewty Scores (DESIGN.md §8)
+  // Step 6: Recalculate Viewty Scores (DESIGN.md 짠8)
   console.log('[Pipeline] Calculating Viewty Scores...');
   const calculatedScores = recalculateViewtyScores(
     products,

@@ -151,6 +151,8 @@ async function runTest() {
           source_text: offer.sourceText,
           parse_confidence: normalized.parse_confidence,
           status: check.status,
+          shipping_fee: null,
+          shipping_note: normalized.shipping_note,
         };
         successfulSnapshots.push(snapshot);
       }

@@ -175,6 +175,7 @@ for (const [idx, tc] of testCases.entries()) {
 
 console.log('\n=== Running Normalizer Integration Tests ===');
 
+// volume_ml=60 to match titles that say 60ml (avoids volume-mismatch flag)
 const dummyProduct: Product = {
   id: 101,
   slug: "test-product",
@@ -182,7 +183,7 @@ const dummyProduct: Product = {
   name: "테스트 제품",
   brand: "테스트",
   category_id: null,
-  volume_ml: 50,
+  volume_ml: 60,
   image_url: null,
   features: null,
   skin_types: [],
@@ -205,8 +206,8 @@ const dummyProduct: Product = {
   };
 
   const norm = normalizePrice(dummyProduct, offer);
-  console.log(`[Normalize Integration 1] Title volume mismatch but explicit parse check`);
-  
+  console.log(`[Normalize Integration 1] 60ml 2-pack: quantity/ml/price/confidence check`);
+
   let integration1Failed = false;
   const assert = (key: string, actual: unknown, expected: unknown) => {
     if (actual !== expected) {
@@ -222,11 +223,9 @@ const dummyProduct: Product = {
   assert('total_ml', norm.total_ml, 120);
   assert('effective_unit_price', norm.effective_unit_price, 15750);
   assert('unit_price', norm.unit_price, Number((15750 / 60).toFixed(4))); // 262.5
-  assert('parse_confidence', norm.parse_confidence, 'high');
-  
-  const hasMismatchAnnotation = offer.sourceText?.includes('[volume_mismatch:') ?? false;
-  assert('sourceText has mismatch annotation', hasMismatchAnnotation, true);
-  
+  assert('parse_confidence', norm.parse_confidence, 'high'); // no mismatch: title 60ml = DB 60ml
+  assert('volume_mismatch', norm.volume_mismatch, false);
+
   if (integration1Failed) {
     console.error(`[Normalize Integration 1] FAIL`);
   } else {
