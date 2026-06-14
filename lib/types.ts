@@ -114,6 +114,8 @@ export interface PriceSnapshot {
   source_text: string | null;
   parse_confidence: ParseConfidence;
   status: PriceSnapshotStatus;
+  shipping_fee: number | null;
+  shipping_note: string | null;
 }
 
 export interface CurrentPrice {
