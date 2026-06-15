@@ -96,7 +96,7 @@ export type PromoType =
   | 'unknown';
 
 export type ParseConfidence = 'high' | 'low';
-export type PriceSnapshotStatus = 'ok' | 'warning' | 'failed';
+export type PriceSnapshotStatus = 'ok' | 'warning' | 'failed' | 'no_offer';
 
 export interface PriceSnapshot {
   id: number;
