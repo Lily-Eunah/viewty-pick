@@ -19,7 +19,8 @@
     "test:healthcheck": "tsx crawler/core/__tests__/healthcheck.test.ts",
     "test:naver": "tsx crawler/adapters/__tests__/naver.test.ts",
     "test:coupang": "tsx crawler/adapters/__tests__/coupang.test.ts",
-    "test:all": "npm run test:normalize && npm run test:healthcheck && npm run test:naver && npm run test:coupang && npm run package:extract:test",
+    "test:oliveyoung": "tsx crawler/adapters/__tests__/oliveyoung.test.ts",
+    "test:all": "npm run test:normalize && npm run test:healthcheck && npm run test:naver && npm run test:coupang && npm run test:oliveyoung && npm run package:extract:test",
     "live-check:coupang": "tsx -r dotenv/config scripts/live-check/live-check-coupang.ts",
     "live-check:naver": "tsx -r dotenv/config scripts/live-check/live-check-naver.ts",
     "live-check:normalize": "tsx -r dotenv/config scripts/live-check/live-check-normalize.ts"
