@@ -1,5 +1,6 @@
 ﻿import { runSheetImport } from './sheets/import';
 import { CoupangAdapter, NaverAdapter, OliveYoungAdapter, RetailerAdapter, PriceOffer } from './adapters/index';
+import { clearNaverSearchCache } from './adapters/naver';
 import { applyManualOverrides, normalizePrice } from './core/normalize';
 import { runHealthCheck, handleConsecutiveFailures } from './core/healthcheck';
 import { recalculateViewtyScores } from './core/score';
@@ -18,6 +19,10 @@ export async function crawlPipeline(): Promise<void> {
 
   const startTime = Date.now();
   console.log('[Pipeline] Starting daily price sync pipeline...');
+
+  // Fresh Naver Shopping search cache per run (brand store + OliveYoung listings
+  // of the same product share one search → one API call per product).
+  clearNaverSearchCache();
 
   // Step 1: Run Sheet Import
   try {
@@ -175,6 +180,9 @@ export async function crawlPipeline(): Promise<void> {
       };
 
       // Cache the latest matched offer link on the listing (redirect fallback).
+      // For OliveYoung the buy button is ALWAYS the curator affiliate_url: the
+      // redirect route prefers affiliate_url over latest_matched_url, so caching
+      // the Naver-sourced link here is audit-only and never shadows the curator.
       if (offer.matchedUrl) {
         const matchIdx = updatedListings.findIndex((l) => l.id === listing.id);
         if (matchIdx >= 0) updatedListings[matchIdx].latest_matched_url = offer.matchedUrl;

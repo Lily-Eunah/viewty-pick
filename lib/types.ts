@@ -6,7 +6,7 @@ export interface Category {
 }
 
 export type CollectMethod = 'api' | 'crawl';
-export type CrawlMethod = 'api' | 'html' | 'playwright' | 'manual';
+export type CrawlMethod = 'api' | 'html' | 'playwright' | 'manual' | 'naver_sourced';
 
 export interface Seller {
   id: number;

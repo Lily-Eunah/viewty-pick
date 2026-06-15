@@ -43,12 +43,12 @@ function makeProductKey(brand: string, name: string): string {
 }
 
 // Seller defaults applied automatically
-const SELLER_META: Record<string, { crawl_method: 'api' | 'playwright'; store_name: string }> = {
-  oliveyoung: { crawl_method: 'playwright', store_name: '올리브영'  },
-  coupang:    { crawl_method: 'api',        store_name: '쿠팡'     },
-  naver:      { crawl_method: 'api',        store_name: '네이버'   },
-  zigzag:     { crawl_method: 'playwright', store_name: '지그재그' },
-  ably:       { crawl_method: 'playwright', store_name: '에이블리' },
+const SELLER_META: Record<string, { crawl_method: 'api' | 'playwright' | 'naver_sourced'; store_name: string }> = {
+  oliveyoung: { crawl_method: 'naver_sourced', store_name: '올리브영'  },
+  coupang:    { crawl_method: 'api',           store_name: '쿠팡'     },
+  naver:      { crawl_method: 'api',           store_name: '네이버'   },
+  zigzag:     { crawl_method: 'playwright',    store_name: '지그재그' },
+  ably:       { crawl_method: 'playwright',    store_name: '에이블리' },
 };
 
 // brand.naver.com/* = official brand store

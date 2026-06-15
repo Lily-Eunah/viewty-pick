@@ -50,6 +50,12 @@ export function applyManualOverrides(
       if (!isNaN(val)) {
         updated.salePrice = val;
         updated.regularPrice = updated.regularPrice ? Math.max(updated.regularPrice, val) : val;
+        // A manual price is an asserted, displayable price. Clear any adapter
+        // exclusion (e.g. OliveYoung tier 3: Naver had no offer → matchExcluded)
+        // and assert stock so it passes the healthcheck and surfaces.
+        updated.inStock = true;
+        updated.matchExcluded = false;
+        updated.sourceText = `[manual_override price] ${updated.sourceText ?? ''}`.trim();
       }
     } else if (o.override_type === 'promo_type') {
       updated.promoType = o.value as PromoType;
