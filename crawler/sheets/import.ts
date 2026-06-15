@@ -204,7 +204,11 @@ export async function runSheetImport(): Promise<ImportStats> {
           product_id:        productId,
           seller_id:         sellerId,
           url:               listing.url,
-          affiliate_url:     listing.url,
+          // Coupang: leave affiliate_url blank. The product-detail URL is NOT an
+          // affiliate link, so the adapter caches the search-sourced deeplink on
+          // latest_matched_url and the /go redirect falls back url → home. (The
+          // global "blank→url copy" for other sellers is a worklog follow-up.)
+          affiliate_url:     listing.seller === 'coupang' ? null : listing.url,
           store_name:        meta.store_name,
           is_official_store: inferIsOfficialStore(listing.url, listing.seller),
           is_rocket:         false,
@@ -393,7 +397,7 @@ export async function runSheetImport(): Promise<ImportStats> {
       if (!product || !seller) { stats.errorCount++; continue; }
       const meta     = SELLER_META[listing.seller];
       const existing = db.listings.find((l) => l.link_key === listing.link_key);
-      const data = { link_key: listing.link_key, product_id: product.id, seller_id: seller.id, url: listing.url, affiliate_url: listing.url, store_name: meta.store_name, is_official_store: inferIsOfficialStore(listing.url, listing.seller), is_rocket: false, crawl_enabled: true, crawl_method: meta.crawl_method, last_crawled_at: null, fail_count: 0, is_active: true };
+      const data = { link_key: listing.link_key, product_id: product.id, seller_id: seller.id, url: listing.url, affiliate_url: listing.seller === 'coupang' ? null : listing.url, store_name: meta.store_name, is_official_store: inferIsOfficialStore(listing.url, listing.seller), is_rocket: false, crawl_enabled: true, crawl_method: meta.crawl_method, last_crawled_at: null, fail_count: 0, is_active: true };
       if (existing) { Object.assign(existing, data); }
       else { db.listings.push({ id: (db.listings.length ? Math.max(...db.listings.map((l) => l.id)) + 1 : 1), ...data }); }
       stats.linksCount++;

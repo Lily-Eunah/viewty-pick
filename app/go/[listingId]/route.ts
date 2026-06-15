@@ -37,8 +37,11 @@ export async function GET(
         .single();
 
       if (listing) {
-        // Redirect priority (spec §3): affiliate_url → latest_matched_url → none.
-        affiliateUrl = listing.affiliate_url || listing.latest_matched_url || null;
+        // Redirect priority (spec §3): affiliate_url → latest_matched_url → url.
+        // Coupang leaves affiliate_url blank (its url is not an affiliate link);
+        // the cached search deeplink (latest_matched_url) or the plain product
+        // url keeps the buy button working.
+        affiliateUrl = listing.affiliate_url || listing.latest_matched_url || listing.url || null;
         productId = listing.product_id;
         sellerCode = (listing.sellers as { slug?: string })?.slug || 'unknown';
 
@@ -64,7 +67,7 @@ export async function GET(
     if (listing) {
       const seller = db.sellers.find((s) => s.id === listing.seller_id);
       
-      affiliateUrl = listing.affiliate_url || listing.latest_matched_url || null;
+      affiliateUrl = listing.affiliate_url || listing.latest_matched_url || listing.url || null;
       productId = listing.product_id;
       sellerCode = seller?.slug || 'unknown';
 
