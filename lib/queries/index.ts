@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import { isSupabaseConfigured, supabase } from '../supabase/client';
 import { loadMockDB } from '../supabase/mockDb';
 import { Category, UIProduct, UIStorePrice, Product, Listing, CurrentPrice, PriceSnapshot, PublicListingPrice, ProductBadge, Badge } from '../types';
@@ -165,6 +166,62 @@ function mapToUIProduct(
   };
 }
 
+// ---------------------------------------------------------------------------
+// Raw data fetch — parallelized and deduplicated per server render via cache()
+// ---------------------------------------------------------------------------
+
+interface RawData {
+  dbProducts: Product[];
+  dbListings: Listing[];
+  dbPrices: CurrentPrice[];
+  dbCategories: Category[];
+  dbProductBadges: ProductBadge[];
+  dbBadges: Badge[];
+  dbListingPrices: PublicListingPrice[];
+  dbSellers: { id: number; slug: string; name: string }[];
+}
+
+const fetchAllData = cache(async (): Promise<RawData> => {
+  if (isSupabaseConfigured()) {
+    const [pRes, lRes, prRes, cRes, pbRes, bRes, sRes, lpRes] = await Promise.all([
+      supabase.from('products').select('*').eq('is_active', true),
+      supabase.from('listings').select('*').eq('is_active', true),
+      supabase.from('current_prices').select('*'),
+      supabase.from('categories').select('*'),
+      supabase.from('product_badges').select('*'),
+      supabase.from('badges').select('*'),
+      supabase.from('sellers').select('id, slug, name'),
+      supabase.from('listing_prices_public').select('*'),
+    ]);
+
+    if (!pRes.error && pRes.data) {
+      return {
+        dbProducts: pRes.data,
+        dbListings: lRes.data || [],
+        dbPrices: prRes.data || [],
+        dbCategories: cRes.data || [],
+        dbProductBadges: pbRes.data || [],
+        dbBadges: bRes.data || [],
+        dbListingPrices: lpRes.data || [],
+        dbSellers: sRes.data || [],
+      };
+    }
+  }
+
+  const db = loadMockDB();
+  const dbListings = db.listings.filter((l) => l.is_active);
+  return {
+    dbProducts: db.products.filter((p) => p.is_active),
+    dbListings,
+    dbPrices: db.current_prices,
+    dbCategories: db.categories,
+    dbProductBadges: db.product_badges,
+    dbBadges: db.badges,
+    dbListingPrices: snapshotsToPublicPrices(db.price_snapshots, dbListings),
+    dbSellers: db.sellers,
+  };
+});
+
 /**
  * Fetch all categories.
  */
@@ -197,53 +254,8 @@ export async function getProducts(filters?: {
   skinType?: string;
   sortBy?: 'recommend' | 'price_asc' | 'price_desc' | 'price_drop' | 'popularity';
 }): Promise<UIProduct[]> {
-  let dbProducts: Product[] = [];
-  let dbListings: Listing[] = [];
-  let dbPrices: CurrentPrice[] = [];
-  let dbCategories: Category[] = [];
-  let dbProductBadges: ProductBadge[] = [];
-  let dbBadges: Badge[] = [];
-  let dbListingPrices: PublicListingPrice[] = [];
-  let dbSellers: { id: number; slug: string; name: string }[] = [];
-
-  if (isSupabaseConfigured()) {
-    const pRes = await supabase.from('products').select('*').eq('is_active', true);
-    const lRes = await supabase.from('listings').select('*').eq('is_active', true);
-    const prRes = await supabase.from('current_prices').select('*');
-    const cRes = await supabase.from('categories').select('*');
-    const pbRes = await supabase.from('product_badges').select('*');
-    const bRes = await supabase.from('badges').select('*');
-    const sRes = await supabase.from('sellers').select('id, slug, name');
-
-    // Per-store prices come from the anon-readable public view (migration 0008),
-    // NOT the raw price_snapshots table (anon-locked, DESIGN §13). Already the
-    // latest displayable row per listing with safe columns only.
-    const lpRes = await supabase.from('listing_prices_public').select('*');
-
-    if (!pRes.error && pRes.data) {
-      dbProducts = pRes.data;
-      dbListings = lRes.data || [];
-      dbPrices = prRes.data || [];
-      dbCategories = cRes.data || [];
-      dbProductBadges = pbRes.data || [];
-      dbBadges = bRes.data || [];
-      dbListingPrices = lpRes.data || [];
-      dbSellers = sRes.data || [];
-    }
-  }
-
-  if (dbProducts.length === 0) {
-    const db = loadMockDB();
-    dbProducts = db.products.filter((p) => p.is_active);
-    dbListings = db.listings.filter((l) => l.is_active);
-    dbPrices = db.current_prices;
-    dbCategories = db.categories;
-    dbProductBadges = db.product_badges;
-    dbBadges = db.badges;
-    // Mirror the public view locally from raw mock snapshots.
-    dbListingPrices = snapshotsToPublicPrices(db.price_snapshots, dbListings);
-    dbSellers = db.sellers;
-  }
+  const { dbProducts, dbListings, dbPrices, dbCategories, dbProductBadges, dbBadges, dbListingPrices, dbSellers } =
+    await fetchAllData();
 
   // Convert to UI structure
   let uiProducts = dbProducts.map((p) =>
@@ -261,7 +273,7 @@ export async function getProducts(filters?: {
 
   // Apply sorting
   const sortBy = filters?.sortBy || 'recommend';
-  if (sortBy === 'recommend') {
+  if (sortBy === 'recommend' || sortBy === 'popularity') {
     uiProducts.sort((a, b) => b.viewtyScore - a.viewtyScore);
   } else if (sortBy === 'price_asc') {
     uiProducts.sort((a, b) => a.lowestPrice - b.lowestPrice);
@@ -269,8 +281,6 @@ export async function getProducts(filters?: {
     uiProducts.sort((a, b) => b.lowestPrice - a.lowestPrice);
   } else if (sortBy === 'price_drop') {
     uiProducts.sort((a, b) => (b.priceDropAmount || 0) - (a.priceDropAmount || 0));
-  } else if (sortBy === 'popularity') {
-    uiProducts.sort((a, b) => b.viewtyScore - a.viewtyScore);
   }
 
   return uiProducts;
@@ -280,9 +290,11 @@ export async function getProducts(filters?: {
  * Fetch a single product by its slug.
  */
 export async function getProductBySlug(slug: string): Promise<UIProduct | null> {
-  const products = await getProducts();
-  const product = products.find((p) => p.slug === slug);
-  return product || null;
+  const { dbProducts, dbListings, dbPrices, dbCategories, dbProductBadges, dbBadges, dbListingPrices, dbSellers } =
+    await fetchAllData();
+  const prod = dbProducts.find((p) => p.slug === slug);
+  if (!prod) return null;
+  return mapToUIProduct(prod, dbListings, dbPrices, dbCategories, dbProductBadges, dbBadges, dbListingPrices, dbSellers);
 }
 
 /**
@@ -290,7 +302,7 @@ export async function getProductBySlug(slug: string): Promise<UIProduct | null> 
  */
 export async function getRecommendedProducts(limit = 10): Promise<UIProduct[]> {
   const products = await getProducts();
-  return products.slice(0, limit);
+  return [...products].sort((a, b) => b.viewtyScore - a.viewtyScore).slice(0, limit);
 }
 
 /**
@@ -298,7 +310,127 @@ export async function getRecommendedProducts(limit = 10): Promise<UIProduct[]> {
  */
 export async function getTodayBestPriceProducts(limit = 6): Promise<UIProduct[]> {
   const products = await getProducts();
-  const drops = products.filter((p) => (p.priceDropAmount || 0) > 0);
-  drops.sort((a, b) => (b.priceDropAmount || 0) - (a.priceDropAmount || 0));
-  return drops.slice(0, limit);
+  return products
+    .filter((p) => (p.priceDropAmount || 0) > 0)
+    .sort((a, b) => (b.priceDropAmount || 0) - (a.priceDropAmount || 0))
+    .slice(0, limit);
 }
+
+// ---------------------------------------------------------------------------
+// Page-specific helpers — called server-side; not visible in browser network
+// ---------------------------------------------------------------------------
+
+export async function getHomePageData() {
+  const allProducts = await getProducts();
+  return {
+    allProducts,
+    recommended: [...allProducts].sort((a, b) => b.viewtyScore - a.viewtyScore).slice(0, 8),
+    drops: allProducts
+      .filter((p) => (p.priceDropAmount || 0) > 0)
+      .sort((a, b) => (b.priceDropAmount || 0) - (a.priceDropAmount || 0))
+      .slice(0, 5),
+  };
+}
+
+export async function getCategoryPageData(categorySlug: string) {
+  const [category, products] = await Promise.all([
+    getCategoryBySlug(categorySlug),
+    getProducts({ category: categorySlug, sortBy: 'recommend' }),
+  ]);
+  return { category, products };
+}
+
+const SKIN_NAME_MAP: Record<string, string> = {
+  sensitive: '민감성', dry: '건성', oily: '지성',
+  dehydrated: '수부지', combination: '복합성', acne: '여드름성',
+};
+
+export async function getPickPageData(badgeSlug: string, categorySlug: string) {
+  const [category, allProds] = await Promise.all([
+    getCategoryBySlug(categorySlug),
+    getProducts({ category: categorySlug, sortBy: 'recommend' }),
+  ]);
+  const products = allProds.filter((p) => {
+    if (badgeSlug === 'directorpi') return p.source === 'directorpi' || p.badges.some((b) => b.includes('디렉터파이'));
+    if (badgeSlug === 'hwahae') return p.source === 'hwahae' || p.badges.some((b) => b.includes('화해'));
+    return true;
+  });
+  return { category, products };
+}
+
+export async function getSkinPageData(skinTypeSlug: string, categorySlug: string) {
+  const skinName = SKIN_NAME_MAP[skinTypeSlug] || '민감성';
+  const [category, products] = await Promise.all([
+    getCategoryBySlug(categorySlug),
+    getProducts({ category: categorySlug, skinType: skinName, sortBy: 'recommend' }),
+  ]);
+  return { category, products, skinName };
+}
+
+// Scoped product detail: avoids full price_snapshots scan, grows important as crawlers run
+export const getProductDetailPageData = cache(async (slug: string): Promise<{ product: UIProduct | null; related: UIProduct[] }> => {
+  if (isSupabaseConfigured()) {
+    const { data: prodRow } = await supabase
+      .from('products').select('*').eq('slug', slug).eq('is_active', true).maybeSingle();
+
+    if (!prodRow) return { product: null, related: [] };
+
+    const [listRes, pbRes, catRes, selRes, badgeRes] = await Promise.all([
+      supabase.from('listings').select('*').eq('product_id', prodRow.id).eq('is_active', true),
+      supabase.from('product_badges').select('*').eq('product_id', prodRow.id),
+      supabase.from('categories').select('*'),
+      supabase.from('sellers').select('id, slug, name'),
+      supabase.from('badges').select('*'),
+    ]);
+
+    const listingIds: number[] = (listRes.data ?? []).map((l: { id: number }) => l.id);
+    const { data: lpData } = listingIds.length > 0
+      ? await supabase.from('listing_prices_public').select('*').in('listing_id', listingIds)
+      : { data: [] };
+
+    const product = mapToUIProduct(
+      prodRow as Product, (listRes.data ?? []) as Listing[], [],
+      (catRes.data ?? []) as Category[], (pbRes.data ?? []) as ProductBadge[],
+      (badgeRes.data ?? []) as Badge[], (lpData ?? []) as PublicListingPrice[],
+      (selRes.data ?? []) as { id: number; slug: string; name: string }[],
+    );
+
+    const { data: relRows } = await supabase
+      .from('products').select('*')
+      .eq('category_id', prodRow.category_id).eq('is_active', true).neq('id', prodRow.id).limit(6);
+
+    let related: UIProduct[] = [];
+    if (relRows && relRows.length > 0) {
+      const relIds: number[] = relRows.map((p: { id: number }) => p.id);
+      const [relListRes, relPbRes] = await Promise.all([
+        supabase.from('listings').select('*').in('product_id', relIds).eq('is_active', true),
+        supabase.from('product_badges').select('*').in('product_id', relIds),
+      ]);
+      const relListingIds: number[] = (relListRes.data ?? []).map((l: { id: number }) => l.id);
+      const { data: relLpData } = relListingIds.length > 0
+        ? await supabase.from('listing_prices_public').select('*').in('listing_id', relListingIds)
+        : { data: [] };
+      related = (relRows as Product[]).map((p) =>
+        mapToUIProduct(
+          p, (relListRes.data ?? []) as Listing[], [],
+          (catRes.data ?? []) as Category[], (relPbRes.data ?? []) as ProductBadge[],
+          (badgeRes.data ?? []) as Badge[], (relLpData ?? []) as PublicListingPrice[],
+          (selRes.data ?? []) as { id: number; slug: string; name: string }[],
+        )
+      );
+    }
+
+    return { product, related };
+  }
+
+  // Mock fallback — fetchAllData() is already cached, no extra cost
+  const raw = await fetchAllData();
+  const prod = raw.dbProducts.find((p) => p.slug === slug);
+  if (!prod) return { product: null, related: [] };
+  const product = mapToUIProduct(prod, raw.dbListings, raw.dbPrices, raw.dbCategories, raw.dbProductBadges, raw.dbBadges, raw.dbListingPrices, raw.dbSellers);
+  const related = raw.dbProducts
+    .filter((p) => p.category_id === prod.category_id && p.id !== prod.id && p.is_active)
+    .slice(0, 6)
+    .map((p) => mapToUIProduct(p, raw.dbListings, raw.dbPrices, raw.dbCategories, raw.dbProductBadges, raw.dbBadges, raw.dbListingPrices, raw.dbSellers));
+  return { product, related };
+});
