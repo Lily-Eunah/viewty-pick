@@ -1,100 +1,78 @@
 /**
- * LIVE Naver parse validation — NOT a CI test (needs network + Playwright).
- * Run: npm run live-check:naver [-- --limit=5]
+ * LIVE Naver API matching validation — NOT a CI test (needs network + keys).
+ * Run: npm run live-check:naver [-- --limit=7]
  *
- * Policy (DESIGN §4.2 + prompt §1.1): respect robots.txt. We do NOT crawl any
- * path that robots.txt disallows. This script performs the SAME robots.txt
- * check the adapter uses, against the real Naver listing hosts, and reports
- * whether a live crawl is permitted. If disallowed, we STOP (no crawl, no
- * fabricated ground truth) and report "verification blocked + reason".
+ * Drives the real NaverAdapter (Shopping Search API) for the active Naver
+ * listings (one per product) and reports the matched mallName / price / link,
+ * whether it resolved to the official mall, and any excluded cases. No crawling
+ * (brand.naver.com robots disallows it); the search API is the approved path.
+ * Search-API productId matching is gone — matching is mallName + title (§2).
  */
 import 'dotenv/config';
 import * as fs from 'fs';
 import * as path from 'path';
-import { supabaseServer } from '../../lib/supabase/server';
+import { supabaseServer, isSupabaseServerConfigured } from '../../lib/supabase/server';
+import { NaverAdapter } from '../../crawler/adapters/naver';
+import { Listing } from '../../lib/types';
 
 const EXP_DIR = path.join(__dirname, 'expectations');
-
-// Mirror of NaverAdapter.checkRobotsTxt (kept in sync intentionally)
-async function checkRobotsTxt(targetUrl: string, ua: string): Promise<{ allowed: boolean; rule: string }> {
-  const url = new URL(targetUrl);
-  const robotsUrl = `${url.protocol}//${url.host}/robots.txt`;
-  const res = await fetch(robotsUrl, { signal: AbortSignal.timeout(8000) });
-  if (!res.ok) return { allowed: true, rule: `robots.txt HTTP ${res.status} (treated as allow)` };
-  const text = await res.text();
-  const lines = text.split('\n');
-  let applies = false;
-  let matchedAgent = '';
-  for (const line of lines) {
-    const l = line.trim().toLowerCase();
-    if (l.startsWith('user-agent:')) {
-      const agent = l.replace('user-agent:', '').trim();
-      applies = agent === '*' || agent === ua.toLowerCase();
-      if (applies) matchedAgent = agent;
-    }
-    if (applies && l.startsWith('disallow:')) {
-      const p = l.replace('disallow:', '').trim();
-      if (p === '/' || (p && url.pathname.startsWith(p))) {
-        return { allowed: false, rule: `User-agent: ${matchedAgent} → Disallow: ${p}` };
-      }
-    }
-  }
-  return { allowed: true, rule: 'no matching disallow' };
-}
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function main() {
+  if (!isSupabaseServerConfigured()) {
+    console.log('SUPABASE NOT CONFIGURED — aborting.');
+    process.exit(2);
+  }
   const limitArg = process.argv.find((a) => a.startsWith('--limit='));
-  const limit = limitArg ? parseInt(limitArg.split('=')[1], 10) : 5;
-  const ua = (process.env.CRAWLER_USER_AGENT || 'ViewtyPickBot').split('/')[0].split(' ')[0];
-
-  fs.mkdirSync(EXP_DIR, { recursive: true });
+  const limit = limitArg ? parseInt(limitArg.split('=')[1], 10) : 7;
 
   const { data: listings } = await supabaseServer
     .from('listings')
-    .select('id,link_key,url,product_id')
+    .select('*')
     .eq('is_active', true)
-    .eq('seller_id', 4)
-    .limit(50);
+    .eq('seller_id', 4);
 
-  const seen = new Set<string>();
+  // One listing per product (dedupe), capped at limit.
+  const seen = new Set<number>();
   const picked = (listings || []).filter((l) => {
-    let host = '';
-    try { host = new URL(l.url).host; } catch { return false; }
-    const key = host; // one check per host is enough; keep variety
-    if (seen.has(key) && seen.size >= 2) return false;
-    seen.add(key);
+    if (seen.has(l.product_id)) return false;
+    seen.add(l.product_id);
     return true;
   }).slice(0, limit);
 
-  const results: Record<string, unknown>[] = [];
-  for (const l of picked) {
+  fs.mkdirSync(EXP_DIR, { recursive: true });
+  const adapter = new NaverAdapter();
+  const rows: Record<string, unknown>[] = [];
+
+  for (const l of picked as Listing[]) {
     const { data: product } = await supabaseServer
-      .from('products').select('name,volume_ml').eq('id', l.product_id).single();
-    let host = '';
-    try { host = new URL(l.url).host; } catch { host = '(invalid)'; }
-
-    let verdict: { allowed: boolean; rule: string };
+      .from('products').select('name,brand,volume_ml').eq('id', l.product_id).single();
     try {
-      verdict = await checkRobotsTxt(l.url, ua);
+      const offer = await adapter.fetchOffer(l);
+      const excluded = offer.matchExcluded === true || offer.salePrice === null;
+      console.log(`\n[product ${l.product_id}] ${product?.brand} ${product?.name}`);
+      console.log(`  matched mall : ${offer.matchedMallName ?? '(none)'}`);
+      console.log(`  store (norm) : ${offer.storeName ?? '(none)'}`);
+      console.log(`  price        : ${offer.salePrice ?? '(excluded)'}`);
+      console.log(`  matched link : ${offer.matchedUrl ?? '(none)'}`);
+      console.log(`  verdict      : ${excluded ? 'EXCLUDED — ' + offer.sourceText : 'MATCHED'}`);
+      rows.push({
+        product_id: l.product_id, brand: product?.brand, name: product?.name,
+        db_volume_ml: product?.volume_ml,
+        matched_mall_name: offer.matchedMallName ?? null, store_name: offer.storeName ?? null,
+        price: offer.salePrice, matched_url: offer.matchedUrl ?? null,
+        parsed_volume_raw: offer.parsedVolumeRaw ?? null,
+        excluded, source_text: offer.sourceText,
+      });
     } catch (e) {
-      verdict = { allowed: true, rule: `robots fetch error: ${e instanceof Error ? e.message : e}` };
+      console.log(`\n[product ${l.product_id}] ERROR: ${e instanceof Error ? e.message : e}`);
+      rows.push({ product_id: l.product_id, brand: product?.brand, name: product?.name, error: String(e) });
     }
-
-    console.log(`${l.link_key} host=${host} product="${product?.name}"`);
-    console.log(`  robots: ${verdict.allowed ? 'ALLOWED' : 'BLOCKED'} — ${verdict.rule}`);
-    console.log(`  → ${verdict.allowed ? 'would crawl' : 'SKIP crawl (policy: respect robots.txt)'}`);
-
-    results.push({
-      link_key: l.link_key, host, product: product?.name,
-      ua, robots_allowed: verdict.allowed, robots_rule: verdict.rule,
-      crawled: false,
-      note: verdict.allowed ? 'allowed but crawl not executed in this run' : 'verification blocked by robots.txt',
-    });
+    await sleep(1500); // polite spacing
   }
 
-  fs.writeFileSync(path.join(EXP_DIR, 'naver.json'), JSON.stringify(results, null, 2));
-  const blocked = results.filter((r) => !r.robots_allowed).length;
-  console.log(`\nSummary: ${blocked}/${results.length} hosts BLOCKED by robots.txt → live crawl not permitted.`);
-  console.log('Saved → expectations/naver.json');
+  fs.writeFileSync(path.join(EXP_DIR, 'naver-api.json'), JSON.stringify(rows, null, 2));
+  const matched = rows.filter((r) => r.excluded === false).length;
+  console.log(`\nSummary: ${matched}/${rows.length} matched to an official mall. Saved → expectations/naver-api.json`);
 }
 main().catch((e) => { console.error(e); process.exit(1); });
