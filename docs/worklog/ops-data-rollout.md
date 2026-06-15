@@ -83,6 +83,12 @@ Tool: `npm run ops:audit` (`scripts/ops/audit-phase-a.ts`) — selects only, zer
 > STOP: no remote writes (migrations/backup/import/sync/recompute) until
 > `SUPABASE_DB_URL` is provided. Per runbook §13, do not force arbitrary SQL.
 
+### Agreed approval flow (operator)
+- Once `SUPABASE_DB_URL` is set: run **backup + migration-history inspect**
+  (read-only) automatically, then **stop and report** the apply plan.
+- Applying `0006`/`0007`: **single "go"** after the report applies both, then
+  re-audit. (No per-migration gating.)
+
 ---
 
 ## Phases C–G — pending Phase B.
