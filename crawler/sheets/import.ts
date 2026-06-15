@@ -33,14 +33,9 @@ async function fetchSheet(spreadsheetId: string, range: string): Promise<Record<
   });
 }
 
-// Stable product key from brand + name (djb2 hash → base36)
-function makeProductKey(brand: string, name: string): string {
-  let h = 5381;
-  for (const c of `${brand.trim()}|${name.trim()}`) {
-    h = (Math.imul(h, 33) ^ c.charCodeAt(0)) >>> 0;
-  }
-  return 'p' + h.toString(36);
-}
+// makeProductKey / buildNameToKey / expandListings now live in ./validate as the
+// single source of truth shared with duplicate detection.
+const makeProductKey = v.makeProductKey;
 
 // Seller defaults applied automatically
 const SELLER_META: Record<string, { crawl_method: 'api' | 'playwright' | 'naver_sourced'; store_name: string }> = {
@@ -71,6 +66,8 @@ interface ImportStats {
   linksCount: number;
   badgesCount: number;
   categoriesCount: number;
+  productsDeactivated: number;
+  listingsDeactivated: number;
   errorCount: number;
   errors: string[];
 }
@@ -79,7 +76,7 @@ export async function runSheetImport(): Promise<ImportStats> {
   const startedAt = new Date().toISOString();
   console.log(`[Sheet Import] Starting import run at ${startedAt}`);
 
-  const stats: ImportStats = { productsCount: 0, linksCount: 0, badgesCount: 0, categoriesCount: 0, errorCount: 0, errors: [] };
+  const stats: ImportStats = { productsCount: 0, linksCount: 0, badgesCount: 0, categoriesCount: 0, productsDeactivated: 0, listingsDeactivated: 0, errorCount: 0, errors: [] };
 
   const useSupabase    = isSupabaseServerConfigured();
   const useGoogleSheets = isGoogleConfigured();
@@ -118,29 +115,29 @@ export async function runSheetImport(): Promise<ImportStats> {
     rawSeoPages   = mockSheets.mockSeoPagesSheet;
   }
 
-  // ── Build product_key map from raw products (name → key) ──────────────────
-  const nameToKey = new Map<string, string>();
-  for (const row of rawProducts) {
-    const p = v.simpleProductRowSchema.safeParse(row);
-    if (!p.success) continue;
-    const key = p.data.product_key?.trim() || makeProductKey(p.data.brand, p.data.name);
-    nameToKey.set(p.data.name.trim(), key);
+  // ── Fail-fast: reject duplicate product_key / link_key / url before writing ─
+  // A dirty sheet (same product seeded under two key schemes, or one url reused
+  // across link_keys) is the root cause of DB duplicates. Refuse to import it so
+  // re-import can never resurrect duplicates. (Runbook Part 1 §2.1)
+  const dupReport = v.detectSheetDuplicates(rawProducts, rawLinks);
+  if (v.hasDuplicates(dupReport)) {
+    const report = v.formatDuplicateReport(dupReport);
+    console.error('[Sheet Import] ABORT — duplicate keys/urls detected in sheet:\n' + report);
+    stats.errorCount++;
+    stats.errors.push('Duplicate detection failed — import aborted:\n' + report);
+    if (useSupabase) {
+      await supabaseServer.from('sheet_import_runs').insert({
+        started_at: startedAt, finished_at: new Date().toISOString(), status: 'failed',
+        products_count: 0, links_count: 0, badges_count: 0, error_count: stats.errorCount,
+        summary: { error: 'duplicate_detection_failed', duplicates: dupReport },
+      });
+    }
+    return stats;
   }
 
-  // ── Expand wide product_links rows → flat listing records ─────────────────
-  interface FlatListing { link_key: string; product_key: string; seller: string; url: string }
-  const flatListings: FlatListing[] = [];
-  for (const row of rawLinks) {
-    const r = v.productLinksWideRowSchema.safeParse(row);
-    if (!r.success) continue;
-    const productKey = nameToKey.get(r.data.product_name.trim());
-    if (!productKey) continue;
-    for (const seller of ['oliveyoung', 'coupang', 'naver', 'zigzag', 'ably'] as const) {
-      const url = r.data[seller]?.trim();
-      if (!url) continue;
-      flatListings.push({ link_key: `${seller}_${productKey}`, product_key: productKey, seller, url });
-    }
-  }
+  // ── Build product_key map + expand wide rows → flat listings (shared) ──────
+  const nameToKey = v.buildNameToKey(rawProducts);
+  const flatListings = v.expandListings(rawLinks, nameToKey);
 
   // ==========================================================================
   // PATH A — Supabase
@@ -309,6 +306,32 @@ export async function runSheetImport(): Promise<ImportStats> {
         }, { onConflict: 'slug' });
       }
 
+      // 8. Reconcile orphans — deactivate (no hard delete) DB rows that are no
+      //    longer present in the sheet, so re-import converges DB → sheet.
+      const sheetProductKeys = new Set(nameToKey.values());
+      const sheetLinkKeys    = new Set(flatListings.map((l) => l.link_key));
+
+      const { data: dbAllListings } = await supabaseServer.from('listings').select('id, link_key, is_active');
+      const orphanListingIds = (dbAllListings ?? [])
+        .filter((l) => l.is_active && !sheetLinkKeys.has(l.link_key))
+        .map((l) => l.id);
+      if (orphanListingIds.length) {
+        const { error } = await supabaseServer.from('listings').update({ is_active: false }).in('id', orphanListingIds);
+        if (error) throw error;
+      }
+      stats.listingsDeactivated = orphanListingIds.length;
+
+      const { data: dbAllProducts } = await supabaseServer.from('products').select('id, product_key, is_active');
+      const orphanProductIds = (dbAllProducts ?? [])
+        .filter((p) => p.is_active && !sheetProductKeys.has(p.product_key))
+        .map((p) => p.id);
+      if (orphanProductIds.length) {
+        const { error } = await supabaseServer.from('products').update({ is_active: false }).in('id', orphanProductIds);
+        if (error) throw error;
+      }
+      stats.productsDeactivated = orphanProductIds.length;
+      console.log(`[Sheet Import] Reconcile: deactivated ${stats.listingsDeactivated} orphan listings, ${stats.productsDeactivated} orphan products.`);
+
       await supabaseServer.from('sheet_import_runs').insert({
         started_at: startedAt, finished_at: new Date().toISOString(),
         status: stats.errorCount > 0 ? 'completed_with_warnings' : 'completed',
@@ -435,12 +458,23 @@ export async function runSheetImport(): Promise<ImportStats> {
       else { db.seo_pages.push({ id: (db.seo_pages.length ? Math.max(...db.seo_pages.map((sp) => sp.id)) + 1 : 1), ...data }); }
     }
 
+    // Reconcile orphans (mock) — deactivate rows absent from the sheet.
+    const sheetProductKeys = new Set(nameToKey.values());
+    const sheetLinkKeys    = new Set(flatListings.map((l) => l.link_key));
+    for (const l of db.listings) {
+      if (l.is_active && !sheetLinkKeys.has(l.link_key)) { l.is_active = false; stats.listingsDeactivated++; }
+    }
+    for (const pr of db.products) {
+      if (pr.is_active && !sheetProductKeys.has(pr.product_key)) { pr.is_active = false; stats.productsDeactivated++; }
+    }
+
     saveMockDB(db);
+    console.log(`[Sheet Import] Reconcile: deactivated ${stats.listingsDeactivated} orphan listings, ${stats.productsDeactivated} orphan products.`);
     console.log('[Sheet Import] Sheet data imported successfully to local mock DB file.');
   }
 
   const finishedAt = new Date().toISOString();
-  console.log(`[Sheet Import] Import finished at ${finishedAt}. Success: ${stats.productsCount} products, ${stats.linksCount} links, ${stats.badgesCount} badges. Errors: ${stats.errorCount}`);
+  console.log(`[Sheet Import] Import finished at ${finishedAt}. Success: ${stats.productsCount} products, ${stats.linksCount} links, ${stats.badgesCount} badges. Deactivated: ${stats.productsDeactivated} products, ${stats.listingsDeactivated} listings. Errors: ${stats.errorCount}`);
   return stats;
 }
 
