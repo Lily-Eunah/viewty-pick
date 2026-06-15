@@ -180,6 +180,9 @@ export async function crawlPipeline(): Promise<void> {
       };
 
       // Cache the latest matched offer link on the listing (redirect fallback).
+      // For OliveYoung the buy button is ALWAYS the curator affiliate_url: the
+      // redirect route prefers affiliate_url over latest_matched_url, so caching
+      // the Naver-sourced link here is audit-only and never shadows the curator.
       if (offer.matchedUrl) {
         const matchIdx = updatedListings.findIndex((l) => l.id === listing.id);
         if (matchIdx >= 0) updatedListings[matchIdx].latest_matched_url = offer.matchedUrl;

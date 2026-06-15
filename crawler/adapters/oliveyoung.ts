@@ -24,6 +24,36 @@ function isPlaceholderKey(v: string | undefined): boolean {
   return !v || v.includes('placeholder') || v.includes('example') || v.includes('dummy') || v.trim() === '';
 }
 
+// ---------------------------------------------------------------------------
+// 4-tier display gate (final spec §1). The curator affiliate_url is the gate
+// AND the buy link. "Curator URL present" (= sold on OliveYoung) does NOT
+// guarantee "a Naver OliveYoung offer exists" — hence tiers 2 vs 3/4.
+//   1 hidden     no curator URL              → OliveYoung row not shown
+//   2 naver      curator + Naver offer       → price=Naver,  link=curator
+//   3 manual     curator + no Naver + manual → price=manual, link=curator
+//   4 link_only  curator + no Naver + no manual → curator link only (no price)
+// Price always comes via Naver (or manual_override); the buy button is ALWAYS
+// the curator affiliate_url (redirect route prefers affiliate_url).
+// ---------------------------------------------------------------------------
+export type OliveYoungTier = 'hidden' | 'naver' | 'manual' | 'link_only';
+
+export interface OliveYoungTierInput {
+  hasCuratorUrl: boolean;     // affiliate_url present
+  naverMatched: boolean;      // a Naver OliveYoung offer was matched
+  hasManualOverride: boolean; // an active manual_override price for oliveyoung
+}
+
+export function resolveOliveYoungTier(i: OliveYoungTierInput): {
+  tier: OliveYoungTier;
+  showPrice: boolean;
+  priceSource: 'naver' | 'manual' | null;
+} {
+  if (!i.hasCuratorUrl) return { tier: 'hidden', showPrice: false, priceSource: null };
+  if (i.naverMatched) return { tier: 'naver', showPrice: true, priceSource: 'naver' };
+  if (i.hasManualOverride) return { tier: 'manual', showPrice: true, priceSource: 'manual' };
+  return { tier: 'link_only', showPrice: false, priceSource: null };
+}
+
 export class OliveYoungAdapter implements RetailerAdapter {
   code = 'oliveyoung';
 
@@ -36,6 +66,24 @@ export class OliveYoungAdapter implements RetailerAdapter {
       process.env.NODE_ENV === 'test' ||
       isPlaceholderKey(clientId) ||
       isPlaceholderKey(clientSecret);
+
+    // Curator-URL gate (tier 1): no affiliate_url → not sold on OliveYoung for
+    // us → never source a price, never call Naver. The row is effectively hidden
+    // (no displayable snapshot). This is the gate; the curator URL is also the link.
+    if (!listing.affiliate_url) {
+      return {
+        regularPrice: null,
+        salePrice: null,
+        inStock: false,
+        promoType: 'none',
+        promoText: null,
+        sourceText: 'OliveYoung: no curator affiliate_url — row hidden (tier 1)',
+        storeName: '올리브영',
+        matchedUrl: null,
+        matchedMallName: null,
+        matchExcluded: true,
+      };
+    }
 
     if (isMock) {
       return this.getMockOffer(listing);
@@ -83,7 +131,7 @@ export class OliveYoungAdapter implements RetailerAdapter {
         inStock: true,
         promoType: 'none',
         promoText: null,
-        sourceText: `OliveYoung: no Naver offer — ${result.reason} (manual_override or link-only)`,
+        sourceText: `OliveYoung: no Naver offer — ${result.reason} (tier 3 manual_override or tier 4 link-only)`,
         storeName: '올리브영',
         matchedUrl: null,
         matchedMallName: null,
