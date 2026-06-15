@@ -161,6 +161,19 @@ Tool: `npm run ops:audit` (`scripts/ops/audit-phase-a.ts`) — selects only, zer
   - ③ products: upsert 39 / deactivate 8. listings: upsert 127 (insert 105 /
     update 22) / deactivate 32. Converges exactly to sheet (39 products / 127
     active listings).
-- Pending operator go for `npm run sheets:import`.
+### Phase D result — DONE 2026-06-15
+- `npm run sheets:import` (operator go): fetched 39 products / 39 link rows / 39
+  badges → upsert 39 products, 127 listings, 39 badges; **0 errors**. Reconcile
+  deactivated 32 listings + 8 products (as dry-run predicted).
+- **Verify**:
+  - active: products=39, listings=127 (= sheet). Totals: products 47 (8 inactive),
+    listings 159 (32 inactive) — deactivated rows preserved, not deleted.
+  - duplicate map: active listings by url = **0 rows** ✅; by link_key = 0;
+    products by product_key = 0; same-name different-id = 0.
+  - idempotency: re-running `ops:dryrun-import` → 0 insert / 0 deactivate /
+    127 update (upserts stable).
+- Phase D Definition of Done (duplicate 0 / sheet-DB parity) met.
+
+## Phase C — n/a (prune disabled; reconcile converged DB as planned).
 
 ## Phases E–G — pending Phase D.
