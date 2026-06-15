@@ -15,10 +15,13 @@ export function isDisplayablePriceSnapshot(s: PriceSnapshot, listing?: Listing):
 }
 
 /**
- * Mirror of the public.listing_prices_public view (migration 0008) for the local
- * mock DB: collapse raw snapshots to the latest displayable row per listing,
- * projected to the same safe columns. The Supabase path reads the real view; the
- * mock path uses this so both feed mapToUIProduct identical shapes.
+ * Mirror of the public.listing_prices_public view (migrations 0008 + 0010) for
+ * the local mock DB: take each listing's LATEST snapshot (any status) and surface
+ * it only when that latest snapshot is itself displayable, projected to the same
+ * safe columns. Picking the latest first (then checking displayability) is the
+ * §2.4 trust-first rule: a priced→no_offer transition drops the listing instead
+ * of resurrecting a stale ok price behind the no_offer. The Supabase path reads
+ * the real view; this keeps the mock path identical.
  */
 export function snapshotsToPublicPrices(
   dbSnapshots: PriceSnapshot[],
@@ -26,12 +29,13 @@ export function snapshotsToPublicPrices(
 ): PublicListingPrice[] {
   const out: PublicListingPrice[] = [];
   for (const listing of dbListings) {
-    const snaps = dbSnapshots.filter(
-      (s) => s.listing_id === listing.id && isDisplayablePriceSnapshot(s, listing)
-    );
+    const snaps = dbSnapshots.filter((s) => s.listing_id === listing.id);
     if (snaps.length === 0) continue;
     snaps.sort((a, b) => new Date(b.crawled_at).getTime() - new Date(a.crawled_at).getTime());
     const s = snaps[0];
+    // §2.4: only the LATEST snapshot counts; if it isn't displayable (no_offer /
+    // failed / low-confidence / OOS), the listing drops out — no stale fallback.
+    if (!isDisplayablePriceSnapshot(s, listing)) continue;
     out.push({
       listing_id: s.listing_id,
       product_id: s.product_id,

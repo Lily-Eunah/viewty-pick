@@ -395,6 +395,21 @@ export async function crawlPipeline(): Promise<void> {
     );
 
     if (prodSnaps.length === 0) {
+      // §2.4 trust-first: no listing has a displayable (ok-latest) price this run
+      // — e.g. the offer(s) disappeared (no_offer) or the listings deactivated.
+      // Clear the summary instead of leaving a stale lowest price in place.
+      currentPrices.push({
+        product_id: prod.id,
+        base_lowest_price: null,
+        base_lowest_seller: null,
+        base_lowest_listing_id: null,
+        promo_lowest_unit_price: null,
+        promo_lowest_seller: null,
+        promo_label: null,
+        has_promotion: false,
+        last_checked_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
       continue;
     }
 
