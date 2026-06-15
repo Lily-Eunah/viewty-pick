@@ -18,7 +18,7 @@ export default function SearchBar({
   return (
     <div
       onClick={onClick}
-      className={`flex items-center w-full h-[50px] bg-white border border-line rounded-btn px-4 gap-3 cursor-text ${
+      className={`flex items-center w-full h-[50px] bg-surface border border-line rounded-btn px-4 gap-3 cursor-text transition-all duration-200 focus-within:border-accent focus-within:shadow-[0_0_0_3px_rgba(202,155,170,0.25)] ${
         readOnly ? 'cursor-pointer' : ''
       }`}
     >
@@ -28,7 +28,7 @@ export default function SearchBar({
         viewBox="0 0 24 24"
         strokeWidth={2.2}
         stroke="currentColor"
-        className="w-5 h-5 text-sub"
+        className="w-5 h-5 text-[#6F6667] shrink-0"
       >
         <path
           strokeLinecap="round"
