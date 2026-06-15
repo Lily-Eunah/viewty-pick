@@ -123,13 +123,27 @@ Tool: `npm run ops:audit` (`scripts/ops/audit-phase-a.ts`) — selects only, zer
 - `0004–0007` are purely additive (ADD COLUMN IF NOT EXISTS + CHECK swap); they
   don't modify/delete existing rows, so a data-level export is a sound safety net.
 
-### Apply method — DECISION NEEDED (CLI path blocked)
-- No `psql`, no `pg_dump`, no Docker → can't apply via CLI/psql locally.
-- Options:
-  - **(A) `pg` runner** — add `pg` devDependency + small script to run the four
-    SQL files over the session pooler in a transaction, then re-audit. Keeps it
-    automated + verified here.
-  - **(B) Dashboard SQL editor** — operator pastes 0004→0007; I verify via audit.
-- Both safe (idempotent additive DDL). Awaiting operator choice.
+### Apply method + result — DONE 2026-06-15
+- `supabase db push` works over the session pooler **without Docker** (Docker is
+  only needed for `db dump`/local). Method chosen by operator: CLI sequential.
+- Remote history was empty → `db push` would have re-run 0001–0003. Fixed with
+  `supabase migration repair --status applied 0001 0002 0003 --db-url …`
+  (metadata only, no DDL), then dry-run confirmed only 0004–0007 pending.
+- Applied: `supabase db push --db-url … --yes` → 0004, 0005, 0006, 0007.
+- **Verify**:
+  - `migration list`: Local = Remote for 0001–0007 (history synced).
+  - audit probe: 0006 columns `present`; listings with
+    `crawl_method='naver_sourced'` present (0007 CHECK + re-provenance UPDATE OK).
+- Backup substituted by Supabase auto-backup/PITR + the JSON export (additive
+  DDL, no rows touched).
 
-## Phases C–G — pending Phase B.
+## Phase C — cleanup
+- Plan: **prune disabled** (runbook default). Rely on Part 1 reconcile during
+  Phase D re-import to deactivate (not delete) stale/duplicate-URL listings.
+
+## Phase D — re-import (cleaned canonical sheet → remote)
+- Next major production write. Importer is fail-fast (aborts before any write if
+  the sheet has duplicate product_key/link_key/url) and reconciles orphans.
+- Pending operator go.
+
+## Phases E–G — pending Phase D.
