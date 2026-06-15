@@ -19,7 +19,7 @@ export default function PriceTable({ stores }: PriceTableProps) {
             <th className="py-2.5 px-3 text-center">링크</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-line text-body">
+        <tbody className="divide-y divide-divider text-body">
           {stores.map((store, idx) => {
             const isCheapest = store.isBest;
             const finalPrice = store.effectiveUnitPrice || store.price;
@@ -28,7 +28,7 @@ export default function PriceTable({ stores }: PriceTableProps) {
               <tr
                 key={idx}
                 className={`transition-colors hover:bg-bg ${
-                  isCheapest ? 'bg-accent-light bg-opacity-20' : ''
+                  isCheapest ? 'bg-accent-soft/40 font-extrabold' : ''
                 }`}
               >
                 {/* 1. Store Name */}
