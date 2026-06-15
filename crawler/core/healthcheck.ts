@@ -1,5 +1,5 @@
 import { Listing, Product, RetailerAllowlist, PriceSnapshot, PriceSnapshotStatus } from '../../lib/types';
-import { PriceOffer } from '../adapters/index';
+import { PriceOffer, FetchOutcome } from '../adapters/index';
 import { NormalizedPrice } from './normalize';
 
 export interface HealthCheckResult {
@@ -113,6 +113,39 @@ export function runHealthCheck(
   }
 
   return { status: 'ok', message: null, severity: null };
+}
+
+export interface ListingOutcomeResolution {
+  fail_count: number;
+  is_active: boolean;
+  should_notify: boolean;
+  use_previous_price: boolean;
+}
+
+/**
+ * Map a fetch outcome to the listing's fail_count / activation update.
+ *
+ * Invariant: fail_count counts CONSECUTIVE fetch failures only. A successful
+ * fetch — whether it produced a price ('ok') or legitimately had no qualified
+ * offer ('no_offer') — resets the streak to 0 and never deactivates the listing.
+ * Only 'failed' advances the §4.4 staircase (warn → alert → hide → manual). This
+ * is the fix: a legitimate no-match no longer accumulates fail_count and so can
+ * never auto-deactivate an otherwise-healthy link-only listing.
+ */
+export function resolveListingOutcome(
+  listing: Listing,
+  outcome: FetchOutcome
+): ListingOutcomeResolution {
+  if (outcome === 'failed') {
+    return handleConsecutiveFailures(listing);
+  }
+  // 'ok' | 'no_offer' — a successful fetch resets the failure streak.
+  return {
+    fail_count: 0,
+    is_active: listing.is_active,
+    should_notify: false,
+    use_previous_price: false,
+  };
 }
 
 export function handleConsecutiveFailures(

@@ -1,8 +1,8 @@
 ﻿import { runSheetImport } from './sheets/import';
-import { CoupangAdapter, NaverAdapter, OliveYoungAdapter, RetailerAdapter, PriceOffer } from './adapters/index';
+import { CoupangAdapter, NaverAdapter, OliveYoungAdapter, RetailerAdapter, PriceOffer, FetchOutcome } from './adapters/index';
 import { clearNaverSearchCache } from './adapters/naver';
 import { applyManualOverrides, normalizePrice } from './core/normalize';
-import { runHealthCheck, handleConsecutiveFailures } from './core/healthcheck';
+import { runHealthCheck, resolveListingOutcome } from './core/healthcheck';
 import { recalculateViewtyScores } from './core/score';
 import { sendDailySummary, sendCriticalAlarm } from './core/notify';
 import { isSupabaseServerConfigured, supabaseServer } from '../lib/supabase/server';
@@ -153,6 +153,10 @@ export async function crawlPipeline(): Promise<void> {
   let successCount = 0;
   let warningCount = 0;
   let failureCount = 0;
+  // OK_NO_OFFER bookkeeping — informational only (NOT failures). disappeared =
+  // listings that had a real price last run and now legitimately have no offer.
+  let noOfferCount = 0;
+  const disappearedOffers: string[] = [];
 
   // Step 4: Crawl Prices Listing by Listing
   console.log(`[Pipeline] Beginning crawl of ${listings.length} active listings...`);
@@ -193,8 +197,66 @@ export async function crawlPipeline(): Promise<void> {
       // 4.1 Crawl using adapter
       offer = await adapter.fetchOffer(listing);
 
-      // 4.2 Apply active overrides
+      // 4.2 Apply active overrides (a manual price flips no_offer → ok)
       offer = applyManualOverrides(product, listing, offer, manualOverrides);
+
+      // 4.2b Classify the fetch outcome. A successful fetch with no qualified
+      // offer ('no_offer') is NOT a failure — it resets fail_count and leaves the
+      // listing active (link-only). Only thrown errors (catch below) and bad
+      // priced data (healthcheck 'failed') advance the §4.4 failure staircase.
+      const outcome: FetchOutcome = offer.outcome ?? (offer.matchExcluded ? 'no_offer' : 'ok');
+
+      if (outcome === 'no_offer') {
+        // OK_NO_OFFER: reset the failure streak, keep the listing active.
+        const res = resolveListingOutcome(listing, 'no_offer');
+        const listIdx = updatedListings.findIndex((l) => l.id === listing.id);
+        if (listIdx >= 0) {
+          updatedListings[listIdx].fail_count = res.fail_count;
+          updatedListings[listIdx].is_active = res.is_active;
+        }
+        noOfferCount++;
+
+        // Trust-first: if this listing had a real price last run, drop it (no
+        // stale carry-over) and surface the transition as a daily-summary INFO
+        // line (not an alert). Record a no_offer snapshot on first observation or
+        // on transition only (steady-state link-only listings don't re-log daily).
+        const prevSnap = previousSnapshots.find((s) => s.listing_id === listing.id) || null;
+        const prevWasPriced = !!prevSnap && prevSnap.status !== 'no_offer' && prevSnap.sale_price !== null;
+        if (prevWasPriced) {
+          disappearedOffers.push(`${product.name} @ ${seller.name} (${listing.link_key})`);
+        }
+        if (!prevSnap || prevSnap.status !== 'no_offer') {
+          const noOfferId = useSupabase ? 0 : previousSnapshots.length + newSnapshots.length + 1;
+          newSnapshots.push({
+            id: noOfferId,
+            listing_id: listing.id,
+            product_id: product.id,
+            crawled_at: new Date().toISOString(),
+            regular_price: null,
+            sale_price: null,
+            base_unit_price: null,
+            effective_unit_price: null,
+            unit_price: null,
+            unit_price_reliable: true,
+            promo_type: 'none',
+            promo_text: null,
+            min_quantity: null,
+            paid_quantity: null,
+            free_quantity: null,
+            total_quantity: null,
+            total_ml: null,
+            in_stock: false,
+            source_text: offer.sourceText,
+            parse_confidence: 'high',
+            status: 'no_offer',
+            shipping_fee: null,
+            shipping_note: null,
+            matched_url: null,
+            matched_mall_name: null,
+          });
+        }
+        continue;
+      }
 
       // 4.3 Normalize raw prices
       const norm = normalizePrice(product, offer);
@@ -244,11 +306,13 @@ export async function crawlPipeline(): Promise<void> {
       }
 
       if (check.status === 'failed') {
+        // FETCH_FAILED via bad priced data (parse/math error on a data-bearing
+        // response) — advances the §4.4 failure staircase.
         console.error(`[Pipeline] Listing ${listing.link_key} failed health check: ${check.message}`);
         failureCount++;
-        
+
         // Handle failure count increment
-        const failMgmt = handleConsecutiveFailures(listing);
+        const failMgmt = resolveListingOutcome(listing, 'failed');
         const listIdx = updatedListings.findIndex((l) => l.id === listing.id);
         if (listIdx >= 0) {
           updatedListings[listIdx].fail_count = failMgmt.fail_count;
@@ -293,15 +357,23 @@ export async function crawlPipeline(): Promise<void> {
       }
 
     } catch (err: unknown) {
+      // FETCH_FAILED via thrown error (HTTP error / timeout / block / can't parse
+      // a response that should carry data) — advances the §4.4 staircase.
       console.error(`[Pipeline] Failed to gather details for listing ${listing.link_key}:`, err);
       failureCount++;
 
       // Execute fail handler
-      const failMgmt = handleConsecutiveFailures(listing);
+      const failMgmt = resolveListingOutcome(listing, 'failed');
       const listIdx = updatedListings.findIndex((l) => l.id === listing.id);
       if (listIdx >= 0) {
         updatedListings[listIdx].fail_count = failMgmt.fail_count;
         updatedListings[listIdx].is_active = failMgmt.is_active;
+      }
+      if (failMgmt.should_notify && notifyEnabled) {
+        await sendCriticalAlarm(
+          `Listing Fetch Failed: ${listing.link_key}`,
+          `Error: ${err instanceof Error ? err.message : String(err)}\nFail count: ${failMgmt.fail_count}\nIs Active: ${failMgmt.is_active}`
+        );
       }
     }
   }
@@ -323,6 +395,21 @@ export async function crawlPipeline(): Promise<void> {
     );
 
     if (prodSnaps.length === 0) {
+      // §2.4 trust-first: no listing has a displayable (ok-latest) price this run
+      // — e.g. the offer(s) disappeared (no_offer) or the listings deactivated.
+      // Clear the summary instead of leaving a stale lowest price in place.
+      currentPrices.push({
+        product_id: prod.id,
+        base_lowest_price: null,
+        base_lowest_seller: null,
+        base_lowest_listing_id: null,
+        promo_lowest_unit_price: null,
+        promo_lowest_seller: null,
+        promo_label: null,
+        has_promotion: false,
+        last_checked_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
       continue;
     }
 
@@ -501,10 +588,15 @@ export async function crawlPipeline(): Promise<void> {
       warningCount,
       failureCount,
       durationSeconds: duration,
+      noOfferCount,
+      disappearedOffers,
     });
   }
 
-  console.log(`[Pipeline] Sync complete! Success rate: ${Math.round((successCount / listings.length) * 100)}%`);
+  console.log(
+    `[Pipeline] Sync complete! Success rate: ${Math.round((successCount / listings.length) * 100)}% ` +
+    `(no-offer/link-only: ${noOfferCount}, disappeared: ${disappearedOffers.length})`
+  );
 }
 
 // Allow running via tsx

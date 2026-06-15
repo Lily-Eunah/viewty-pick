@@ -208,10 +208,24 @@ export class CoupangAdapter implements RetailerAdapter {
 
     const item = await callCoupangApi(productId, accessKey, secretKey);
     if (!item) {
-      throw new Error(`[Coupang Adapter] No product data returned for ID ${productId}`);
+      // API responded (200) but the product is no longer offered → legitimate
+      // no-offer, NOT a fetch failure. (HTTP/timeout errors throw in callCoupangApi
+      // → 'failed'.) Leave the listing link-only without incrementing fail_count.
+      console.warn(`[Coupang Adapter] No product data for ID ${productId} — link-only (no_offer)`);
+      return {
+        regularPrice: null,
+        salePrice: null,
+        inStock: false,
+        promoType: 'none',
+        promoText: null,
+        sourceText: `Coupang: no product data for ID ${productId} (delisted / out of catalog)`,
+        storeName: '쿠팡',
+        matchExcluded: true,
+        outcome: 'no_offer',
+      };
     }
 
-    return parseCoupangItem(item);
+    return { ...parseCoupangItem(item), outcome: 'ok' };
   }
 
   private _mockOffer(listing: Listing): PriceOffer {

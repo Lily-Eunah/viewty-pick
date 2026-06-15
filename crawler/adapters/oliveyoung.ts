@@ -82,6 +82,8 @@ export class OliveYoungAdapter implements RetailerAdapter {
         matchedUrl: null,
         matchedMallName: null,
         matchExcluded: true,
+        // No curator URL ⇒ legitimately no offer for us, not a fetch failure.
+        outcome: 'no_offer',
       };
     }
 
@@ -136,6 +138,9 @@ export class OliveYoungAdapter implements RetailerAdapter {
         matchedUrl: null,
         matchedMallName: null,
         matchExcluded: true,
+        // Naver search SUCCEEDED but no OliveYoung offer → link-only, not a failure.
+        // (A manual_override applied in run.ts will flip this back to 'ok'.)
+        outcome: 'no_offer',
       };
     }
 
@@ -154,6 +159,7 @@ export class OliveYoungAdapter implements RetailerAdapter {
       parsedVolumeRaw: result.parsedVolumeRaw,
       matchedUrl: item.link || null,
       matchedMallName: item.mallName || null,
+      outcome: 'ok',
     };
   }
 
