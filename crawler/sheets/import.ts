@@ -66,6 +66,8 @@ interface ImportStats {
   linksCount: number;
   badgesCount: number;
   categoriesCount: number;
+  productsDeactivated: number;
+  listingsDeactivated: number;
   errorCount: number;
   errors: string[];
 }
@@ -74,7 +76,7 @@ export async function runSheetImport(): Promise<ImportStats> {
   const startedAt = new Date().toISOString();
   console.log(`[Sheet Import] Starting import run at ${startedAt}`);
 
-  const stats: ImportStats = { productsCount: 0, linksCount: 0, badgesCount: 0, categoriesCount: 0, errorCount: 0, errors: [] };
+  const stats: ImportStats = { productsCount: 0, linksCount: 0, badgesCount: 0, categoriesCount: 0, productsDeactivated: 0, listingsDeactivated: 0, errorCount: 0, errors: [] };
 
   const useSupabase    = isSupabaseServerConfigured();
   const useGoogleSheets = isGoogleConfigured();
@@ -304,6 +306,32 @@ export async function runSheetImport(): Promise<ImportStats> {
         }, { onConflict: 'slug' });
       }
 
+      // 8. Reconcile orphans — deactivate (no hard delete) DB rows that are no
+      //    longer present in the sheet, so re-import converges DB → sheet.
+      const sheetProductKeys = new Set(nameToKey.values());
+      const sheetLinkKeys    = new Set(flatListings.map((l) => l.link_key));
+
+      const { data: dbAllListings } = await supabaseServer.from('listings').select('id, link_key, is_active');
+      const orphanListingIds = (dbAllListings ?? [])
+        .filter((l) => l.is_active && !sheetLinkKeys.has(l.link_key))
+        .map((l) => l.id);
+      if (orphanListingIds.length) {
+        const { error } = await supabaseServer.from('listings').update({ is_active: false }).in('id', orphanListingIds);
+        if (error) throw error;
+      }
+      stats.listingsDeactivated = orphanListingIds.length;
+
+      const { data: dbAllProducts } = await supabaseServer.from('products').select('id, product_key, is_active');
+      const orphanProductIds = (dbAllProducts ?? [])
+        .filter((p) => p.is_active && !sheetProductKeys.has(p.product_key))
+        .map((p) => p.id);
+      if (orphanProductIds.length) {
+        const { error } = await supabaseServer.from('products').update({ is_active: false }).in('id', orphanProductIds);
+        if (error) throw error;
+      }
+      stats.productsDeactivated = orphanProductIds.length;
+      console.log(`[Sheet Import] Reconcile: deactivated ${stats.listingsDeactivated} orphan listings, ${stats.productsDeactivated} orphan products.`);
+
       await supabaseServer.from('sheet_import_runs').insert({
         started_at: startedAt, finished_at: new Date().toISOString(),
         status: stats.errorCount > 0 ? 'completed_with_warnings' : 'completed',
@@ -430,12 +458,23 @@ export async function runSheetImport(): Promise<ImportStats> {
       else { db.seo_pages.push({ id: (db.seo_pages.length ? Math.max(...db.seo_pages.map((sp) => sp.id)) + 1 : 1), ...data }); }
     }
 
+    // Reconcile orphans (mock) — deactivate rows absent from the sheet.
+    const sheetProductKeys = new Set(nameToKey.values());
+    const sheetLinkKeys    = new Set(flatListings.map((l) => l.link_key));
+    for (const l of db.listings) {
+      if (l.is_active && !sheetLinkKeys.has(l.link_key)) { l.is_active = false; stats.listingsDeactivated++; }
+    }
+    for (const pr of db.products) {
+      if (pr.is_active && !sheetProductKeys.has(pr.product_key)) { pr.is_active = false; stats.productsDeactivated++; }
+    }
+
     saveMockDB(db);
+    console.log(`[Sheet Import] Reconcile: deactivated ${stats.listingsDeactivated} orphan listings, ${stats.productsDeactivated} orphan products.`);
     console.log('[Sheet Import] Sheet data imported successfully to local mock DB file.');
   }
 
   const finishedAt = new Date().toISOString();
-  console.log(`[Sheet Import] Import finished at ${finishedAt}. Success: ${stats.productsCount} products, ${stats.linksCount} links, ${stats.badgesCount} badges. Errors: ${stats.errorCount}`);
+  console.log(`[Sheet Import] Import finished at ${finishedAt}. Success: ${stats.productsCount} products, ${stats.linksCount} links, ${stats.badgesCount} badges. Deactivated: ${stats.productsDeactivated} products, ${stats.listingsDeactivated} listings. Errors: ${stats.errorCount}`);
   return stats;
 }
 

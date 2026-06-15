@@ -198,3 +198,10 @@ export function formatDuplicateReport(r: SheetDuplicateReport): string {
   }
   return lines.join('\n');
 }
+
+// ─── orphan reconcile ─────────────────────────────────────────────────────────
+// DB keys that are no longer present in the sheet → should be deactivated so a
+// re-import converges the DB to the sheet (no hard delete).
+export function computeOrphanKeys(dbKeys: string[], sheetKeys: Set<string>): string[] {
+  return dbKeys.filter((k) => !sheetKeys.has(k));
+}
