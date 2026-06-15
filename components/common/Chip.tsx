@@ -20,11 +20,11 @@ export default function Chip({
   if (variant === 'skin') {
     variantStyles = selected
       ? 'bg-primary text-white border-primary shadow-sm'
-      : 'bg-white text-body border-line hover:bg-bg';
+      : 'bg-surface text-body border-line hover:bg-bg';
   } else {
     // Sort option chip
     variantStyles = selected
-      ? 'bg-primary-light text-primary-dark border-primary-light font-extrabold shadow-sm'
+      ? 'bg-accent-soft text-primary border-[#F1D8E0] font-extrabold shadow-sm'
       : 'bg-transparent text-sub border-transparent hover:text-body';
   }
 
