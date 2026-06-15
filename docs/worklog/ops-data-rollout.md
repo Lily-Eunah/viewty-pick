@@ -243,14 +243,36 @@ Tool: `npm run ops:audit` (`scripts/ops/audit-phase-a.ts`) — selects only, zer
 - **Discord caveat**: notify ran but as `[Discord Notification (Mock)]` — module
   is mocked in this env; no real webhook fired. Verify webhook config separately.
 
-## Phase G — e2e verify — pending (UI render check)
-- Data layer fully verified above. Remaining: render product detail page (Naver/
-  OliveYoung price + curator buy link, updated time, payment-price caveat).
-- Known limitation (runbook §7.4): tier-4 OliveYoung link-only UI not implemented
-  — `mapToUIProduct` drops listings without a snapshot, so price-less OliveYoung
-  rows won't show yet. Not a bug; follow-up.
+## Phase G — e2e verify — DONE 2026-06-15 (found a blocker)
+- Ran `next start` (prod build) and fetched product detail pages
+  (`/p/p1xe9jfw` 조선미녀, `/p/p1iafa5k` 아로셀, `/p/p8veeo9` 몽디에스).
+- Renders OK: the 갱신/결제가 caveat ("갱신 기준: 매일 KST 04:00 … 실제 가격은 판매처
+  정보와 상이할 수 있습니다"), layout, headers.
+- **BLOCKER — no prices/buy-links render**: every product shows "현재 구매 가능한
+  활성 판매처가 없습니다". Root cause: `0002_rls.sql` enables RLS on
+  `price_snapshots` with **no anon read policy** (deliberate, per its note), but
+  `mapToUIProduct` builds the per-store cards **from `price_snapshots`** read via
+  the anon client. Confirmed live: anon reads products=39, listings=127,
+  current_prices=36, but **price_snapshots=0** (RLS). So store list is always
+  empty for the public.
+  - Pre-existing (RLS + mapper predate this rollout; snapshots were never
+    anon-visible) — surfaced now that Phase G expects prices to show.
+  - Fix options (operator decision; production RLS/code change → via PR + gate):
+    (A) add anon SELECT policy on price_snapshots (e.g. `USING (status='ok')`) —
+        fastest; exposes snapshot rows publicly (low sensitivity — they're prices
+        we display anyway).
+    (B) refactor mapper to source per-store prices from an anon-readable source —
+        current_prices only has aggregate lowest, not per-store, so needs more.
+    (C) cleanest: a public view exposing only the latest displayable snapshot per
+        active listing, granted to anon; point the mapper at it. (migration + query)
+  - Recommend (A) for an immediate working site, (C) as the durable fix.
+- Known limitation (runbook §7.4) still stands on top of the above: tier-4
+  OliveYoung link-only UI not implemented (mapper drops snapshot-less listings).
 
 ## Outstanding follow-ups
+0. **BLOCKING for the public site showing ANY price**: `price_snapshots` is not
+   anon-readable (RLS) but `mapToUIProduct` reads per-store prices from it →
+   product pages show "no active sellers". See Phase G. Fix via PR (option A/C).
 1. **BLOCKING for daily automation**: fail_count vs legitimate no-match/link-only
    (auto-deactivation after 3 runs) — see Phase F note above.
 2. Tier-4 OliveYoung link-only UI (§7.4).
