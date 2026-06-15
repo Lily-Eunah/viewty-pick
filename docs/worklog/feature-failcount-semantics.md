@@ -70,15 +70,51 @@ So `current_prices` and the anon view are unaffected — no leak, no stale price
 - `lint` (0 errors, 1 pre-existing img warning), `typecheck`, `test:all` (incl. 11 new failcount cases), `build` — all pass.
 - Mock pipeline (`crawler:test`) runs clean; new summary line renders (`No offer (info)` + disappeared count). Mock fixtures are all priced → 0 no_offer there; the no_offer path is covered by unit tests and the pre-merge limited real sync below.
 
-## Remote migration
-0009 to be applied via the existing gate (backup → `db push` over session pooler),
-reported for a single operator "go" before execution. It only widens a CHECK
-constraint — non-destructive, no data/RLS change.
+## §2.4 trust-first — drop stale price on a no_offer transition
+Found during pre-merge validation: after a priced→no_offer transition the public
+view still showed the **stale** price. The 0008 view picked the latest
+`status='ok'` row per listing, so when the newest snapshot was `no_offer` it fell
+back to the previous `ok` price. §2.4 requires the opposite (no stale carry-over).
 
-## Pre-merge validation (recommended, §5)
-Limited real sync (`--only=<keys>` incl. a known no-match + a forced failure):
-confirm no-match listings keep fail_count flat, real failures stage, and the
-public view still shows only `status='ok'`.
+- **`0010_public_view_latest_ok_only.sql`** — redefine `listing_prices_public`:
+  the `ok` row must also be the listing's **most recent** snapshot
+  (`crawled_at = max`). If the latest observation is no_offer / failed / warning /
+  low-confidence, the listing drops out (no stale fallback). Same columns /
+  grants / `security_invoker=false` ⇒ safe `CREATE OR REPLACE`.
+- **`lib/queries` `snapshotsToPublicPrices`** — mock parity: take each listing's
+  LATEST snapshot, surface it only if that latest is displayable (was: filter
+  displayable first, which resurrected stale).
+- **`crawler/run.ts`** — when a product has no displayable (ok-latest) snapshot
+  this run, **clear** `current_prices` (null `base_lowest_*`) instead of leaving
+  the previous lowest in place.
+- **`lib/queries/__tests__/publicPrices.test.ts`** — locks the parity:
+  latest ok shows; priced→no_offer drops; no_offer→ok recovers; latest failed
+  drops; inactive never shows.
+
+This aligns the per-store view with the UI's own `isDisplayablePriceSnapshot`
+gate (`status==='ok'`) and §2.4's explicit no-grace-window stance.
+
+## Remote migration
+0009 + 0010 applied via the existing gate (backup → `db push` over session
+pooler). 0009 widens a CHECK; 0010 is a `CREATE OR REPLACE VIEW` — both
+non-destructive, no data/RLS change.
+
+## Pre-merge validation (remote, done)
+Subset sync (`--only=p1sn8ibq` 스타라이크, real APIs) — one product gave a clean A/B:
+- **listing 59 (OliveYoung, no-match → no_offer)**: pre-bumped `fail_count=2` →
+  **reset to 0, stayed active** across 3 runs; no_offer snapshot logged once
+  (transition), not re-logged after. **Dropped from the public view** (latest =
+  no_offer, no stale 17000); `current_prices` for the product **cleared**.
+- **listing 60 (Coupang, genuine fetch failure)**: `fail_count` 0→1→2→**3 →
+  deactivated** (correct §4.4 staircase). NB: its URL is a `link.coupang.com/a/…`
+  affiliate short-link that yields no productId → real fetch failure. This is a
+  separate Coupang-adapter data-quality issue, intentionally **out of scope** here.
+- Enum: `status='no_offer'` accepted, `'bogus'` rejected (23514).
+- View row count 90→79 after 0010: the drop is 14 listings whose latest snapshot
+  is a `warning` (correctly hidden by the `status='ok'` gate; they return on the
+  next clean sync) + never-crawled listings (always absent). Every remaining view
+  row verified `latest=ok`.
+- Remote restored to baseline after validation (migrations retained).
 
 ## Why this matters next
 With healthy listings no longer auto-deactivating, **daily cron scheduling
