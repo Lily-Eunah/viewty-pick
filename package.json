@@ -11,6 +11,7 @@
     "sheets:headers": "tsx -r dotenv/config crawler/sheets/setup_headers.ts",
     "sheets:reseed": "tsx -r dotenv/config crawler/sheets/reseed_sheets.ts",
     "sheets:import": "tsx -r dotenv/config crawler/sheets/import.ts",
+    "sheets:migrate-dropdowns-brand": "tsx -r dotenv/config scripts/ops/migrate-sheet-dropdowns-brand.ts",
     "ops:audit": "tsx -r dotenv/config scripts/ops/audit-phase-a.ts",
     "ops:backup": "tsx -r dotenv/config scripts/ops/backup-json.ts",
     "ops:check-sheet": "tsx -r dotenv/config scripts/ops/check-sheet.ts",
