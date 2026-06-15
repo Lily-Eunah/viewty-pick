@@ -1,6 +1,6 @@
 import { isSupabaseConfigured, supabase } from '../supabase/client';
 import { loadMockDB } from '../supabase/mockDb';
-import { Category, UIProduct, UIStorePrice, Product, Listing, CurrentPrice, PriceSnapshot, ProductBadge, Badge } from '../types';
+import { Category, UIProduct, UIStorePrice, Product, Listing, CurrentPrice, PriceSnapshot, PublicListingPrice, ProductBadge, Badge } from '../types';
 
 /**
  * Determines if a price snapshot is valid and safe to display.
@@ -15,6 +15,43 @@ export function isDisplayablePriceSnapshot(s: PriceSnapshot, listing?: Listing):
 }
 
 /**
+ * Mirror of the public.listing_prices_public view (migration 0008) for the local
+ * mock DB: collapse raw snapshots to the latest displayable row per listing,
+ * projected to the same safe columns. The Supabase path reads the real view; the
+ * mock path uses this so both feed mapToUIProduct identical shapes.
+ */
+export function snapshotsToPublicPrices(
+  dbSnapshots: PriceSnapshot[],
+  dbListings: Listing[]
+): PublicListingPrice[] {
+  const out: PublicListingPrice[] = [];
+  for (const listing of dbListings) {
+    const snaps = dbSnapshots.filter(
+      (s) => s.listing_id === listing.id && isDisplayablePriceSnapshot(s, listing)
+    );
+    if (snaps.length === 0) continue;
+    snaps.sort((a, b) => new Date(b.crawled_at).getTime() - new Date(a.crawled_at).getTime());
+    const s = snaps[0];
+    out.push({
+      listing_id: s.listing_id,
+      product_id: s.product_id,
+      seller_id: listing.seller_id,
+      sale_price: s.sale_price,
+      base_unit_price: s.base_unit_price,
+      effective_unit_price: s.effective_unit_price,
+      unit_price: s.unit_price_reliable ? s.unit_price : null,
+      promo_type: s.promo_type,
+      promo_text: s.promo_text,
+      in_stock: s.in_stock,
+      shipping_note: s.shipping_note,
+      matched_mall_name: s.matched_mall_name,
+      crawled_at: s.crawled_at,
+    });
+  }
+  return out;
+}
+
+/**
  * Maps database tables to unified UIProduct structure.
  */
 function mapToUIProduct(
@@ -24,7 +61,7 @@ function mapToUIProduct(
   dbCategories: Category[],
   dbProductBadges: ProductBadge[],
   dbBadges: Badge[],
-  dbSnapshots: PriceSnapshot[],
+  dbListingPrices: PublicListingPrice[],
   dbSellers: { id: number; slug: string; name: string }[]
 ): UIProduct {
   const category = dbCategories.find((c) => c.id === prod.category_id);
@@ -49,28 +86,28 @@ function mapToUIProduct(
   const prodListings = dbListings.filter((l) => l.product_id === prod.id && l.is_active);
   const stores: UIStorePrice[] = prodListings.map((listing): UIStorePrice | null => {
     const seller = dbSellers.find((s) => s.id === listing.seller_id);
-    
-    // Find latest snapshot for this listing
-    const snaps = dbSnapshots.filter((s) => s.listing_id === listing.id && isDisplayablePriceSnapshot(s, listing));
-    if (snaps.length === 0) return null;
 
-    snaps.sort((a, b) => new Date(b.crawled_at).getTime() - new Date(a.crawled_at).getTime());
-    const latestSnap = snaps[0];
+    // Latest displayable price for this listing comes from the public view
+    // (already collapsed to one row per listing, safe columns only).
+    const lp = dbListingPrices.find((p) => p.listing_id === listing.id);
+    if (!lp) return null;
+    // The view exposes in_stock but does not filter on it; drop out-of-stock.
+    if (lp.in_stock === false) return null;
 
-    const price = latestSnap.base_unit_price || latestSnap.sale_price || 0;
-    const unitPrice = latestSnap.unit_price !== null ? Number(latestSnap.unit_price) : price / (prod.volume_ml || 50);
+    const price = lp.base_unit_price || lp.sale_price || 0;
+    const unitPrice = lp.unit_price !== null ? Number(lp.unit_price) : price / (prod.volume_ml || 50);
 
     return {
       name: listing.store_name || seller?.name || '기타',
       sellerSlug: seller?.slug || 'unknown',
       price: price,
-      url: `/go/${listing.id}`, // redirection endpoint
+      url: `/go/${listing.id}`, // redirection endpoint (affiliate_url → latest_matched_url)
       isBest: false, // dynamically set below
       isRocket: listing.is_rocket,
       isOfficial: listing.is_official_store,
-      promoType: latestSnap.promo_type,
-      promoText: latestSnap.promo_text,
-      effectiveUnitPrice: latestSnap.effective_unit_price !== null ? latestSnap.effective_unit_price : price,
+      promoType: lp.promo_type,
+      promoText: lp.promo_text,
+      effectiveUnitPrice: lp.effective_unit_price !== null ? lp.effective_unit_price : price,
       unitPrice: unitPrice,
     };
   }).filter((s): s is UIStorePrice => s !== null);
@@ -162,7 +199,7 @@ export async function getProducts(filters?: {
   let dbCategories: Category[] = [];
   let dbProductBadges: ProductBadge[] = [];
   let dbBadges: Badge[] = [];
-  let dbSnapshots: PriceSnapshot[] = [];
+  let dbListingPrices: PublicListingPrice[] = [];
   let dbSellers: { id: number; slug: string; name: string }[] = [];
 
   if (isSupabaseConfigured()) {
@@ -173,9 +210,11 @@ export async function getProducts(filters?: {
     const pbRes = await supabase.from('product_badges').select('*');
     const bRes = await supabase.from('badges').select('*');
     const sRes = await supabase.from('sellers').select('id, slug, name');
-    
-    // Fetch snapshots (last 2 days)
-    const snapRes = await supabase.from('price_snapshots').select('*');
+
+    // Per-store prices come from the anon-readable public view (migration 0008),
+    // NOT the raw price_snapshots table (anon-locked, DESIGN §13). Already the
+    // latest displayable row per listing with safe columns only.
+    const lpRes = await supabase.from('listing_prices_public').select('*');
 
     if (!pRes.error && pRes.data) {
       dbProducts = pRes.data;
@@ -184,7 +223,7 @@ export async function getProducts(filters?: {
       dbCategories = cRes.data || [];
       dbProductBadges = pbRes.data || [];
       dbBadges = bRes.data || [];
-      dbSnapshots = snapRes.data || [];
+      dbListingPrices = lpRes.data || [];
       dbSellers = sRes.data || [];
     }
   }
@@ -197,13 +236,14 @@ export async function getProducts(filters?: {
     dbCategories = db.categories;
     dbProductBadges = db.product_badges;
     dbBadges = db.badges;
-    dbSnapshots = db.price_snapshots;
+    // Mirror the public view locally from raw mock snapshots.
+    dbListingPrices = snapshotsToPublicPrices(db.price_snapshots, dbListings);
     dbSellers = db.sellers;
   }
 
   // Convert to UI structure
   let uiProducts = dbProducts.map((p) =>
-    mapToUIProduct(p, dbListings, dbPrices, dbCategories, dbProductBadges, dbBadges, dbSnapshots, dbSellers)
+    mapToUIProduct(p, dbListings, dbPrices, dbCategories, dbProductBadges, dbBadges, dbListingPrices, dbSellers)
   );
 
   // Apply filters

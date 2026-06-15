@@ -29,7 +29,8 @@
     "live-check:coupang": "tsx -r dotenv/config scripts/live-check/live-check-coupang.ts",
     "live-check:naver": "tsx -r dotenv/config scripts/live-check/live-check-naver.ts",
     "live-check:oliveyoung": "tsx -r dotenv/config scripts/live-check/live-check-oliveyoung.ts",
-    "live-check:normalize": "tsx -r dotenv/config scripts/live-check/live-check-normalize.ts"
+    "live-check:normalize": "tsx -r dotenv/config scripts/live-check/live-check-normalize.ts",
+    "live-check:price-view": "tsx -r dotenv/config scripts/live-check/live-check-price-view.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.1",

@@ -126,6 +126,29 @@ export interface PriceSnapshot {
   matched_mall_name: string | null; // raw mallName of the matched offer
 }
 
+/**
+ * Row of the public.listing_prices_public view (migration 0008): the latest
+ * displayable snapshot per active listing, projected to safe columns only.
+ * This is the anon-readable source for the per-store price comparison; the raw
+ * price_snapshots table stays locked. unit_price is NULL when the ml-based unit
+ * price is unreliable (§1 compromise).
+ */
+export interface PublicListingPrice {
+  listing_id: number;
+  product_id: number;
+  seller_id: number;
+  sale_price: number | null;
+  base_unit_price: number | null;
+  effective_unit_price: number | null;
+  unit_price: number | null;
+  promo_type: PromoType;
+  promo_text: string | null;
+  in_stock: boolean;
+  shipping_note: string | null;
+  matched_mall_name: string | null;
+  crawled_at: string; // ISO Timestamp
+}
+
 export interface CurrentPrice {
   product_id: number;
   base_lowest_price: number | null;
