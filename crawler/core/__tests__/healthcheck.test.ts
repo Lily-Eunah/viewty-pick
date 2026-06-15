@@ -69,6 +69,7 @@ const PREV_SNAPSHOT: PriceSnapshot = {
   effective_unit_price: 18000, in_stock: true, source_text: null,
   parse_confidence: 'high', status: 'ok',
   shipping_fee: null, shipping_note: null,
+  matched_url: null, matched_mall_name: null,
 };
 
 // ---------------------------------------------------------------------------

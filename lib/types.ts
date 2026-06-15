@@ -69,6 +69,7 @@ export interface Listing {
   crawl_enabled: boolean;
   crawl_method: CrawlMethod;
   last_crawled_at: string | null; // ISO Timestamp
+  latest_matched_url?: string | null; // cached Naver API matched offer link (redirect fallback)
   fail_count: number;
   is_active: boolean;
 }
@@ -121,6 +122,8 @@ export interface PriceSnapshot {
   status: PriceSnapshotStatus;
   shipping_fee: number | null;
   shipping_note: string | null;
+  matched_url: string | null;       // link of the matched offer (audit / change detection)
+  matched_mall_name: string | null; // raw mallName of the matched offer
 }
 
 export interface CurrentPrice {

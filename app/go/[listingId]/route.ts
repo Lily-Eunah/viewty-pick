@@ -37,7 +37,8 @@ export async function GET(
         .single();
 
       if (listing) {
-        affiliateUrl = listing.affiliate_url || listing.url;
+        // Redirect priority (spec §3): affiliate_url → latest_matched_url → none.
+        affiliateUrl = listing.affiliate_url || listing.latest_matched_url || null;
         productId = listing.product_id;
         sellerCode = (listing.sellers as { slug?: string })?.slug || 'unknown';
 
@@ -63,7 +64,7 @@ export async function GET(
     if (listing) {
       const seller = db.sellers.find((s) => s.id === listing.seller_id);
       
-      affiliateUrl = listing.affiliate_url || listing.url;
+      affiliateUrl = listing.affiliate_url || listing.latest_matched_url || null;
       productId = listing.product_id;
       sellerCode = seller?.slug || 'unknown';
 

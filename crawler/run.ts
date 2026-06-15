@@ -170,7 +170,15 @@ export async function crawlPipeline(): Promise<void> {
         status: check.status,
         shipping_fee: null,
         shipping_note: norm.shipping_note,
+        matched_url: offer.matchedUrl ?? null,
+        matched_mall_name: offer.matchedMallName ?? null,
       };
+
+      // Cache the latest matched offer link on the listing (redirect fallback).
+      if (offer.matchedUrl) {
+        const matchIdx = updatedListings.findIndex((l) => l.id === listing.id);
+        if (matchIdx >= 0) updatedListings[matchIdx].latest_matched_url = offer.matchedUrl;
+      }
 
       if (check.status === 'failed') {
         console.error(`[Pipeline] Listing ${listing.link_key} failed health check: ${check.message}`);
@@ -199,6 +207,8 @@ export async function crawlPipeline(): Promise<void> {
           snapshot.effective_unit_price = prevSnap.effective_unit_price;
           snapshot.unit_price = prevSnap.unit_price;
           snapshot.unit_price_reliable = prevSnap.unit_price_reliable;
+          snapshot.matched_url = prevSnap.matched_url;
+          snapshot.matched_mall_name = prevSnap.matched_mall_name;
           snapshot.promo_type = prevSnap.promo_type;
           snapshot.promo_text = prevSnap.promo_text;
           snapshot.status = 'warning';
