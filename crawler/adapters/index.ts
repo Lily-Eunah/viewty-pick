@@ -3,14 +3,20 @@ import { Listing, PromoType } from '../../lib/types';
 /**
  * Outcome of a fetch attempt — distinguishes a legitimate "no qualified offer"
  * from a technical fetch failure so the pipeline only counts the latter against
- * fail_count (§4.4). A thrown error from fetchOffer is the third state,
- * 'failed', handled by run.ts's catch.
- *   ok        — a qualified offer was matched and priced.
- *   no_offer  — the fetch SUCCEEDED but there is no qualified offer (not on this
- *               platform, no official-mall offer, link-only). NOT a failure.
- *   failed    — HTTP error / timeout / block / parse failure of a data page.
+ * fail_count (§4.4). A thrown error from fetchOffer is the 'failed' state,
+ * handled by run.ts's catch.
+ *   ok         — a qualified offer was matched and priced.
+ *   no_offer   — the fetch SUCCEEDED but there is no qualified offer (not on this
+ *                platform, no official-mall offer, link-only). NOT a failure.
+ *   data_error — the listing's own data is unusable so no fetch was even
+ *                attempted (e.g. a Coupang `link.coupang.com/a/…` share short-link
+ *                that carries no productId — an operator must fix the sheet URL).
+ *                Like no_offer it never increments fail_count and keeps the
+ *                listing active (link-only); additionally surfaced as an
+ *                operator-facing data error in the daily summary / inspection.
+ *   failed     — HTTP error / timeout / block / parse failure of a data page.
  */
-export type FetchOutcome = 'ok' | 'no_offer' | 'failed';
+export type FetchOutcome = 'ok' | 'no_offer' | 'data_error' | 'failed';
 
 export interface PriceOffer {
   regularPrice: number | null;
