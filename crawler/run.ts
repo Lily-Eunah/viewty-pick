@@ -1,5 +1,6 @@
 ﻿import { runSheetImport } from './sheets/import';
 import { CoupangAdapter, NaverAdapter, OliveYoungAdapter, RetailerAdapter, PriceOffer } from './adapters/index';
+import { clearNaverSearchCache } from './adapters/naver';
 import { applyManualOverrides, normalizePrice } from './core/normalize';
 import { runHealthCheck, handleConsecutiveFailures } from './core/healthcheck';
 import { recalculateViewtyScores } from './core/score';
@@ -18,6 +19,10 @@ export async function crawlPipeline(): Promise<void> {
 
   const startTime = Date.now();
   console.log('[Pipeline] Starting daily price sync pipeline...');
+
+  // Fresh Naver Shopping search cache per run (brand store + OliveYoung listings
+  // of the same product share one search → one API call per product).
+  clearNaverSearchCache();
 
   // Step 1: Run Sheet Import
   try {

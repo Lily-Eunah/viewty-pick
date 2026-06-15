@@ -171,11 +171,82 @@ export function pickOfficialOffer(
 }
 
 // ---------------------------------------------------------------------------
-// Adapter
+// Shared search + match (reused by NaverAdapter and OliveYoungAdapter)
 // ---------------------------------------------------------------------------
 function isPlaceholderKey(v: string | undefined): boolean {
   return !v || v.includes('placeholder') || v.includes('example') || v.includes('dummy') || v.trim() === '';
 }
+
+// Per-process cache keyed by query string. A product's brand-official-store
+// listing and its OliveYoung listing build the SAME candidate queries (same
+// brand+name), so the OliveYoung match reuses the brand-store search results —
+// one Shopping API call per product, not one per listing (spec §2.2). Lifetime
+// is a single pipeline run (run.ts is one-shot); clear explicitly when needed.
+const naverSearchCache = new Map<string, NaverShoppingItem[]>();
+export function clearNaverSearchCache(): void {
+  naverSearchCache.clear();
+}
+
+async function searchNaverShopping(
+  query: string,
+  clientId: string,
+  clientSecret: string
+): Promise<NaverShoppingItem[]> {
+  const cached = naverSearchCache.get(query);
+  if (cached) return cached;
+  const url = `https://openapi.naver.com/v1/search/shop.json?query=${encodeURIComponent(query)}&display=40`;
+  const res = await fetch(url, {
+    headers: { 'X-Naver-Client-Id': clientId, 'X-Naver-Client-Secret': clientSecret },
+  });
+  if (!res.ok) throw new Error(`Naver Shopping API request failed: ${res.status} ${res.statusText}`);
+  const data = await res.json();
+  const items: NaverShoppingItem[] = data.items || [];
+  naverSearchCache.set(query, items);
+  return items;
+}
+
+export interface NaverProductLike {
+  brand: string | null;
+  name: string;
+  volume_ml?: number | null;
+}
+
+/**
+ * Search the Shopping API for a product (broad → narrow queries, stop at first
+ * match) and pick the offer from the given official mall (`allowedStoreName`).
+ * Same matcher for a brand store and for OliveYoung — only the mall differs.
+ */
+export async function matchNaverOffer(
+  product: NaverProductLike,
+  allowedStoreName: string | null,
+  clientId: string,
+  clientSecret: string
+): Promise<OfferMatchResult> {
+  const brandWord = product.brand ? product.brand.split(' ')[0] : '';
+  const nameWord = product.name ? product.name.split(' ')[0] : '';
+  const candidates = Array.from(
+    new Set([cleanQuery(product.brand, product.name), `${brandWord} ${nameWord}`].filter((c) => c.length > 0))
+  );
+
+  const input: OfferMatchInput = {
+    brand: product.brand,
+    name: product.name,
+    volumeMl: product.volume_ml ?? null,
+    allowedStoreName,
+  };
+
+  let result: OfferMatchResult = { matched: null, parsedVolumeRaw: null, identityScore: null, reason: 'no queries produced results' };
+  for (const query of candidates) {
+    const items = await searchNaverShopping(query, clientId, clientSecret);
+    result = pickOfficialOffer(items, input);
+    if (result.matched) break;
+  }
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Adapter
+// ---------------------------------------------------------------------------
 
 export class NaverAdapter implements RetailerAdapter {
   code = 'naver';
@@ -233,32 +304,8 @@ export class NaverAdapter implements RetailerAdapter {
       };
     }
 
-    // Build candidate queries (broad → narrow) and stop at the first match.
-    const brandWord = product.brand ? product.brand.split(' ')[0] : '';
-    const nameWord = product.name ? product.name.split(' ')[0] : '';
-    const candidates = Array.from(
-      new Set([cleanQuery(product.brand, product.name), `${brandWord} ${nameWord}`].filter((c) => c.length > 0))
-    );
-
-    const input: OfferMatchInput = {
-      brand: product.brand,
-      name: product.name,
-      volumeMl: product.volume_ml ?? null,
-      allowedStoreName,
-    };
-
-    let result: OfferMatchResult = { matched: null, parsedVolumeRaw: null, identityScore: null, reason: 'no queries produced results' };
-    for (const query of candidates) {
-      const url = `https://openapi.naver.com/v1/search/shop.json?query=${encodeURIComponent(query)}&display=40`;
-      const res = await fetch(url, {
-        headers: { 'X-Naver-Client-Id': clientId as string, 'X-Naver-Client-Secret': clientSecret as string },
-      });
-      if (!res.ok) throw new Error(`Naver Shopping API request failed: ${res.status} ${res.statusText}`);
-      const data = await res.json();
-      const items: NaverShoppingItem[] = data.items || [];
-      result = pickOfficialOffer(items, input);
-      if (result.matched) break;
-    }
+    // Search the Shopping API and pick the brand official-store offer.
+    const result = await matchNaverOffer(product, allowedStoreName, clientId as string, clientSecret as string);
 
     if (!result.matched) {
       // Exclude from comparison + flag for inspection. No reseller fallback.
