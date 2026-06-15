@@ -14,6 +14,7 @@ import {
   expandListings,
   computeOrphanKeys,
   makeProductKey,
+  normalizeListingUrl,
 } from '../validate';
 
 // ---------------------------------------------------------------------------
@@ -95,6 +96,38 @@ it('duplicate link_key (same product listed twice for same seller) is detected',
   ];
   const r = detectSheetDuplicates(cleanProducts, links);
   assert(r.duplicateLinkKeys.length === 1, `expected 1 dup link_key, got ${r.duplicateLinkKeys.length}`);
+});
+
+// ---------------------------------------------------------------------------
+console.log('\n--- url normalization / placeholder skip ---');
+
+it('placeholder "?" cell is skipped (no listing) and never duplicates', () => {
+  const links: Row[] = [
+    { product_name: 'Sun Serum',  coupang: '?' },
+    { product_name: 'Night Cream', coupang: '?' },
+  ];
+  const nameToKey = buildNameToKey(cleanProducts);
+  const flat = expandListings(links, nameToKey);
+  assert(flat.length === 0, `expected "?" cells skipped, got ${flat.length} listings`);
+  const r = detectSheetDuplicates(cleanProducts, links);
+  assert(!hasDuplicates(r), `placeholder must not count as duplicate url: ${JSON.stringify(r)}`);
+});
+
+it('scheme-less host url is upgraded to https', () => {
+  const links: Row[] = [
+    { product_name: 'Sun Serum', coupang: 'coupang.com/vp/products/7941544246?q=x' },
+  ];
+  const nameToKey = buildNameToKey(cleanProducts);
+  const flat = expandListings(links, nameToKey);
+  assert(flat.length === 1, `expected 1 listing, got ${flat.length}`);
+  assert(flat[0].url === 'https://coupang.com/vp/products/7941544246?q=x', `unexpected url: ${flat[0].url}`);
+});
+
+it('normalizeListingUrl: https passthrough, placeholder→null, blank→null', () => {
+  assert(normalizeListingUrl('https://www.coupang.com/vp/products/1') === 'https://www.coupang.com/vp/products/1', 'https should pass through');
+  assert(normalizeListingUrl('?') === null, '"?" should be null');
+  assert(normalizeListingUrl('  ') === null, 'blank should be null');
+  assert(normalizeListingUrl('TODO') === null, 'non-url text should be null');
 });
 
 // ---------------------------------------------------------------------------

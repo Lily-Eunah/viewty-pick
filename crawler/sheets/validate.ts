@@ -106,6 +106,27 @@ export function buildNameToKey(rawProducts: Record<string, string>[]): Map<strin
 
 export interface FlatListing { link_key: string; product_key: string; seller: Seller; url: string }
 
+/**
+ * Normalize a product_links cell into a usable URL, or null when the cell is not
+ * a URL (an empty cell, or an operator placeholder such as "?"). Returning null
+ * means "no listing for this seller" — the cell is skipped, so a placeholder can
+ * never create a bogus listing or trip the duplicate-url fail-fast gate.
+ *
+ * Scheme-less but real host+path values (e.g. "coupang.com/vp/products/123?…",
+ * which operators often paste from the address bar) are upgraded to https so the
+ * /go redirect (which resolves the stored url against the site origin) does not
+ * break.
+ */
+export function normalizeListingUrl(raw: string | undefined | null): string | null {
+  const v = (raw ?? '').trim();
+  if (!v) return null;
+  if (/^https?:\/\//i.test(v)) return v;
+  // host.tld followed by /, ?, # or end → a real (scheme-less) URL → assume https.
+  if (/^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(?:[/?#]|$)/i.test(v)) return `https://${v}`;
+  // Anything else (e.g. "?", "TODO", "n/a") is a placeholder, not a URL.
+  return null;
+}
+
 // Expand wide product_links rows (one row/product, one column/seller) into flat
 // per-seller listing records — the shape the importer upserts.
 export function expandListings(
@@ -119,7 +140,7 @@ export function expandListings(
     const productKey = nameToKey.get(r.data.product_name.trim());
     if (!productKey) continue;
     for (const seller of SELLERS) {
-      const url = r.data[seller]?.trim();
+      const url = normalizeListingUrl(r.data[seller]);
       if (!url) continue;
       flat.push({ link_key: `${seller}_${productKey}`, product_key: productKey, seller, url });
     }
