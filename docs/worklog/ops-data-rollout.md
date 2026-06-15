@@ -226,4 +226,37 @@ Tool: `npm run ops:audit` (`scripts/ops/audit-phase-a.ts`) — selects only, zer
   share-link URLs can't yield a product id and would pollute fail_count; Discord
   summary ON) over all 39 products / 127 listings, in background.
 
-## Phase G — e2e verify — pending full sync.
+### Phase F result — DONE 2026-06-15
+- Full `crawler:sync --skip-import --max-coupang=0` completed in 47.8s, exit 0.
+  Run summary: 127 links → 50 OK / 8 warning / 52 failed (rest skipped = coupang
+  + zigzag/ably no-adapter).
+- **Verify**:
+  - active products=39, active listings=127 (unchanged — nothing wrongly dropped).
+  - price_snapshots total=63.
+  - **matched (has displayable price)=33/39 (85%)**; unmatched/link-only=6.
+  - **duplicate active URLs = 0** (still clean post-sync).
+  - fail_count distribution: 0:140, 1:16, 2:3 — **0 listings deactivated by
+    fail_count>=3** (single run safe, as predicted).
+  - current_prices: healthy 네이버/올리브영 mix, several +promo.
+- 6 unmatched (no Naver offer → link-only, correctly no price): 몽디에스, 후시다딘,
+  스타라이크, 이지앤트리, 랑콤(스킨이돌3), 미샤 → manual_override / sheet-URL follow-up.
+- **Discord caveat**: notify ran but as `[Discord Notification (Mock)]` — module
+  is mocked in this env; no real webhook fired. Verify webhook config separately.
+
+## Phase G — e2e verify — pending (UI render check)
+- Data layer fully verified above. Remaining: render product detail page (Naver/
+  OliveYoung price + curator buy link, updated time, payment-price caveat).
+- Known limitation (runbook §7.4): tier-4 OliveYoung link-only UI not implemented
+  — `mapToUIProduct` drops listings without a snapshot, so price-less OliveYoung
+  rows won't show yet. Not a bug; follow-up.
+
+## Outstanding follow-ups
+1. **BLOCKING for daily automation**: fail_count vs legitimate no-match/link-only
+   (auto-deactivation after 3 runs) — see Phase F note above.
+2. Tier-4 OliveYoung link-only UI (§7.4).
+3. 6 link-only products → manual_override or fix sheet URLs.
+4. Coupang URLs in sheet are share-links → can't extract product id; need real
+   product URLs before coupang prices work.
+5. crawl_runs never populated (started_at epoch-ms + unchecked insert error).
+6. Discord webhook is mocked in this env — confirm real delivery before relying on it.
+7. 3 stale current_prices on deactivated products 1–3 (optional cleanup).
