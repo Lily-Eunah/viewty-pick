@@ -1,11 +1,12 @@
 /**
- * One-time script: clears old data and writes new simplified format to all Google Sheet tabs,
- * then sets up dropdown data validation for all key columns.
+ * One-time script: clears old data and writes new simplified format to all Google Sheet tabs.
+ * No dropdown data validation is configured (values are copy-paste friendly).
+ * In product_links, `product_name` and `brand` are auto-filled from the `products`
+ * tab via ARRAYFORMULA (row-aligned); only the seller-link columns hold data.
  * Run: npm run sheets:reseed
  */
 
 import { google } from 'googleapis';
-import type { sheets_v4 } from 'googleapis';
 
 const ID = process.env.GOOGLE_SHEETS_SPREADSHEET_ID!;
 
@@ -16,11 +17,10 @@ async function getSheets() {
 }
 
 // ─── Headers ─────────────────────────────────────────────────────────────────
-// Column order here must match column indices used in setupValidation()
 const HEADERS: Record<string, string[]> = {
   categories:         ['slug', 'name', 'sort_order'],
   products:           ['product_key', 'name', 'brand', 'category', 'volume_ml', 'skin_types', 'features', 'hwahae_url', 'image_url', 'is_disabled'],
-  product_links:      ['product_name', 'oliveyoung', 'coupang', 'naver', 'zigzag', 'ably'],
+  product_links:      ['product_name', 'brand', 'oliveyoung', 'coupang', 'naver', 'zigzag', 'ably'],
   badges:             ['product_name', 'badge_type', 'detail', 'source_title', 'ref_url', 'source_date'],
   retailer_allowlist: ['seller', 'brand', 'allowed_store_name'],
   manual_overrides:   ['product_name', 'seller', 'override_type', 'value', 'reason', 'expires_at'],
@@ -48,6 +48,10 @@ const PRODUCTS = [
   ['', '3번 도자기결 톤업베이지 선크림',      '넘버즈인',            '선크림', '50', '민감성,복합성,지성,건성', 'SPF50+ PA++++, 혼합자차, 파데프리 톤업',       '', '', ''],
 ];
 
+// First column is a human-readable label only (NOT written to the sheet).
+// product_name & brand are auto-filled from the products tab via ARRAYFORMULA;
+// only the seller columns (oliveyoung..ably) are written, to product_links!C2.
+// Keep this list in the SAME ORDER as PRODUCTS above — mirroring is by row position.
 const PRODUCT_LINKS = [
   ['엑설런트 선크림',                 '',                             'https://link.coupang.com/a/euTm1IrprU',   'https://brand.naver.com/mongdies/products/13009860683',         '',                                   ''                               ],
   ['더마 트러블 징크 카밍 선크림',     '',                             'https://link.coupang.com/a/euTogOeOKi',   'https://brand.naver.com/dongwhafusidyne/products/9999261730',    '',                                   ''                               ],
@@ -87,7 +91,6 @@ const SEO_PAGES = [
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 type Sheets = Awaited<ReturnType<typeof getSheets>>;
-type Request = sheets_v4.Schema$Request;
 
 async function clearAndWriteHeader(sheets: Sheets, tab: string) {
   await sheets.spreadsheets.values.clear({ spreadsheetId: ID, range: `${tab}!A1:Z1000` });
@@ -105,93 +108,27 @@ async function writeData(sheets: Sheets, tab: string, rows: string[][]) {
   });
 }
 
-// ─── Data validation ─────────────────────────────────────────────────────────
-// Column indices (0-based) match HEADERS order above:
-//   products:      product_key=0, name=1, brand=2, category=3, volume_ml=4,
-//                  skin_types=5, features=6, hwahae_url=7, image_url=8, is_disabled=9
-//   product_links: product_name=0, oliveyoung=1 ..
-//   badges:        product_name=0, badge_type=1 ..
-//   allowlist:     seller=0 ..
-//   overrides:     product_name=0, seller=1, override_type=2 ..
-
-async function setupValidation(sheets: Sheets) {
-  const spreadsheet = await sheets.spreadsheets.get({ spreadsheetId: ID });
-  const sheetIds: Record<string, number> = {};
-  for (const sheet of spreadsheet.data.sheets ?? []) {
-    if (sheet.properties?.title && sheet.properties.sheetId != null) {
-      sheetIds[sheet.properties.title] = sheet.properties.sheetId;
-    }
+// ─── product_links writer (auto-fill name/brand from products) ────────────────
+// product_name (A) & brand (B) mirror the products tab via ARRAYFORMULA, so they
+// can never drift from products. Only the seller-link columns (C:G) are written.
+async function writeProductLinks(sheets: Sheets, rows: string[][]) {
+  const sellerCols = rows.map((r) => r.slice(1)); // drop the readability label → [oliveyoung..ably]
+  if (sellerCols.length) {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: ID, range: 'product_links!C2',
+      valueInputOption: 'RAW', requestBody: { values: sellerCols },
+    });
   }
-
-  const SELLERS        = ['oliveyoung', 'coupang', 'naver', 'zigzag', 'ably'];
-  const BADGE_TYPES    = ['directorpi', 'hwahae_best', 'oliveyoung_best'];
-  const OVERRIDE_TYPES = ['price', 'promo_type', 'promo_text', 'unit_price', 'in_stock'];
-
-  // Dropdown from another sheet's column (ONE_OF_RANGE)
-  const fromRange = (tab: string, col: number, srcSheet: string, srcCol: string): Request => ({
-    setDataValidation: {
-      range: { sheetId: sheetIds[tab], startRowIndex: 1, endRowIndex: 1000, startColumnIndex: col, endColumnIndex: col + 1 },
-      rule: {
-        condition: { type: 'ONE_OF_RANGE', values: [{ userEnteredValue: `='${srcSheet}'!$${srcCol}$2:$${srcCol}$1000` }] },
-        strict: false,
-        showCustomUi: true,
-      },
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: ID, range: 'product_links!A2',
+    valueInputOption: 'USER_ENTERED',
+    requestBody: {
+      values: [[
+        '=ARRAYFORMULA(IF(products!B2:B="","",products!B2:B))',
+        '=ARRAYFORMULA(IF(products!C2:C="","",products!C2:C))',
+      ]],
     },
   });
-
-  // Dropdown from a fixed list (ONE_OF_LIST)
-  const fromList = (tab: string, col: number, values: string[], message?: string): Request => ({
-    setDataValidation: {
-      range: { sheetId: sheetIds[tab], startRowIndex: 1, endRowIndex: 1000, startColumnIndex: col, endColumnIndex: col + 1 },
-      rule: {
-        condition: { type: 'ONE_OF_LIST', values: values.map((v) => ({ userEnteredValue: v })) },
-        inputMessage: message,
-        strict: false,
-        showCustomUi: true,
-      },
-    },
-  });
-
-  // Input hint only (no dropdown — for free-form fields needing a format hint)
-  const withHint = (tab: string, col: number, message: string): Request => ({
-    setDataValidation: {
-      range: { sheetId: sheetIds[tab], startRowIndex: 1, endRowIndex: 1000, startColumnIndex: col, endColumnIndex: col + 1 },
-      rule: {
-        condition: { type: 'CUSTOM_FORMULA', values: [{ userEnteredValue: '=TRUE' }] },
-        inputMessage: message,
-        strict: false,
-        showCustomUi: false,
-      },
-    },
-  });
-
-  const requests: Request[] = [
-    // products: category(3) ← categories 이름 목록
-    fromRange('products', 3, 'categories', 'B'),
-    // products: skin_types(5) — 멀티셀렉 미지원, 힌트 메시지만
-    withHint('products', 5, '쉼표로 구분하여 입력 (예: 건성,민감성,지성)'),
-
-    // product_links: product_name(0) ← products 이름 목록
-    fromRange('product_links', 0, 'products', 'B'),
-
-    // badges: product_name(0) ← products 이름 목록
-    fromRange('badges', 0, 'products', 'B'),
-    // badges: badge_type(1) ← 고정 목록
-    fromList('badges', 1, BADGE_TYPES),
-
-    // retailer_allowlist: seller(0) ← 고정 목록
-    fromList('retailer_allowlist', 0, SELLERS),
-
-    // manual_overrides: product_name(0) ← products 이름 목록
-    fromRange('manual_overrides', 0, 'products', 'B'),
-    // manual_overrides: seller(1) ← 고정 목록
-    fromList('manual_overrides', 1, SELLERS),
-    // manual_overrides: override_type(2) ← 고정 목록
-    fromList('manual_overrides', 2, OVERRIDE_TYPES),
-  ];
-
-  await sheets.spreadsheets.batchUpdate({ spreadsheetId: ID, requestBody: { requests } });
-  console.log('✓ Data validation dropdowns configured');
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
@@ -210,12 +147,16 @@ async function reseed() {
 
   for (const [tab, data] of tabs) {
     await clearAndWriteHeader(sheets, tab);
-    await writeData(sheets, tab, data);
+    if (tab === 'product_links') {
+      await writeProductLinks(sheets, data);
+    } else {
+      await writeData(sheets, tab, data);
+    }
     console.log(`✓ ${tab}: header + ${data.length} rows`);
   }
 
-  await setupValidation(sheets);
-
+  console.log('\nNo dropdowns configured — fields are copy-paste friendly.');
+  console.log('product_links: product_name & brand auto-fill from the products tab.');
   console.log('\nDone. Run `npm run sheets:import` to sync to Supabase.');
 }
 
