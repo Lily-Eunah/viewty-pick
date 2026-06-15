@@ -151,6 +151,16 @@ Tool: `npm run ops:audit` (`scripts/ops/audit-phase-a.ts`) — selects only, zer
   listings. Upsert 39+127; reconcile deactivates (is_active=false, reversible)
   the ~8 products + stale listings whose keys aren't in the sheet → drives the
   22 shared-URL duplicate groups to 0.
+- **Read-only dry-run diff** (`npm run ops:dryrun-import`, no writes):
+  - ① 8 products to deactivate: 7 are **re-keyed duplicates** (old `PROD_001…007`,
+    brand baked into the name; canonical brand/name-split rows already in DB and
+    will be updated) — the exact "product_id 1~7 ↔ 29~35" dupe the rollout
+    targets. 1 is an **intentional removal** (`id=51` 더모테라피 에센스토너 — brand
+    not in cleaned catalog). All reversible (`is_active=false`).
+  - ② placeholder link cells: none. duplicate product_key/link_key/url groups: 0/0/0.
+  - ③ products: upsert 39 / deactivate 8. listings: upsert 127 (insert 105 /
+    update 22) / deactivate 32. Converges exactly to sheet (39 products / 127
+    active listings).
 - Pending operator go for `npm run sheets:import`.
 
 ## Phases E–G — pending Phase D.
