@@ -83,6 +83,12 @@ Tool: `npm run ops:audit` (`scripts/ops/audit-phase-a.ts`) — selects only, zer
 > STOP: no remote writes (migrations/backup/import/sync/recompute) until
 > `SUPABASE_DB_URL` is provided. Per runbook §13, do not force arbitrary SQL.
 
+### Connectivity note (2026-06-15)
+- First attempt used the **direct** host `db.<ref>.supabase.co:5432` → DNS
+  `no such host` (Supabase direct hostnames are IPv6-only; IPv4 network can't
+  resolve). Switch `SUPABASE_DB_URL` to the **session pooler** URI from the
+  dashboard: `postgresql://postgres.<ref>:<pw>@aws-0-<region>.pooler.supabase.com:5432/postgres`.
+
 ### Agreed approval flow (operator)
 - Once `SUPABASE_DB_URL` is set: run **backup + migration-history inspect**
   (read-only) automatically, then **stop and report** the apply plan.
