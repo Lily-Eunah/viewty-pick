@@ -13,6 +13,7 @@
     "sheets:import": "tsx -r dotenv/config crawler/sheets/import.ts",
     "ops:audit": "tsx -r dotenv/config scripts/ops/audit-phase-a.ts",
     "ops:backup": "tsx -r dotenv/config scripts/ops/backup-json.ts",
+    "ops:check-sheet": "tsx -r dotenv/config scripts/ops/check-sheet.ts",
     "crawler:sync": "tsx -r dotenv/config crawler/run.ts",
     "crawler:test": "tsx -r dotenv/config crawler/run.ts --test",
     "naver:test": "tsx -r dotenv/config crawler/naver/test.ts",

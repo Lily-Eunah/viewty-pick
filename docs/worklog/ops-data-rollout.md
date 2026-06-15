@@ -144,6 +144,13 @@ Tool: `npm run ops:audit` (`scripts/ops/audit-phase-a.ts`) — selects only, zer
 ## Phase D — re-import (cleaned canonical sheet → remote)
 - Next major production write. Importer is fail-fast (aborts before any write if
   the sheet has duplicate product_key/link_key/url) and reconciles orphans.
-- Pending operator go.
+- **Read-only pre-check** (`npm run ops:check-sheet`, no writes): cleaned sheet =
+  **39 products, 39 link rows, 127 expanded listings**, **PASS** (no duplicate
+  product_key/link_key/url) → import will proceed without aborting.
+- Expected impact: DB 47 products / 54 listings → sheet 39 products / 127
+  listings. Upsert 39+127; reconcile deactivates (is_active=false, reversible)
+  the ~8 products + stale listings whose keys aren't in the sheet → drives the
+  22 shared-URL duplicate groups to 0.
+- Pending operator go for `npm run sheets:import`.
 
 ## Phases E–G — pending Phase D.
