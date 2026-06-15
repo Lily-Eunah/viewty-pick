@@ -13,7 +13,7 @@ export default function ProductCard({ product }: ProductCardProps) {
   return (
     <Link
       href={`/p/${product.slug}`}
-      className="flex flex-col w-[170px] bg-surface border border-line rounded-card overflow-hidden shadow-[0_4px_12px_rgba(0,0,0,0.02)] active:scale-[0.98] transition-transform duration-200"
+      className="flex flex-col w-[170px] bg-surface border border-line rounded-card overflow-hidden shadow-[0_8px_24px_rgba(65,0,22,0.06)] active:scale-[0.98] transition-transform duration-200"
     >
       {/* 1. Product Image */}
       <ProductImage
@@ -24,7 +24,7 @@ export default function ProductCard({ product }: ProductCardProps) {
       />
 
       {/* 2. Content Info */}
-      <div className="p-3 flex flex-col flex-grow justify-between gap-1 bg-white">
+      <div className="p-3 flex flex-col flex-grow justify-between gap-1 bg-surface">
         <div className="flex flex-col gap-1">
           {/* Badge */}
           <div className="flex flex-wrap gap-1">
@@ -45,15 +45,15 @@ export default function ProductCard({ product }: ProductCardProps) {
         </div>
 
         {/* Price & CTA */}
-        <div className="flex flex-col gap-2 mt-2 pt-2 border-t border-[#F8F6EE]">
+        <div className="flex flex-col gap-2 mt-2 pt-2 border-t border-divider">
           <div className="flex flex-col">
-            <span className="text-[10px] text-sub font-black leading-none">
+            <span className="text-[10px] text-text-secondary font-black leading-none">
               최저가
             </span>
             <PriceText price={product.lowestPrice} size="sm" className="mt-0.5" />
           </div>
           
-          <div className="w-full text-center py-1.5 bg-primary-light hover:bg-[#E2EAD9] text-primary-dark text-[11px] font-extrabold rounded-md transition-colors select-none">
+          <div className="w-full text-center py-1.5 bg-surface border border-accent text-primary hover:bg-accent-soft hover:border-accent text-[11px] font-black rounded-md transition-all select-none duration-150">
             가격비교 보기
           </div>
         </div>

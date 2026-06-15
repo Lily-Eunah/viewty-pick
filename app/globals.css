@@ -2,24 +2,49 @@
 @import "tailwindcss";
 
 @theme {
-  --color-primary: #6B8A47;
-  --color-primary-dark: #4F6A34;
-  --color-primary-light: #EDF3E6;
+  /* Brand */
+  --color-primary: #410016;
+  --color-primary-dark: #2E0010;
+  --color-primary-light: #F3E4E9;
+  --color-primary-hover: #5A0824;
+  --color-primary-soft: #F3E4E9;
 
-  --color-accent: #F6C915;
-  --color-accent-light: #FFF6CF;
+  --color-accent: #CA9BAA;
+  --color-accent-soft: #F6E7EC;
+  --color-accent-light: #FAEEF2;
 
-  --color-bg: #F8F6EE;
-  --color-bg-warm: #EAE3C0;
-  --color-surface: #FFFFFF;
+  --color-secondary: #A4B4BE;
+  --color-secondary-soft: #EAF0F3;
+  --color-secondary-dark: #6F838F;
 
-  --color-price: #E05D44;
-  --color-price-bg: #FFF0EA;
+  /* Neutral (retains old keys for backwards class compatibility) */
+  --color-bg: #FBF7F1;
+  --color-bg-warm: #F7EFE7;
+  --color-surface: #FFFDF9;
+  --color-surface-soft: #F7EFE7;
+  --color-border: #E8DDD5;
+  --color-line: #E8DDD5;
+  --color-divider: #EFE6DF;
 
-  --color-title: #1F241A;
-  --color-body: #4A4A42;
-  --color-sub: #8A8778;
-  --color-line: #E4E0D2;
+  /* Text Mappings */
+  --color-text-primary: #29272A;
+  --color-text-secondary: #6F6667;
+  --color-text-muted: #A8A0A0;
+  --color-text-inverse: #FFFFFF;
+
+  /* Fallback names for compatibility */
+  --color-title: #29272A;
+  --color-body: #6F6667;
+  --color-sub: #A8A0A0;
+
+  /* Semantic */
+  --color-price: #410016;
+  --color-price-bg: #F3E4E9;
+  --color-discount: #8A1238;
+  --color-star: #B78A3B;
+  --color-success: #6F8F7A;
+  --color-warning: #D3A45C;
+  --color-error: #B84A5A;
 
   --radius-card: 20px;
   --radius-card-lg: 24px;
@@ -30,24 +55,25 @@
 }
 
 :root {
-  --primary: #6B8A47;
-  --primary-dark: #4F6A34;
-  --primary-light: #EDF3E6;
+  --primary: #410016;
+  --primary-dark: #2E0010;
+  --primary-light: #F3E4E9;
 
-  --accent: #F6C915;
-  --accent-light: #FFF6CF;
+  --accent: #CA9BAA;
+  --accent-light: #FAEEF2;
 
-  --background: #F8F6EE;
-  --background-warm: #EAE3C0;
-  --surface: #FFFFFF;
+  --background: #FBF7F1;
+  --background-warm: #F7EFE7;
+  --surface: #FFFDF9;
 
-  --price: #E05D44;
-  --price-bg: #FFF0EA;
+  --price: #410016;
+  --price-bg: #F3E4E9;
 
-  --title: #1F241A;
-  --body: #4A4A42;
-  --sub: #8A8778;
-  --border: #E4E0D2;
+  --title: #29272A;
+  --body: #6F6667;
+  --sub: #A8A0A0;
+  --border: #E8DDD5;
+  --divider: #EFE6DF;
 }
 
 body {

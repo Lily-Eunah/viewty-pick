@@ -23,7 +23,7 @@ export default function Header({
     return (
       <header className="w-full bg-bg px-4 pt-5 pb-3 flex justify-between items-center z-30">
         <div className="flex flex-col">
-          <h1 className="text-[22px] font-black text-primary-dark tracking-tight leading-tight">
+          <h1 className="text-[22px] font-black text-primary tracking-tight leading-tight">
             ViewtyPick
           </h1>
           <span className="text-[12px] text-sub font-medium leading-none mt-0.5">
@@ -34,7 +34,7 @@ export default function Header({
           {rightAction || (
             <button
               onClick={() => alert('관심상품 기능은 준비 중입니다! (Phase 5)')}
-              className="p-2 text-body hover:text-primary active:scale-95 transition-transform"
+              className="p-2 text-[#29272A] hover:text-primary active:scale-95 transition-transform"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z" />
@@ -48,7 +48,7 @@ export default function Header({
 
   // 2. Subpage Header (with Back button)
   return (
-    <header className="w-full h-14 bg-surface border-b border-line px-4 flex items-center justify-between sticky top-0 z-35">
+    <header className="w-full h-14 bg-bg border-b border-divider px-4 flex items-center justify-between sticky top-0 z-35">
       <div className="flex items-center gap-3">
         <button
           onClick={() => router.back()}

@@ -18,11 +18,17 @@ export default function ProductListCard({ product, rank }: ProductListCardProps)
   return (
     <Link
       href={`/p/${product.slug}`}
-      className="flex items-center gap-3.5 bg-surface border border-line rounded-card p-3 shadow-[0_2px_8px_rgba(0,0,0,0.01)] active:scale-[0.99] transition-transform duration-200"
+      className="flex items-center gap-3.5 bg-surface border border-line rounded-card p-3 shadow-[0_8px_24px_rgba(65,0,22,0.06)] active:scale-[0.99] transition-transform duration-200"
     >
       {/* 1. Rank Label (optional) */}
       {rank !== undefined && (
-        <div className="flex justify-center items-center w-6 text-[15px] font-black text-primary-dark">
+        <div className={`flex justify-center items-center w-6 h-6 rounded-md text-[12px] font-black shrink-0 ${
+          rank === 1
+            ? 'bg-primary text-white'
+            : rank <= 3
+            ? 'bg-accent text-primary'
+            : 'bg-secondary-soft text-secondary-dark'
+        }`}>
           {rank}
         </div>
       )}
@@ -67,19 +73,19 @@ export default function ProductListCard({ product, rank }: ProductListCardProps)
         </div>
 
         {/* Pricing & Comparison Tagline */}
-        <div className="flex justify-between items-end mt-1.5 pt-1.5 border-t border-[#F8F6EE]">
+        <div className="flex justify-between items-end mt-1.5 pt-1.5 border-t border-divider">
           <div className="flex flex-col">
-            <span className="text-[9px] text-sub font-black leading-none">최저가</span>
+            <span className="text-[9px] text-text-secondary font-black leading-none">최저가</span>
             <PriceText price={product.lowestPrice} size="sm" className="mt-0.5" />
           </div>
 
           <div className="flex flex-col items-end">
             {product.priceDropAmount && product.priceDropAmount > 0 ? (
-              <span className="text-[10px] font-black text-price bg-price-bg px-2 py-0.5 rounded-full leading-none mb-0.5">
+              <span className="text-[10px] font-black text-discount bg-accent-soft px-2 py-0.5 rounded-full leading-none mb-0.5">
                 {priceDrop(product.priceDropAmount, true)}
               </span>
             ) : null}
-            <span className="text-[10px] text-sub font-black tracking-tight max-w-[150px] truncate leading-none">
+            <span className="text-[10px] text-text-secondary font-black tracking-tight max-w-[150px] truncate leading-none">
               {storeNames} 비교
             </span>
           </div>

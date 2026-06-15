@@ -17,8 +17,8 @@ export default function Button({
   
   const variantStyles =
     variant === 'primary'
-      ? 'bg-primary-dark hover:bg-opacity-95 text-white font-extrabold h-[54px] rounded-btn text-[16px]'
-      : 'bg-primary-light hover:bg-[#E2EAD9] text-primary-dark font-bold h-[46px] rounded-[14px] text-[14px]';
+      ? 'bg-primary border border-primary hover:bg-primary-hover hover:border-primary-hover active:bg-primary-dark active:border-primary-dark disabled:bg-[#D8CFCC] disabled:border-[#D8CFCC] text-white font-extrabold h-[54px] rounded-btn text-[16px]'
+      : 'bg-surface border border-accent hover:bg-accent-soft hover:border-accent text-primary disabled:bg-[#F1ECE8] disabled:text-[#A8A0A0] disabled:border-border font-bold h-[46px] rounded-[14px] text-[14px]';
 
   const widthStyles = fullWidth ? 'w-full' : 'px-6';
 

@@ -14,10 +14,10 @@ export default function ProductStickyFooter({ cheapestStore }: ProductStickyFoot
   };
 
   return (
-    <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] bg-white border-t border-line p-3 flex gap-3 z-40 shadow-[0_-5px_15px_rgba(0,0,0,0.04)]">
+    <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] bg-white border-t border-line p-3 flex gap-3 z-40 shadow-[0_-5px_15px_rgba(65,0,22,0.04)]">
       <button
         onClick={handleLikeClick}
-        className="h-[54px] w-[54px] border border-line rounded-btn flex items-center justify-center text-body active:scale-95 transition-transform shrink-0"
+        className="h-[54px] w-[54px] border border-line rounded-btn flex items-center justify-center text-[#A8A0A0] hover:text-primary active:scale-95 transition-all duration-200 shrink-0 select-none"
         aria-label="관심상품 저장"
       >
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
@@ -29,7 +29,7 @@ export default function ProductStickyFooter({ cheapestStore }: ProductStickyFoot
         href={cheapestStore ? cheapestStore.url : '#'}
         target="_blank"
         rel="sponsored nofollow"
-        className="flex-grow inline-flex items-center justify-center bg-primary-dark text-white font-extrabold text-[16px] h-[54px] rounded-btn shadow-md active:scale-[0.98] transition-transform"
+        className="flex-grow inline-flex items-center justify-center bg-primary hover:bg-primary-hover active:bg-primary-dark text-white font-extrabold text-[16px] h-[54px] rounded-btn shadow-md active:scale-[0.98] transition-all duration-150 select-none"
       >
         {cheapestStore
           ? `${won(cheapestStore.price)}에 최저가 구매`
