@@ -1,120 +1,122 @@
 import { Listing, Product, RetailerAllowlist, PriceSnapshot, PriceSnapshotStatus } from '../../lib/types';
 import { PriceOffer } from '../adapters/index';
+import { NormalizedPrice } from './normalize';
 
-interface HealthCheckResult {
+export interface HealthCheckResult {
   status: PriceSnapshotStatus;
   message: string | null;
   severity: 'info' | 'warning' | 'critical' | null;
 }
 
-/**
- * Validates a normalized price offer against health rules, allowlists, and historic limits.
- */
 export function runHealthCheck(
   product: Product,
   listing: Listing,
   offer: PriceOffer,
-  normalized: {
-    sale_price: number | null;
-    regular_price: number | null;
-    base_unit_price: number | null;
-    effective_unit_price: number | null;
-  },
+  normalized: NormalizedPrice,
   previousSnapshot: PriceSnapshot | null,
   allowlist: RetailerAllowlist[]
 ): HealthCheckResult {
-  const salePrice = normalized.sale_price;
-  const regularPrice = normalized.regular_price;
+  const { sale_price, regular_price, base_unit_price, effective_unit_price } = normalized;
 
-  // Rule 1: HTTP Error or missing prices
-  if (salePrice === null || salePrice === undefined) {
-    return {
-      status: 'failed',
-      message: 'Failed to extract sale price from page',
-      severity: 'warning',
-    };
+  // Rule 1: Missing price
+  if (sale_price === null || sale_price === undefined) {
+    return { status: 'failed', message: 'Failed to extract sale price from page', severity: 'warning' };
   }
 
-  // Rule 2: Non-positive or extremely low price (< 1,000 KRW)
-  if (salePrice < 1000) {
+  // Rule 2: Price < 1,000 KRW (parsing error)
+  if (sale_price < 1000) {
     return {
       status: 'failed',
-      message: `Extremely low price detected (${salePrice}원). Potential parsing error.`,
+      message: `Extremely low price (${sale_price}원) — likely a parsing error`,
       severity: 'critical',
     };
   }
 
-  // Rule 3: Math inconsistency (Regular price < Sale price)
-  if (regularPrice !== null && regularPrice < salePrice) {
+  // Rule 3: Regular price < Sale price (math error)
+  if (regular_price !== null && regular_price < sale_price) {
     return {
       status: 'failed',
-      message: `Regular price (${regularPrice}원) is lower than sale price (${salePrice}원)`,
+      message: `Regular price (${regular_price}원) < sale price (${sale_price}원)`,
       severity: 'warning',
     };
   }
 
-  // Rule 4: Promotion logic inconsistency (Effective price higher than base price)
+  // Rule 4: Effective promo price > base price (promo math error, e.g. 1+1가 > 기본가)
   if (
-    normalized.effective_unit_price !== null &&
-    normalized.base_unit_price !== null &&
-    normalized.effective_unit_price > normalized.base_unit_price
+    effective_unit_price !== null &&
+    base_unit_price !== null &&
+    effective_unit_price > base_unit_price
   ) {
     return {
       status: 'failed',
-      message: `Effective promo price (${normalized.effective_unit_price}원) is higher than base price (${normalized.base_unit_price}원)`,
+      message: `Effective promo price (${effective_unit_price}원) > base price (${base_unit_price}원)`,
       severity: 'warning',
     };
   }
 
-  // Rule 5: Naver Allowlist validation (DESIGN.md §4.1)
-  if (listing.seller_id === 3) { // Naver Seller ID is 3
+  // Rule 5: Volume mismatch (§1 compromise) — the price is real, so we do NOT
+  // gate it. The listing surfaces base/effective prices normally; only the
+  // ml-based unit_price is nulled in normalize (unit_price_reliable=false). The
+  // mismatch is routed to the inspection queue / volume-audit (§1b) as a warning.
+  if (normalized.volume_mismatch) {
+    return {
+      status: 'warning',
+      message: `Volume mismatch → inspection queue (price kept, unit_price disabled): ${normalized.volume_mismatch_detail}`,
+      severity: 'warning',
+    };
+  }
+
+  // Rule 6: parse_confidence=low (ambiguous promo)
+  if (normalized.parse_confidence === 'low') {
+    return {
+      status: 'warning',
+      message: `parse_confidence=low — price excluded from comparison. Source: "${offer.sourceText?.slice(0, 80)}"`,
+      severity: 'info',
+    };
+  }
+
+  // Rule 7: Naver allowlist check
+  if (listing.seller_id === 3) {
     const brandAllowlist = allowlist.filter(
-      (al) => al.seller_id === 3 && al.is_active && al.brand.toLowerCase() === product.brand?.toLowerCase()
+      (al) =>
+        al.seller_id === 3 &&
+        al.is_active &&
+        al.brand.toLowerCase() === product.brand?.toLowerCase()
     );
 
     if (brandAllowlist.length > 0 && offer.storeName) {
-      const isAllowed = brandAllowlist.some(
-        (al) => offer.storeName!.toLowerCase().includes(al.allowed_store_name.toLowerCase())
+      const isAllowed = brandAllowlist.some((al) =>
+        offer.storeName!.toLowerCase().includes(al.allowed_store_name.toLowerCase())
       );
 
       if (!isAllowed) {
         return {
           status: 'failed',
-          message: `Naver store name "${offer.storeName}" not found in allowlist for brand "${product.brand}"`,
+          message: `Naver store "${offer.storeName}" not in allowlist for brand "${product.brand}"`,
           severity: 'warning',
         };
       }
     }
   }
 
-  // Rule 6: Historic variance check (±50% compared to previous snapshot)
+  // Rule 8: ±50% price variance vs previous snapshot
   if (previousSnapshot && previousSnapshot.sale_price) {
-    const prevPrice = previousSnapshot.sale_price;
-    const pctChange = Math.abs((salePrice - prevPrice) / prevPrice);
-
-    if (pctChange >= 0.5) {
+    const prev = previousSnapshot.sale_price;
+    const pct = Math.abs((sale_price - prev) / prev);
+    if (pct >= 0.5) {
       return {
         status: 'warning',
-        message: `Historic price variance is >= 50% (Prev: ${prevPrice}원, Current: ${salePrice}원)`,
+        message: `Price variance ≥50% (prev ${prev}원 → current ${sale_price}원)`,
         severity: 'warning',
       };
     }
   }
 
-  return {
-    status: 'ok',
-    message: null,
-    severity: null,
-  };
+  return { status: 'ok', message: null, severity: null };
 }
 
-/**
- * Implements listing failure level gates based on consecutive failure counts.
- * E.g., keeps previous price on 1st crash, alerts on 2nd, hides on 3rd.
- */
 export function handleConsecutiveFailures(
-  listing: Listing,
-  previousSnapshot: PriceSnapshot | null
+  listing: Listing
 ): {
   fail_count: number;
   is_active: boolean;
@@ -127,25 +129,16 @@ export function handleConsecutiveFailures(
   let use_previous_price = false;
 
   if (newFailCount === 1) {
-    // 1st failure: Keep previous price as fallback to avoid immediate display blankout
     use_previous_price = true;
   } else if (newFailCount === 2) {
-    // 2nd failure: Send alert
     should_notify = true;
     use_previous_price = true;
   } else if (newFailCount === 3) {
-    // 3rd failure: Stop showing price (exclude listing from active listings)
     is_active = false;
     should_notify = true;
   } else if (newFailCount >= 5) {
-    // 5th failure: Flag for manual intervention
     should_notify = true;
   }
 
-  return {
-    fail_count: newFailCount,
-    is_active,
-    should_notify,
-    use_previous_price,
-  };
+  return { fail_count: newFailCount, is_active, should_notify, use_previous_price };
 }

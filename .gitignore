@@ -36,6 +36,11 @@ yarn-error.log*
 # vercel
 .vercel
 
+# live-check artifacts & inferred ground-truth (network/key-dependent dumps;
+# may contain affiliate tokens — keep out of git, regenerate locally)
+/scripts/live-check/artifacts/
+/scripts/live-check/expectations/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

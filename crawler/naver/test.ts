@@ -140,6 +140,7 @@ async function runTest() {
           base_unit_price: normalized.base_unit_price,
           effective_unit_price: normalized.effective_unit_price,
           unit_price: normalized.unit_price,
+          unit_price_reliable: normalized.unit_price_reliable,
           promo_type: normalized.promo_type,
           promo_text: normalized.promo_text,
           min_quantity: normalized.min_quantity,
@@ -151,6 +152,10 @@ async function runTest() {
           source_text: offer.sourceText,
           parse_confidence: normalized.parse_confidence,
           status: check.status,
+          shipping_fee: null,
+          shipping_note: normalized.shipping_note,
+          matched_url: offer.matchedUrl ?? null,
+          matched_mall_name: offer.matchedMallName ?? null,
         };
         successfulSnapshots.push(snapshot);
       }

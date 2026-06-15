@@ -1,4 +1,4 @@
-import { runSheetImport } from './sheets/import';
+﻿import { runSheetImport } from './sheets/import';
 import { CoupangAdapter, NaverAdapter, OliveYoungAdapter, RetailerAdapter, PriceOffer } from './adapters/index';
 import { applyManualOverrides, normalizePrice } from './core/normalize';
 import { runHealthCheck, handleConsecutiveFailures } from './core/healthcheck';
@@ -156,6 +156,7 @@ export async function crawlPipeline(): Promise<void> {
         base_unit_price: norm.base_unit_price,
         effective_unit_price: norm.effective_unit_price,
         unit_price: norm.unit_price,
+        unit_price_reliable: norm.unit_price_reliable,
         promo_type: norm.promo_type,
         promo_text: norm.promo_text,
         min_quantity: norm.min_quantity,
@@ -167,14 +168,24 @@ export async function crawlPipeline(): Promise<void> {
         source_text: offer.sourceText,
         parse_confidence: norm.parse_confidence,
         status: check.status,
+        shipping_fee: null,
+        shipping_note: norm.shipping_note,
+        matched_url: offer.matchedUrl ?? null,
+        matched_mall_name: offer.matchedMallName ?? null,
       };
+
+      // Cache the latest matched offer link on the listing (redirect fallback).
+      if (offer.matchedUrl) {
+        const matchIdx = updatedListings.findIndex((l) => l.id === listing.id);
+        if (matchIdx >= 0) updatedListings[matchIdx].latest_matched_url = offer.matchedUrl;
+      }
 
       if (check.status === 'failed') {
         console.error(`[Pipeline] Listing ${listing.link_key} failed health check: ${check.message}`);
         failureCount++;
         
         // Handle failure count increment
-        const failMgmt = handleConsecutiveFailures(listing, prevSnap);
+        const failMgmt = handleConsecutiveFailures(listing);
         const listIdx = updatedListings.findIndex((l) => l.id === listing.id);
         if (listIdx >= 0) {
           updatedListings[listIdx].fail_count = failMgmt.fail_count;
@@ -195,6 +206,9 @@ export async function crawlPipeline(): Promise<void> {
           snapshot.base_unit_price = prevSnap.base_unit_price;
           snapshot.effective_unit_price = prevSnap.effective_unit_price;
           snapshot.unit_price = prevSnap.unit_price;
+          snapshot.unit_price_reliable = prevSnap.unit_price_reliable;
+          snapshot.matched_url = prevSnap.matched_url;
+          snapshot.matched_mall_name = prevSnap.matched_mall_name;
           snapshot.promo_type = prevSnap.promo_type;
           snapshot.promo_text = prevSnap.promo_text;
           snapshot.status = 'warning';
@@ -220,8 +234,7 @@ export async function crawlPipeline(): Promise<void> {
       failureCount++;
 
       // Execute fail handler
-      const prevSnap = previousSnapshots.find((s) => s.listing_id === listing.id) || null;
-      const failMgmt = handleConsecutiveFailures(listing, prevSnap);
+      const failMgmt = handleConsecutiveFailures(listing);
       const listIdx = updatedListings.findIndex((l) => l.id === listing.id);
       if (listIdx >= 0) {
         updatedListings[listIdx].fail_count = failMgmt.fail_count;
@@ -237,7 +250,11 @@ export async function crawlPipeline(): Promise<void> {
     const prodSnaps = newSnapshots.filter(
       (s) =>
         prodListings.some((l) => l.id === s.listing_id) &&
-        s.status === 'ok' &&
+        // §1 compromise: a price-sound row stays comparable even with a volume
+        // mismatch (status='warning', unit_price_reliable=false). Its base/effective
+        // prices feed the lowest-price comparison; only ml-based unit_price (null
+        // here) is excluded. Genuinely bad rows (failed / low confidence / OOS) drop.
+        (s.status === 'ok' || (s.status === 'warning' && s.unit_price_reliable === false)) &&
         s.in_stock !== false &&
         s.parse_confidence !== 'low'
     );
@@ -261,7 +278,7 @@ export async function crawlPipeline(): Promise<void> {
       
       const cheapestListing = listings.find((l) => l.id === cheapest.listing_id);
       const cheapestSeller = cheapestListing ? sellers.find((s) => s.id === cheapestListing.seller_id) : null;
-      baseLowestSeller = cheapestSeller ? cheapestSeller.name : '미정';
+      baseLowestSeller = cheapestSeller ? cheapestSeller.name : '誘몄젙';
     }
 
     // Determine promotion-effective lowest unit price
@@ -280,7 +297,7 @@ export async function crawlPipeline(): Promise<void> {
 
       const cheapestListing = listings.find((l) => l.id === cheapestPromo.listing_id);
       const cheapestSeller = cheapestListing ? sellers.find((s) => s.id === cheapestListing.seller_id) : null;
-      promoLowestSeller = cheapestSeller ? cheapestSeller.name : '미정';
+      promoLowestSeller = cheapestSeller ? cheapestSeller.name : '誘몄젙';
     }
 
     currentPrices.push({
@@ -297,7 +314,7 @@ export async function crawlPipeline(): Promise<void> {
     });
   }
 
-  // Step 6: Recalculate Viewty Scores (DESIGN.md §8)
+  // Step 6: Recalculate Viewty Scores (DESIGN.md 짠8)
   console.log('[Pipeline] Calculating Viewty Scores...');
   const calculatedScores = recalculateViewtyScores(
     products,

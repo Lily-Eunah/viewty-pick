@@ -13,7 +13,16 @@
     "sheets:import": "tsx -r dotenv/config crawler/sheets/import.ts",
     "crawler:sync": "tsx -r dotenv/config crawler/run.ts",
     "crawler:test": "tsx -r dotenv/config crawler/run.ts --test",
-    "naver:test": "tsx -r dotenv/config crawler/naver/test.ts"
+    "naver:test": "tsx -r dotenv/config crawler/naver/test.ts",
+    "package:extract:test": "tsx crawler/core/packageExtractor.test.ts",
+    "test:normalize": "tsx crawler/core/__tests__/normalize.test.ts",
+    "test:healthcheck": "tsx crawler/core/__tests__/healthcheck.test.ts",
+    "test:naver": "tsx crawler/adapters/__tests__/naver.test.ts",
+    "test:coupang": "tsx crawler/adapters/__tests__/coupang.test.ts",
+    "test:all": "npm run test:normalize && npm run test:healthcheck && npm run test:naver && npm run test:coupang && npm run package:extract:test",
+    "live-check:coupang": "tsx -r dotenv/config scripts/live-check/live-check-coupang.ts",
+    "live-check:naver": "tsx -r dotenv/config scripts/live-check/live-check-naver.ts",
+    "live-check:normalize": "tsx -r dotenv/config scripts/live-check/live-check-normalize.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.1",

@@ -78,8 +78,14 @@ export function recalculateViewtyScores(
     // 2. Price Competitiveness (Max 35 points)
     // ==========================================
     const prodListings = listings.filter((l) => l.product_id === prod.id && l.is_active);
+    // §1 compromise: include volume-mismatch but price-sound rows (status='warning',
+    // unit_price_reliable=false) so base-price competitiveness (2.2) still counts them.
+    // The ml-percentile (2.1) reads productMlPrices, which already excludes them
+    // (unit_price=null), so they never leak into the ml-based scoring.
     const activeSnaps = snapshots.filter(
-      (s) => prodListings.some((l) => l.id === s.listing_id) && s.status === 'ok'
+      (s) =>
+        prodListings.some((l) => l.id === s.listing_id) &&
+        (s.status === 'ok' || (s.status === 'warning' && s.unit_price_reliable === false))
     );
 
     if (activeSnaps.length > 0) {

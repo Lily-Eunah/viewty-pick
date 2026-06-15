@@ -27,6 +27,10 @@ export interface Product {
   brand: string | null;
   category_id: number | null;
   volume_ml: number;
+  // §1b: when explicitly false, volume_ml is unverified (e.g. LLM-seeded default)
+  // → ml-based unit_price is disabled until an operator confirms the real volume.
+  // Absent/undefined keeps the legacy behavior (treated as usable).
+  volume_verified?: boolean;
   image_url: string | null;
   features: string | null;
   skin_types: string[]; // e.g. ['민감성', '지성', '건성', '수부지']
@@ -65,6 +69,7 @@ export interface Listing {
   crawl_enabled: boolean;
   crawl_method: CrawlMethod;
   last_crawled_at: string | null; // ISO Timestamp
+  latest_matched_url?: string | null; // cached Naver API matched offer link (redirect fallback)
   fail_count: number;
   is_active: boolean;
 }
@@ -108,12 +113,17 @@ export interface PriceSnapshot {
   free_quantity: number | null;
   total_quantity: number | null;
   total_ml: number | null;
-  unit_price: number | null; // ml당 가격
+  unit_price: number | null; // ml당 가격 — null when volume unreliable (§1)
+  unit_price_reliable: boolean; // false → exclude from ml-based ranking/score
   effective_unit_price: number | null; // 1+1 등 실질 개당 가격
   in_stock: boolean;
   source_text: string | null;
   parse_confidence: ParseConfidence;
   status: PriceSnapshotStatus;
+  shipping_fee: number | null;
+  shipping_note: string | null;
+  matched_url: string | null;       // link of the matched offer (audit / change detection)
+  matched_mall_name: string | null; // raw mallName of the matched offer
 }
 
 export interface CurrentPrice {
