@@ -97,4 +97,39 @@ Tool: `npm run ops:audit` (`scripts/ops/audit-phase-a.ts`) — selects only, zer
 
 ---
 
+## Phase B — progress 2026-06-15
+
+### Connectivity + history inspect (read-only) — DONE
+- Session pooler URI connects (`aws-1-ap-southeast-1.pooler.supabase.com:5432`).
+- `supabase migration list`: local 0001–0007 all show **empty Remote column** →
+  remote `schema_migrations` history is unsynced (migrations applied manually).
+  ⇒ `db push` is unsafe (would re-run `0001_init`). Apply target files directly.
+- **Schema probe (actual columns)** — wider gap than expected:
+  - `0004` price_snapshots.shipping_fee / shipping_note : **MISSING**
+  - `0005` price_snapshots.unit_price_reliable          : **MISSING**
+  - `0006` price_snapshots.matched_url / matched_mall_name / listings.latest_matched_url : **MISSING**
+  - ⇒ Remote schema is effectively at `0003`. **Apply `0004 → 0005 → 0006 → 0007`**
+    (all idempotent), not just 0006/0007 — sync/recompute need shipping_* and
+    unit_price_reliable too.
+
+### Backup (read-only) — DONE
+- `pg_dump` / `psql` not installed; `supabase db dump` needs Docker (not running).
+  → Used logical JSON export instead: `npm run ops:backup`
+  (`scripts/ops/backup-json.ts`), service-role/PostgREST, read-only.
+- Location: `backups/2026-06-15T06-08-53-012Z/` (gitignored). Row counts:
+  categories 7, sellers 5, products 47, listings 54, badges 1, product_badges 16,
+  price_snapshots 7, current_prices 3, retailer_allowlist 0, manual_overrides 0,
+  seo_pages 6, sheet_import_runs 11, crawl_runs 0, crawl_errors 0.
+- `0004–0007` are purely additive (ADD COLUMN IF NOT EXISTS + CHECK swap); they
+  don't modify/delete existing rows, so a data-level export is a sound safety net.
+
+### Apply method — DECISION NEEDED (CLI path blocked)
+- No `psql`, no `pg_dump`, no Docker → can't apply via CLI/psql locally.
+- Options:
+  - **(A) `pg` runner** — add `pg` devDependency + small script to run the four
+    SQL files over the session pooler in a transaction, then re-audit. Keeps it
+    automated + verified here.
+  - **(B) Dashboard SQL editor** — operator pastes 0004→0007; I verify via audit.
+- Both safe (idempotent additive DDL). Awaiting operator choice.
+
 ## Phases C–G — pending Phase B.
