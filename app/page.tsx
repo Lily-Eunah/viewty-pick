@@ -10,6 +10,7 @@ import ProductListCard from '../components/product/ProductListCard';
 import { getRecommendedProducts, getTodayBestPriceProducts, getProducts } from '../lib/queries';
 import { UIProduct } from '../lib/types';
 import { SkinTypeAndCategorySection } from '../components/home/SkinTypeAndCategorySection';
+import TodayDealSection from '../components/home/TodayDealSection';
 
 export default function Home() {
   const [selectedSkin, setSelectedSkin] = useState<string | null>(null);
@@ -131,29 +132,32 @@ export default function Home() {
         </section>
       )}
 
-      {/* Dynamic Recommendation list */}
-      <section className="px-4 py-4 bg-bg flex flex-col gap-3">
-        <h3 className="text-[15px] font-black text-title tracking-tight">
-          {selectedSkin ? `피부 고민 [${selectedSkin}] 추천 제품` : '오늘 가격 좋은 제품'}
-        </h3>
-        
-        {loading ? (
-          <div className="w-full h-32 flex justify-center items-center text-sub font-bold">
-            로딩 중...
-          </div>
-        ) : (
-          <div className="flex flex-col gap-2.5">
-            {(selectedSkin ? filteredProducts : bestDrops).map((prod) => (
-              <ProductListCard key={prod.id} product={prod} />
-            ))}
-            {!loading && (selectedSkin ? filteredProducts : bestDrops).length === 0 && (
-              <div className="w-full text-center py-12 text-sub font-bold border border-dashed border-line rounded-card bg-white">
-                조건에 맞는 제품이 없습니다.
-              </div>
-            )}
-          </div>
-        )}
-      </section>
+      {/* Today Deal Section / Skin recommendation list */}
+      {selectedSkin ? (
+        <section className="px-4 py-4 bg-bg flex flex-col gap-3">
+          <h3 className="text-[15px] font-black text-title tracking-tight">
+            피부 고민 [{selectedSkin}] 추천 제품
+          </h3>
+          {loading ? (
+            <div className="w-full h-32 flex justify-center items-center text-sub font-bold">
+              로딩 중...
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2.5">
+              {filteredProducts.map((prod) => (
+                <ProductListCard key={prod.id} product={prod} />
+              ))}
+              {filteredProducts.length === 0 && (
+                <div className="w-full text-center py-12 text-sub font-bold border border-dashed border-line rounded-card bg-white">
+                  조건에 맞는 제품이 없습니다.
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+      ) : (
+        <TodayDealSection products={bestDrops} loading={loading} />
+      )}
 
       {/* Bottom Legal disclaimer (DESIGN.md §12.3) */}
       <footer className="px-4 py-8 bg-[#F0EEE2] text-center flex flex-col gap-1.5 border-t border-line text-[11px] text-[#A2A08E] font-bold">
