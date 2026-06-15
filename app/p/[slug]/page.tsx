@@ -5,7 +5,7 @@ import ProductImage from '../../../components/common/ProductImage';
 import Badge from '../../../components/common/Badge';
 import PriceText from '../../../components/common/PriceText';
 import RecommendationReasonBox from '../../../components/product/RecommendationReasonBox';
-import StorePriceCard from '../../../components/product/StorePriceCard';
+import StorePriceList from '../../../components/product/StorePriceList';
 import PriceTable from '../../../components/product/PriceTable';
 import ProductCard from '../../../components/product/ProductCard';
 import ProductStickyFooter from '../../../components/product/ProductStickyFooter';
@@ -190,17 +190,13 @@ export default async function ProductDetailPage({ params }: PageProps) {
           판매처별 최저가 비교
         </h3>
         
-        <div className="flex flex-col gap-2.5">
-          {product.stores.length === 0 ? (
-            <div className="text-center py-8 text-sub font-bold bg-white border border-line rounded-card">
-              현재 구매 가능한 활성 판매처가 없습니다.
-            </div>
-          ) : (
-            product.stores.map((store, idx) => (
-              <StorePriceCard key={idx} store={store} />
-            ))
-          )}
-        </div>
+        {product.stores.length === 0 ? (
+          <div className="text-center py-8 text-sub font-bold bg-surface border border-line rounded-card">
+            현재 구매 가능한 활성 판매처가 없습니다.
+          </div>
+        ) : (
+          <StorePriceList stores={product.stores} />
+        )}
       </section>
 
       {/* 6. Comparison Table (detailed breakdown) */}

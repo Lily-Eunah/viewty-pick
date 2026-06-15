@@ -274,11 +274,6 @@ export default function Home() {
             );
           })}
         </div>
-      </section>trokeWidth={3} stroke="currentColor" className="w-3.5 h-3.5 text-sub">
-              <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
-            </svg>
-          </Link>
-        </div>
       </section>
 
       {/* TOP 10 Carousel section */}
