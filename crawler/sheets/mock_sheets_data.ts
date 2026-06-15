@@ -92,12 +92,19 @@ export const mockBadgesSheet = [
 ];
 
 // seller (enum) instead of seller_code
+// oliveyoung rows: allowed_store_name='올리브영' is the Naver-Shopping mallName
+// anchor for the OliveYoung offer (§4 live-validated value).
 export const mockAllowlistSheet = [
   { seller: 'naver', brand: '몽디에스',   allowed_store_name: '몽디에스 공식스토어' },
   { seller: 'naver', brand: '동화약품',   allowed_store_name: '동화약품 공식몰'     },
   { seller: 'naver', brand: '이니스프리', allowed_store_name: '이니스프리 공식몰'   },
   { seller: 'naver', brand: '조선미녀',   allowed_store_name: '조선미녀 공식몰'     },
   { seller: 'naver', brand: '넘버즈인',   allowed_store_name: '넘버즈인 공식몰'     },
+  { seller: 'oliveyoung', brand: '스타라이크', allowed_store_name: '올리브영' },
+  { seller: 'oliveyoung', brand: '아로셀',     allowed_store_name: '올리브영' },
+  { seller: 'oliveyoung', brand: '이니스프리', allowed_store_name: '올리브영' },
+  { seller: 'oliveyoung', brand: '조선미녀',   allowed_store_name: '올리브영' },
+  { seller: 'oliveyoung', brand: '넘버즈인',   allowed_store_name: '올리브영' },
 ];
 
 // product_name + seller instead of product_key + seller_code
