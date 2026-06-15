@@ -33,14 +33,9 @@ async function fetchSheet(spreadsheetId: string, range: string): Promise<Record<
   });
 }
 
-// Stable product key from brand + name (djb2 hash → base36)
-function makeProductKey(brand: string, name: string): string {
-  let h = 5381;
-  for (const c of `${brand.trim()}|${name.trim()}`) {
-    h = (Math.imul(h, 33) ^ c.charCodeAt(0)) >>> 0;
-  }
-  return 'p' + h.toString(36);
-}
+// makeProductKey / buildNameToKey / expandListings now live in ./validate as the
+// single source of truth shared with duplicate detection.
+const makeProductKey = v.makeProductKey;
 
 // Seller defaults applied automatically
 const SELLER_META: Record<string, { crawl_method: 'api' | 'playwright' | 'naver_sourced'; store_name: string }> = {
@@ -118,29 +113,29 @@ export async function runSheetImport(): Promise<ImportStats> {
     rawSeoPages   = mockSheets.mockSeoPagesSheet;
   }
 
-  // ── Build product_key map from raw products (name → key) ──────────────────
-  const nameToKey = new Map<string, string>();
-  for (const row of rawProducts) {
-    const p = v.simpleProductRowSchema.safeParse(row);
-    if (!p.success) continue;
-    const key = p.data.product_key?.trim() || makeProductKey(p.data.brand, p.data.name);
-    nameToKey.set(p.data.name.trim(), key);
+  // ── Fail-fast: reject duplicate product_key / link_key / url before writing ─
+  // A dirty sheet (same product seeded under two key schemes, or one url reused
+  // across link_keys) is the root cause of DB duplicates. Refuse to import it so
+  // re-import can never resurrect duplicates. (Runbook Part 1 §2.1)
+  const dupReport = v.detectSheetDuplicates(rawProducts, rawLinks);
+  if (v.hasDuplicates(dupReport)) {
+    const report = v.formatDuplicateReport(dupReport);
+    console.error('[Sheet Import] ABORT — duplicate keys/urls detected in sheet:\n' + report);
+    stats.errorCount++;
+    stats.errors.push('Duplicate detection failed — import aborted:\n' + report);
+    if (useSupabase) {
+      await supabaseServer.from('sheet_import_runs').insert({
+        started_at: startedAt, finished_at: new Date().toISOString(), status: 'failed',
+        products_count: 0, links_count: 0, badges_count: 0, error_count: stats.errorCount,
+        summary: { error: 'duplicate_detection_failed', duplicates: dupReport },
+      });
+    }
+    return stats;
   }
 
-  // ── Expand wide product_links rows → flat listing records ─────────────────
-  interface FlatListing { link_key: string; product_key: string; seller: string; url: string }
-  const flatListings: FlatListing[] = [];
-  for (const row of rawLinks) {
-    const r = v.productLinksWideRowSchema.safeParse(row);
-    if (!r.success) continue;
-    const productKey = nameToKey.get(r.data.product_name.trim());
-    if (!productKey) continue;
-    for (const seller of ['oliveyoung', 'coupang', 'naver', 'zigzag', 'ably'] as const) {
-      const url = r.data[seller]?.trim();
-      if (!url) continue;
-      flatListings.push({ link_key: `${seller}_${productKey}`, product_key: productKey, seller, url });
-    }
-  }
+  // ── Build product_key map + expand wide rows → flat listings (shared) ──────
+  const nameToKey = v.buildNameToKey(rawProducts);
+  const flatListings = v.expandListings(rawLinks, nameToKey);
 
   // ==========================================================================
   // PATH A — Supabase
