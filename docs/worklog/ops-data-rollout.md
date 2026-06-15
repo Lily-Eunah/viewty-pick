@@ -208,9 +208,22 @@ Tool: `npm run ops:audit` (`scripts/ops/audit-phase-a.ts`) — selects only, zer
   shows active only). Optional cleanup.
 - OliveYoung tier-4 UI (link-only) still not rendered (§7.4 runbook follow-up).
 
-## Phase F — current_prices recompute (full)
-- Done implicitly for the 5 subset products by Phase E. Full recompute for all 39
-  active products requires a full `crawler:sync` (≈39 Naver searches + capped
-  coupang). Pending operator go to expand from limited → full sync.
+### Follow-up (BLOCKING for daily automation): fail_count vs legitimate no-match
+- `healthcheck.ts` Rule 1 marks any null sale_price as `status='failed'`. A tier-4
+  OliveYoung link-only (curator URL, no Naver offer) and a legitimate Naver
+  no-match are indistinguishable from a real fetch failure → `fail_count++`.
+- `handleConsecutiveFailures`: fail 3 → `is_active=false`. So a legitimately
+  link-only/no-match listing **auto-deactivates after 3 consecutive daily runs.**
+- Single manual run is safe (each listing +1 only: 0→1). **Must fix before daily
+  scheduling**: add a distinct `link_only`/`no_offer` status that does not
+  increment fail_count (and exclude tier-4 OY / Naver-no-match from the failure
+  path). Until fixed, do NOT enable daily automation.
+
+## Phase F — current_prices recompute (full sync)
+- Estimate from 5-product sample (small n): Naver match ~60%, product-has-price
+  ~80% → ~31/39 with a price, ~8 link-only/no-price.
+- Running `crawler:sync --skip-import --max-coupang=0` (coupang fully skipped —
+  share-link URLs can't yield a product id and would pollute fail_count; Discord
+  summary ON) over all 39 products / 127 listings, in background.
 
 ## Phase G — e2e verify — pending full sync.
