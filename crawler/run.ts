@@ -499,11 +499,14 @@ export async function crawlPipeline(): Promise<void> {
     try {
       console.log('[Pipeline] Persisting snapshots and current prices to Supabase...');
       
-      // Update listing fail counts
+      // Update listing fail counts + cached matched-offer link (redirect fallback).
+      // latest_matched_url is the Coupang search deeplink / Naver matched link; it
+      // must be persisted or the /go redirect can never fall back to it.
       for (const list of updatedListings) {
         await supabaseServer.from('listings').update({
           fail_count: list.fail_count,
           is_active: list.is_active,
+          latest_matched_url: list.latest_matched_url ?? null,
         }).eq('id', list.id);
       }
 
@@ -555,7 +558,9 @@ export async function crawlPipeline(): Promise<void> {
     // Merge updates
     db.listings = db.listings.map((orig) => {
       const updated = updatedListings.find((l) => l.id === orig.id);
-      return updated ? { ...orig, fail_count: updated.fail_count, is_active: updated.is_active } : orig;
+      return updated
+        ? { ...orig, fail_count: updated.fail_count, is_active: updated.is_active, latest_matched_url: updated.latest_matched_url ?? orig.latest_matched_url ?? null }
+        : orig;
     });
 
     db.products = db.products.map((orig) => {
