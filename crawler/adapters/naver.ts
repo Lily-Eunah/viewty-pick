@@ -321,6 +321,8 @@ export class NaverAdapter implements RetailerAdapter {
         matchedUrl: null,
         matchedMallName: null,
         matchExcluded: true,
+        // Search SUCCEEDED but no official-mall offer exists → not a failure.
+        outcome: 'no_offer',
       };
     }
 
@@ -339,6 +341,7 @@ export class NaverAdapter implements RetailerAdapter {
       parsedVolumeRaw: result.parsedVolumeRaw,
       matchedUrl: item.link || null,
       matchedMallName: item.mallName || null,
+      outcome: 'ok',
     };
   }
 }
