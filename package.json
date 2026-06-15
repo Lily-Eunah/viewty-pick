@@ -23,6 +23,7 @@
     "test:all": "npm run test:normalize && npm run test:healthcheck && npm run test:naver && npm run test:coupang && npm run test:oliveyoung && npm run package:extract:test",
     "live-check:coupang": "tsx -r dotenv/config scripts/live-check/live-check-coupang.ts",
     "live-check:naver": "tsx -r dotenv/config scripts/live-check/live-check-naver.ts",
+    "live-check:oliveyoung": "tsx -r dotenv/config scripts/live-check/live-check-oliveyoung.ts",
     "live-check:normalize": "tsx -r dotenv/config scripts/live-check/live-check-normalize.ts"
   },
   "dependencies": {
