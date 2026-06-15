@@ -4,7 +4,7 @@ import { google } from 'googleapis';
 const HEADERS: Record<string, string[]> = {
   categories:         ['slug', 'name', 'sort_order'],
   products:           ['product_key', 'name', 'brand', 'category', 'volume_ml', 'skin_types', 'features', 'hwahae_url', 'image_url', 'is_disabled'],
-  product_links:      ['product_name', 'oliveyoung', 'coupang', 'naver', 'zigzag', 'ably'],
+  product_links:      ['product_name', 'brand', 'oliveyoung', 'coupang', 'naver', 'zigzag', 'ably'],
   badges:             ['product_name', 'badge_type', 'detail', 'source_title', 'ref_url', 'source_date'],
   retailer_allowlist: ['seller', 'brand', 'allowed_store_name'],
   manual_overrides:   ['product_name', 'seller', 'override_type', 'value', 'reason', 'expires_at'],
