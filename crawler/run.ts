@@ -17,23 +17,51 @@ export async function crawlPipeline(): Promise<void> {
     console.log('[Pipeline] Enforcing TEST/MOCK mode via CLI argument.');
   }
 
+  // CLI options for limited / controlled runs (ops rollout Phase E):
+  //   --only=key1,key2   restrict to these product_keys (scopes ALL writes:
+  //                      snapshots, scores, current_prices, listing updates —
+  //                      other active products are left untouched)
+  //   --skip-import      skip the Step-1 sheet import
+  //   --max-coupang=N    crawl at most N coupang listings (hourly-limit / timeout)
+  //   --no-notify        suppress Discord summary + critical alerts
+  const argv = (typeof process !== 'undefined' && process.argv) ? process.argv : [];
+  const getArg = (name: string): string | undefined => {
+    const hit = argv.find((a) => a.startsWith(`--${name}=`));
+    return hit ? hit.slice(name.length + 3) : undefined;
+  };
+  const onlyKeys = getArg('only')?.split(',').map((s) => s.trim()).filter(Boolean) ?? null;
+  const skipImport = argv.includes('--skip-import');
+  const maxCoupangRaw = getArg('max-coupang');
+  const maxCoupang = maxCoupangRaw ? parseInt(maxCoupangRaw, 10) : Infinity;
+  const notifyEnabled = !argv.includes('--no-notify');
+  const isPlaceholder = (v?: string) => !v || /placeholder|example|dummy|your-/.test(v);
+  const coupangConfigured = !isPlaceholder(process.env.COUPANG_ACCESS_KEY) && !isPlaceholder(process.env.COUPANG_SECRET_KEY);
+  let coupangCount = 0;
+
   const startTime = Date.now();
   console.log('[Pipeline] Starting daily price sync pipeline...');
+  if (onlyKeys) console.log(`[Pipeline] LIMITED MODE — only products: ${onlyKeys.join(', ')}`);
+  if (skipImport) console.log('[Pipeline] --skip-import set: skipping sheet import');
+  if (maxCoupangRaw) console.log(`[Pipeline] --max-coupang=${maxCoupang}`);
+  if (!coupangConfigured) console.log('[Pipeline] Coupang API key not configured — coupang listings will be skipped');
+  if (!notifyEnabled) console.log('[Pipeline] --no-notify set: Discord summary/alerts suppressed');
 
   // Fresh Naver Shopping search cache per run (brand store + OliveYoung listings
   // of the same product share one search → one API call per product).
   clearNaverSearchCache();
 
-  // Step 1: Run Sheet Import
-  try {
-    const importStats = await runSheetImport();
-    if (importStats.errorCount > 0) {
-      console.warn(`[Pipeline] Sheet import finished with ${importStats.errorCount} validation warnings.`);
+  // Step 1: Run Sheet Import (skippable for limited/controlled runs)
+  if (!skipImport) {
+    try {
+      const importStats = await runSheetImport();
+      if (importStats.errorCount > 0) {
+        console.warn(`[Pipeline] Sheet import finished with ${importStats.errorCount} validation warnings.`);
+      }
+    } catch (e: unknown) {
+      const err = e as Error;
+      console.error('[Pipeline] Sheet Import failed. Proceeding with existing database state...', err);
+      if (notifyEnabled) await sendCriticalAlarm('Sheet Import Failure', `Import run crashed: ${err.message}`);
     }
-  } catch (e: unknown) {
-    const err = e as Error;
-    console.error('[Pipeline] Sheet Import failed. Proceeding with existing database state...', err);
-    await sendCriticalAlarm('Sheet Import Failure', `Import run crashed: ${err.message}`);
   }
 
   const useSupabase = isSupabaseServerConfigured();
@@ -100,6 +128,19 @@ export async function crawlPipeline(): Promise<void> {
     previousSnapshots = db.price_snapshots;
   }
 
+  // Limited mode: restrict to the selected products so that aggregation, scores,
+  // current_prices and listing updates downstream all operate on this subset
+  // only — the other active products are not read or written this run.
+  if (onlyKeys) {
+    const keep = new Set(onlyKeys);
+    products = products.filter((p) => keep.has(p.product_key));
+    const keepIds = new Set(products.map((p) => p.id));
+    listings = listings.filter((l) => keepIds.has(l.product_id));
+    const missing = onlyKeys.filter((k) => !products.some((p) => p.product_key === k));
+    if (missing.length) console.warn(`[Pipeline] --only keys not found among active products: ${missing.join(', ')}`);
+    console.log(`[Pipeline] Limited to ${products.length} products / ${listings.length} listings.`);
+  }
+
   // Step 3: Initialize Adapters
   const adapters: Record<string, RetailerAdapter> = {
     oliveyoung: new OliveYoungAdapter(),
@@ -131,6 +172,20 @@ export async function crawlPipeline(): Promise<void> {
       console.warn(`[Pipeline] No adapter found for seller slug: ${seller.slug}. Skipping.`);
       failureCount++;
       continue;
+    }
+
+    // Coupang gate: skip if no API key, and cap calls per run (hourly limit /
+    // command timeout). Skipped, not failed — no fail_count increment.
+    if (seller.slug === 'coupang') {
+      if (!coupangConfigured) {
+        console.log(`[Pipeline] Skip coupang ${listing.link_key} — no API key.`);
+        continue;
+      }
+      if (coupangCount >= maxCoupang) {
+        console.log(`[Pipeline] Skip coupang ${listing.link_key} — max-coupang=${maxCoupang} reached.`);
+        continue;
+      }
+      coupangCount++;
     }
 
     let offer: PriceOffer;
@@ -200,7 +255,7 @@ export async function crawlPipeline(): Promise<void> {
           updatedListings[listIdx].is_active = failMgmt.is_active;
         }
 
-        if (failMgmt.should_notify) {
+        if (failMgmt.should_notify && notifyEnabled) {
           await sendCriticalAlarm(
             `Listing Failed Gating: ${listing.link_key}`,
             `Error: ${check.message}\nFail count: ${failMgmt.fail_count}\nIs Active: ${failMgmt.is_active}`
@@ -391,7 +446,7 @@ export async function crawlPipeline(): Promise<void> {
     } catch (e: unknown) {
       const err = e as Error;
       console.error('[Pipeline] Supabase persistence crashed:', err);
-      await sendCriticalAlarm('Supabase Pipeline Error', `Failed to write crawl results: ${err.message}`);
+      if (notifyEnabled) await sendCriticalAlarm('Supabase Pipeline Error', `Failed to write crawl results: ${err.message}`);
       return;
     }
   } else {
@@ -439,13 +494,15 @@ export async function crawlPipeline(): Promise<void> {
 
   // Step 9: Send Daily Alerting Summary
   const duration = (Date.now() - startTime) / 1000;
-  await sendDailySummary({
-    totalLinks: listings.length,
-    successCount,
-    warningCount,
-    failureCount,
-    durationSeconds: duration,
-  });
+  if (notifyEnabled) {
+    await sendDailySummary({
+      totalLinks: listings.length,
+      successCount,
+      warningCount,
+      failureCount,
+      durationSeconds: duration,
+    });
+  }
 
   console.log(`[Pipeline] Sync complete! Success rate: ${Math.round((successCount / listings.length) * 100)}%`);
 }
