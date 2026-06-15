@@ -9,18 +9,16 @@ import StorePriceList from '../../../components/product/StorePriceList';
 import PriceTable from '../../../components/product/PriceTable';
 import ProductCard from '../../../components/product/ProductCard';
 import ProductStickyFooter from '../../../components/product/ProductStickyFooter';
-import { getProductBySlug, getProducts } from '../../../lib/queries';
+import { getProductDetailPageData } from '../../../lib/queries';
 import { priceDrop } from '../../../lib/format';
-import { UIProduct } from '../../../lib/types';
 
 interface PageProps {
   params: Promise<{ slug: string }>;
 }
 
 export async function generateMetadata({ params }: PageProps) {
-  const resolvedParams = await params;
-  const slug = resolvedParams.slug;
-  const product = await getProductBySlug(slug);
+  const { slug } = await params;
+  const { product } = await getProductDetailPageData(slug);
 
   if (!product) {
     return {
@@ -39,20 +37,8 @@ export async function generateMetadata({ params }: PageProps) {
 }
 
 export default async function ProductDetailPage({ params }: PageProps) {
-  const resolvedParams = await params;
-  const slug = resolvedParams.slug;
-
-  const product = await getProductBySlug(slug);
-  let relatedProducts: UIProduct[] = [];
-
-  if (product) {
-    try {
-      const allProds = await getProducts({ category: product.category });
-      relatedProducts = allProds.filter((p) => p.id !== product.id).slice(0, 4);
-    } catch (e) {
-      console.error('Failed to load related products', e);
-    }
-  }
+  const { slug } = await params;
+  const { product, related: relatedProducts } = await getProductDetailPageData(slug);
 
   if (!product) {
     return (
