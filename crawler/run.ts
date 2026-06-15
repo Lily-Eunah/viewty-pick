@@ -157,6 +157,11 @@ export async function crawlPipeline(): Promise<void> {
   // listings that had a real price last run and now legitimately have no offer.
   let noOfferCount = 0;
   const disappearedOffers: string[] = [];
+  // DATA_ERROR bookkeeping — operator-facing data problems (e.g. a Coupang
+  // share short-link with no productId). Not failures: fail_count stays 0 and
+  // the listing stays active (link-only); surfaced in the daily summary so the
+  // operator fixes the sheet URL.
+  const dataErrors: string[] = [];
 
   // Step 4: Crawl Prices Listing by Listing
   console.log(`[Pipeline] Beginning crawl of ${listings.length} active listings...`);
@@ -206,15 +211,21 @@ export async function crawlPipeline(): Promise<void> {
       // priced data (healthcheck 'failed') advance the §4.4 failure staircase.
       const outcome: FetchOutcome = offer.outcome ?? (offer.matchExcluded ? 'no_offer' : 'ok');
 
-      if (outcome === 'no_offer') {
-        // OK_NO_OFFER: reset the failure streak, keep the listing active.
-        const res = resolveListingOutcome(listing, 'no_offer');
+      if (outcome === 'no_offer' || outcome === 'data_error') {
+        // Both are successful (or skipped) fetches with no qualified offer: reset
+        // the failure streak and keep the listing active (link-only). data_error
+        // additionally records an operator-facing data problem.
+        const res = resolveListingOutcome(listing, outcome);
         const listIdx = updatedListings.findIndex((l) => l.id === listing.id);
         if (listIdx >= 0) {
           updatedListings[listIdx].fail_count = res.fail_count;
           updatedListings[listIdx].is_active = res.is_active;
         }
-        noOfferCount++;
+        if (outcome === 'data_error') {
+          dataErrors.push(`${product.name} @ ${seller.name} (${listing.link_key}): ${offer.sourceText ?? 'data error'}`);
+        } else {
+          noOfferCount++;
+        }
 
         // Trust-first: if this listing had a real price last run, drop it (no
         // stale carry-over) and surface the transition as a daily-summary INFO
@@ -590,6 +601,7 @@ export async function crawlPipeline(): Promise<void> {
       durationSeconds: duration,
       noOfferCount,
       disappearedOffers,
+      dataErrors,
     });
   }
 
