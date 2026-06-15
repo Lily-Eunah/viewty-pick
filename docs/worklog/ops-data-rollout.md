@@ -176,4 +176,41 @@ Tool: `npm run ops:audit` (`scripts/ops/audit-phase-a.ts`) — selects only, zer
 
 ## Phase C — n/a (prune disabled; reconcile converged DB as planned).
 
-## Phases E–G — pending Phase D.
+## Phase E — limited live sync — DONE 2026-06-15
+
+- Added scoped subset mode to `crawler/run.ts`: `--only=<keys>` (scopes ALL
+  writes to the subset), `--skip-import`, `--max-coupang=N`, `--no-notify`.
+- Ran: `crawler:sync --only=p8veeo9,p1xe9jfw,p4yux6n,p1iafa5k,p7eg0l0
+  --skip-import --max-coupang=1 --no-notify` (몽디에스, 조선미녀, 넘버즈인, 아로셀,
+  이니스프리). 5 products / 16 listings.
+- **Verify** (price_snapshots 7 → 13, +6):
+  - matched_url + matched_mall_name populated on all 6 (0006 fields work).
+  - OliveYoung tier-2 (price via Naver): 조선미녀 14400, 넘버즈인 24900 (mall=올리브영).
+  - OliveYoung tier-4 gap: 이니스프리 OY — no Naver OY offer → no price (link_only),
+    as designed.
+  - Volume compromise (§1): 아로셀 OY status=warning, unit_price_reliable=false,
+    price kept (25000); base/effective stay comparable, ml unit excluded.
+  - parse_confidence=high on successes. Naver mismatches (몽디에스, 넘버즈인 naver)
+    failed gating (no price shown) — correct (DESIGN #4).
+  - current_prices updated for 4 subset products (아로셀 base=10900 네이버 < OY 25000;
+    조선미녀/넘버즈인=올리브영; 이니스프리=네이버). 몽디에스 none (both listings failed).
+  - **Subset isolation confirmed**: non-subset current_prices retain 2026-06-12
+    timestamp — untouched. Discord suppressed.
+- Coupang: short-link URLs (`link.coupang.com/a/...`) can't yield a product id →
+  coupang failed for the 1 attempted; cap worked (others skipped). Coupang
+  coverage is a separate data issue (sheet has share links, not product URLs).
+
+### Follow-ups (non-blocking)
+- `crawl_runs` never populated (0 at Phase A and after run): `run.ts` inserts
+  `started_at: Date.now()` (epoch ms) into timestamptz with an unchecked insert
+  error → silent no-op. Fix: ISO string + check error. (pre-existing)
+- 3 stale `current_prices` rows on now-deactivated products 1–3 (harmless; UI
+  shows active only). Optional cleanup.
+- OliveYoung tier-4 UI (link-only) still not rendered (§7.4 runbook follow-up).
+
+## Phase F — current_prices recompute (full)
+- Done implicitly for the 5 subset products by Phase E. Full recompute for all 39
+  active products requires a full `crawler:sync` (≈39 Naver searches + capped
+  coupang). Pending operator go to expand from limited → full sync.
+
+## Phase G — e2e verify — pending full sync.
