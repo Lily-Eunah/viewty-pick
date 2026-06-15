@@ -55,6 +55,10 @@ export default async function ProductDetailPage({ params }: PageProps) {
   // Get cheapest store to feed the sticky buy button
   const cheapestStore = product.stores.find((s) => s.isBest) || product.stores[0] || null;
 
+  // Coupang Partners compliance (DESIGN §12 / §1.5): the required disclosure must
+  // appear on any page that carries a Coupang link.
+  const hasCoupangStore = product.stores.some((s) => s.sellerSlug === 'coupang');
+
   // JSON-LD structured data (Product + AggregateOffer)
   const displayableOffers = product.stores;
   const basePrices = displayableOffers.map((s) => s.price).filter((p) => p > 0);
@@ -182,6 +186,13 @@ export default async function ProductDetailPage({ params }: PageProps) {
           </div>
         ) : (
           <StorePriceList stores={product.stores} />
+        )}
+
+        {/* Coupang Partners disclosure — required on any page with a Coupang link */}
+        {hasCoupangStore && (
+          <p className="text-[10px] text-sub font-semibold leading-relaxed mt-1">
+            이 페이지는 쿠팡 파트너스 활동의 일환으로, 이에 따라 일정액의 수수료를 제공받습니다.
+          </p>
         )}
       </section>
 
