@@ -13,10 +13,11 @@ import { loadMockDB } from '../../lib/supabase/mockDb';
 // productId equals the productId in the listing's product-detail URL — an exact
 // anchor so the price+deeplink come from the same, correct product.
 //
-// Rate limit: search API = 10 calls/hour → MIN_CALL_INTERVAL_MS (360s) is
-// enforced between successive calls. One call per product ⇒ a full Coupang sync
-// of ~40 products takes hours; the operator runs Coupang on a separate/async
-// cadence (see worklog §rate-limit).
+// Rate limit: the Partners search API allows 50 calls/min (per the official doc:
+// "1분당 최대 50번"). MIN_CALL_INTERVAL_MS (default 2000ms ⇒ ≤30/min, a safe
+// margin) is enforced between successive calls. One call per product ⇒ a full
+// Coupang sync of ~40 products takes ~80s. (The earlier "10/hour → 360s"
+// assumption was outdated.)
 //
 // HMAC signing: the signed-date MUST be `yyMMdd'T'HHmmss'Z'` (with the literal
 // T and Z). The earlier adapter stripped them and got HTTP 401.
@@ -25,10 +26,11 @@ import { loadMockDB } from '../../lib/supabase/mockDb';
 const COUPANG_API_BASE = 'https://api-gateway.coupang.com';
 const SEARCH_PATH = '/v2/providers/affiliate_open_api/apis/openapi/v1/products/search';
 
-// Minimum delay between consecutive Coupang API calls (6 min = 10 calls/hour).
-// Can be overridden in env for testing.
+// Minimum delay between consecutive Coupang search calls. Default 2000ms keeps
+// us at ≤30 calls/min, safely under the 50/min search-API limit. Override via
+// COUPANG_RATE_LIMIT_DELAY_MS.
 export const MIN_CALL_INTERVAL_MS = parseInt(
-  process.env.COUPANG_RATE_LIMIT_DELAY_MS ?? '360000',
+  process.env.COUPANG_RATE_LIMIT_DELAY_MS ?? '2000',
   10
 );
 
@@ -167,7 +169,7 @@ async function searchCoupang(
   accessKey: string,
   secretKey: string
 ): Promise<CoupangApiItem[]> {
-  // Enforce the 10-calls/hour rate limit between successive calls.
+  // Enforce the search-API rate limit (50/min) with a safe margin between calls.
   const now = Date.now();
   const elapsed = now - lastCallAt;
   if (elapsed < MIN_CALL_INTERVAL_MS && lastCallAt !== 0) {
@@ -177,7 +179,9 @@ async function searchCoupang(
   }
   lastCallAt = Date.now();
 
-  const queryString = `keyword=${encodeURIComponent(keyword)}&limit=20`;
+  // limit max is 10 per the API doc ("최대 상품 수는 10개"); a larger value makes
+  // the API return an empty productData, which would look like a (false) no_offer.
+  const queryString = `keyword=${encodeURIComponent(keyword)}&limit=10`;
   const auth = buildAuthHeader('GET', SEARCH_PATH, queryString, accessKey, secretKey);
 
   const res = await fetch(`${COUPANG_API_BASE}${SEARCH_PATH}?${queryString}`, {
