@@ -109,6 +109,50 @@ export function productIdentityScore(title: string, name: string): number {
   return found / nameTokens.length;
 }
 
+// ---------------------------------------------------------------------------
+// Single-SKU vs set/bundle/multipack classification (fix/naver-sku-matching).
+//
+// WHY: matching used to take the highest-relevance official-mall offer passing a
+// 0.5 title-similarity gate. For premium/curated products that top offer is
+// frequently a 선물세트 / 기획 / 더블팩 / 2종세트 / 1+1·리필 bundle, NOT the curated
+// single SKU — so a set price (or a mis-derived per-unit price) was shown as if it
+// were the product. productId anchoring is impossible here (the curated
+// brand.naver.com / naver.me channel-product-number is a different namespace from
+// the Shopping API mall-product links — verified), so the only reliable lever is
+// to classify each offer and PREFER a comparable single, EXCLUDING sets/multipacks
+// from price comparison (trust-first: show no price rather than a wrong one).
+// ---------------------------------------------------------------------------
+const SET_KEYWORDS = /(선물\s*세트|기획\s*세트|세트\s*구성|더블\s*기획|더블팩|2종|3종|4종|콜렉션|컬렉션|패키지|한정|리필|세트)/;
+const MULTIPACK_COUNT = /(\d+)\s*(?:개|팩|병|입|매)/; // \b不可: 한글은 \w가 아님
+// Parentheticals that are PURE non-unit freebies (no extra sellable unit) — safe
+// to ignore. A "(+...ml ...)" / "(+리필…)" / "(+세럼 7ml*2)" is NOT here: an added
+// item that carries its own product is treated as a bundle below.
+const PURE_GIFT_PAREN = /\([^)]*(?:쇼핑백|파우치|에코백|키트|사은품|증정품)[^)]*\)/g;
+
+export type OfferComposition = { kind: 'single' | 'set'; reason: string };
+
+/**
+ * Classify a Naver offer title as a comparable single unit or a set/multipack.
+ * A single 30ml with a pure freebie (쇼핑백/파우치) is still a single; but anything
+ * that combines an extra sellable item — a leftover "+" (1+1·리필·세럼+디바이스),
+ * a ×N multiplier, an N개/팩 count (N≥2), or a set keyword — is a non-single offer
+ * whose listed price is NOT the product's unit price, so it is excluded from
+ * comparison (trust-first: show no price rather than a set price).
+ */
+export function classifyOfferComposition(title: string): OfferComposition {
+  const t = stripHtml(title || '')
+    .replace(/SPF\s*\d+\+*/gi, ' ') // "SPF50+" must not leave a "+" behind
+    .replace(/PA\s*\++/gi, ' ')
+    .replace(PURE_GIFT_PAREN, ' ');
+  // A surviving "+" joins an extra unit (1+1, +리필, 세럼+디바이스, 토너+세럼) → bundle.
+  if (/\+/.test(t)) return { kind: 'set', reason: 'plus-combined extra unit (bundle/refill/set)' };
+  if (/[x×*]\s*\d+\b/i.test(t)) return { kind: 'set', reason: '×N multiplier' };
+  const cnt = t.match(MULTIPACK_COUNT);
+  if (cnt && parseInt(cnt[1], 10) >= 2) return { kind: 'set', reason: `${cnt[1]}-count multipack` };
+  if (SET_KEYWORDS.test(t)) return { kind: 'set', reason: 'set/bundle keyword' };
+  return { kind: 'single', reason: 'single unit' };
+}
+
 export function matchesOfficialMall(
   mallName: string,
   allowedStoreName: string | null,
@@ -156,18 +200,45 @@ export function pickOfficialOffer(
     return { matched: null, parsedVolumeRaw: null, identityScore: null, reason: 'no offer from the official mall (mallName did not match allowlist/brand)' };
   }
 
-  // Items arrive in relevance order; take the highest-ranked that also passes the
-  // product-identity (title token) gate.
-  for (const it of official) {
-    const score = productIdentityScore(it.title, input.name);
-    if (score >= IDENTITY_SCORE_THRESHOLD) {
-      const ext = extractPackageFromTitle(stripHtml(it.title));
-      const parsedVolumeRaw = ext.detected && ext.unitType === 'ml' && ext.unitAmount !== null ? ext.unitAmount : null;
-      return { matched: it, parsedVolumeRaw, identityScore: score, reason: `matched official mall "${it.mallName}" (identity ${score.toFixed(2)})` };
-    }
+  // Items arrive in relevance order. Gate on product-identity (title tokens),
+  // then classify single vs set/multipack. We compare SINGLE units only — a
+  // set/기획/더블/2종/1+1 offer is excluded from price comparison (its price is not
+  // the product's unit price). Among singles, prefer one whose parsed volume
+  // matches the curated DB volume; otherwise take the highest-ranked single.
+  const passing = official.filter((it) => productIdentityScore(it.title, input.name) >= IDENTITY_SCORE_THRESHOLD);
+  if (passing.length === 0) {
+    return { matched: null, parsedVolumeRaw: null, identityScore: null, reason: `official mall offer(s) found but title similarity < ${IDENTITY_SCORE_THRESHOLD}` };
   }
 
-  return { matched: null, parsedVolumeRaw: null, identityScore: null, reason: `official mall offer(s) found but title similarity < ${IDENTITY_SCORE_THRESHOLD}` };
+  const parsedVolOf = (it: NaverShoppingItem): number | null => {
+    const ext = extractPackageFromTitle(stripHtml(it.title));
+    return ext.detected && ext.unitType === 'ml' && ext.unitAmount !== null ? ext.unitAmount : null;
+  };
+
+  const singles = passing.filter((it) => classifyOfferComposition(it.title).kind === 'single');
+  if (singles.length === 0) {
+    // Only set/bundle/multipack official offers exist → no comparable single SKU.
+    // Trust-first: exclude (link-only) rather than surface a set price as the unit price.
+    const why = classifyOfferComposition(passing[0].title).reason;
+    return {
+      matched: null,
+      parsedVolumeRaw: null,
+      identityScore: null,
+      reason: `official mall offer(s) found but only set/bundle/multipack (${why}) — excluded from comparison (no comparable single SKU)`,
+    };
+  }
+
+  // Prefer a single whose volume matches the curated DB volume (when both known);
+  // else the highest-relevance single. Volume stays non-blocking otherwise (§1b).
+  const volumeMatch = input.volumeMl != null ? singles.find((it) => parsedVolOf(it) === input.volumeMl) : undefined;
+  const chosen = volumeMatch ?? singles[0];
+  const score = productIdentityScore(chosen.title, input.name);
+  return {
+    matched: chosen,
+    parsedVolumeRaw: parsedVolOf(chosen),
+    identityScore: score,
+    reason: `matched official mall "${chosen.mallName}" single SKU (identity ${score.toFixed(2)}${volumeMatch ? ', volume-matched' : ''})`,
+  };
 }
 
 // ---------------------------------------------------------------------------

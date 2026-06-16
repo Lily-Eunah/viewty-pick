@@ -13,6 +13,7 @@ import {
   isIndividualMallOffer,
   normalizeMallName,
   productIdentityScore,
+  classifyOfferComposition,
   NaverShoppingItem,
   OfferMatchInput,
 } from '../naver';
@@ -130,6 +131,59 @@ it('official mall but wrong product (low title similarity) → excluded', () => 
 it('empty results → excluded with reason', () => {
   const r = pickOfficialOffer([], INPUT);
   assert(r.matched === null && r.reason.length > 0, 'empty → excluded');
+});
+
+console.log('\n--- classifyOfferComposition (single vs set/multipack) ---');
+it('single unit (with SPF50+) → single', () => {
+  assert(classifyOfferComposition('몽디에스 엑설런트 선크림 SPF50+ 60ml').kind === 'single', 'SPF50+ single should be single');
+});
+it('single 1개 → single', () => {
+  assert(classifyOfferComposition('비플레인 녹두 라하 토너 265ml, 1개').kind === 'single', '"1개" is single');
+});
+it('single + pure freebie (쇼핑백) → single', () => {
+  assert(classifyOfferComposition('랑콤 제니피끄 세럼 50ml (+쇼핑백 증정)').kind === 'single', 'pure non-unit gift must not make it a set');
+});
+it('기획 with extra sample unit (+7ml*2) → set (excluded, trust-first)', () => {
+  assert(classifyOfferComposition('유세린 에피셀린 세럼 30ml 기획 (+에피셀린 세럼 7ml*2)').kind === 'set', 'an added sellable unit ⇒ exclude');
+});
+it('serum + device set (heterogeneous, no volume on 2nd item) → set', () => {
+  assert(classifyOfferComposition('바이오힐보 NAD 세럼 30ml + 슈링크 홈 부스터 샷 기획').kind === 'set', '세럼+디바이스 is a set');
+});
+it('선물 세트 → set', () => {
+  assert(classifyOfferComposition('[6월] 제니피끄 세럼 50ml 선물 세트 (+쇼핑백)').kind === 'set', '선물 세트 is a set');
+});
+it('더블 기획 → set', () => {
+  assert(classifyOfferComposition('[단독기획] 토리든 다이브인 포맨 올인원 200g 더블 기획').kind === 'set', '더블 is a set');
+});
+it('2종 세트 (heterogeneous) → set', () => {
+  assert(classifyOfferComposition('유세린 에피셀린 세럼 30ml+일루미네이팅 세럼 30ml 2종 세트').kind === 'set', '2종 세트 is a set');
+});
+it('1+1 / 리필 → set', () => {
+  assert(classifyOfferComposition('비플레인 라하 토너 265ml 기획 (+265ml 리필팩)').kind === 'set', '1+1 refill is a set');
+  assert(classifyOfferComposition('세럼 30ml 1+1').kind === 'set', '1+1 is a set');
+});
+it('N개 multipack (N≥2) → set', () => {
+  assert(classifyOfferComposition('라하 토너 265ml, 6개').kind === 'set', '6개 is a multipack');
+});
+
+console.log('\n--- pickOfficialOffer: single preference + set exclusion ---');
+it('excludes set-only official offers (no comparable single → matched=null)', () => {
+  const set = item({ title: '제니피끄 세럼 50ml 선물 세트', mallName: '랑콤', lprice: '170000' });
+  const r = pickOfficialOffer([set], { brand: '랑콤', name: '제니피끄 얼티미트 세럼', volumeMl: 50, allowedStoreName: '랑콤' });
+  assert(r.matched === null, 'set-only must be excluded');
+  assert(/set\/bundle\/multipack/.test(r.reason), `reason should explain set exclusion: ${r.reason}`);
+});
+it('picks the single over a higher-ranked set from the same official mall', () => {
+  const set = item({ title: '유세린 에피셀린 세럼 30ml 더블팩', mallName: '유세린공식스토어', lprice: '73900', productId: 'A' });
+  const single = item({ title: '유세린 에피셀린 세럼 30ml', mallName: '유세린공식스토어', lprice: '60900', productId: 'B' });
+  const r = pickOfficialOffer([set, single], { brand: '유세린', name: '유세린 에피셀린 세럼', volumeMl: 30, allowedStoreName: '유세린공식스토어' });
+  assert(r.matched !== null && r.matched.lprice === '60900', `should pick single 60900, got ${r.matched?.lprice}`);
+});
+it('prefers the volume-matching single among multiple singles', () => {
+  const wrongVol = item({ title: '랑콤 제니피끄 세럼 115ml', mallName: '랑콤', lprice: '228880', productId: 'A' });
+  const rightVol = item({ title: '랑콤 제니피끄 세럼 50ml', mallName: '랑콤', lprice: '149590', productId: 'B' });
+  const r = pickOfficialOffer([wrongVol, rightVol], { brand: '랑콤', name: '랑콤 제니피끄 세럼', volumeMl: 50, allowedStoreName: '랑콤' });
+  assert(r.matched !== null && r.matched.lprice === '149590', `should pick the 50ml single, got ${r.matched?.lprice}`);
 });
 
 // ---------------------------------------------------------------------------
