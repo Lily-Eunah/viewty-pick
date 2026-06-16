@@ -264,6 +264,7 @@ export async function crawlPipeline(): Promise<void> {
             shipping_note: null,
             matched_url: null,
             matched_mall_name: null,
+            image_url: null,
           });
         }
         continue;
@@ -305,15 +306,18 @@ export async function crawlPipeline(): Promise<void> {
         shipping_note: norm.shipping_note,
         matched_url: offer.matchedUrl ?? null,
         matched_mall_name: offer.matchedMallName ?? null,
+        image_url: offer.imageUrl ?? null,
       };
 
-      // Cache the latest matched offer link on the listing (redirect fallback).
-      // For OliveYoung the buy button is ALWAYS the curator affiliate_url: the
-      // redirect route prefers affiliate_url over latest_matched_url, so caching
-      // the Naver-sourced link here is audit-only and never shadows the curator.
-      if (offer.matchedUrl) {
-        const matchIdx = updatedListings.findIndex((l) => l.id === listing.id);
-        if (matchIdx >= 0) updatedListings[matchIdx].latest_matched_url = offer.matchedUrl;
+      // Cache the latest matched offer link + image on the listing (redirect /
+      // display fallback). For OliveYoung the buy button is ALWAYS the curator
+      // affiliate_url: the redirect route prefers affiliate_url over
+      // latest_matched_url, so caching the Naver-sourced link here is audit-only
+      // and never shadows the curator.
+      const matchIdx = updatedListings.findIndex((l) => l.id === listing.id);
+      if (matchIdx >= 0) {
+        if (offer.matchedUrl) updatedListings[matchIdx].latest_matched_url = offer.matchedUrl;
+        if (offer.imageUrl) updatedListings[matchIdx].latest_image_url = offer.imageUrl;
       }
 
       if (check.status === 'failed') {
@@ -507,6 +511,7 @@ export async function crawlPipeline(): Promise<void> {
           fail_count: list.fail_count,
           is_active: list.is_active,
           latest_matched_url: list.latest_matched_url ?? null,
+          latest_image_url: list.latest_image_url ?? null,
         }).eq('id', list.id);
       }
 
@@ -559,7 +564,7 @@ export async function crawlPipeline(): Promise<void> {
     db.listings = db.listings.map((orig) => {
       const updated = updatedListings.find((l) => l.id === orig.id);
       return updated
-        ? { ...orig, fail_count: updated.fail_count, is_active: updated.is_active, latest_matched_url: updated.latest_matched_url ?? orig.latest_matched_url ?? null }
+        ? { ...orig, fail_count: updated.fail_count, is_active: updated.is_active, latest_matched_url: updated.latest_matched_url ?? orig.latest_matched_url ?? null, latest_image_url: updated.latest_image_url ?? orig.latest_image_url ?? null }
         : orig;
     });
 
