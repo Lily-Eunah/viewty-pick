@@ -12,10 +12,8 @@ import {
   TonerIcon,
   LotionIcon,
   CreamIcon,
-  SerumIcon,
   CleansingIcon,
   MaskIcon,
-  MoreGridIcon,
 } from "./BeautyIcons";
 
 interface SkinTypeAndCategorySectionProps {
@@ -31,29 +29,20 @@ const skinTypes = [
   { id: "dehydrated-oily", label: "수부지", icon: DehydratedOilyIcon },
 ];
 
+// 대분류(major) entry points — each opens /c/[major] with 소분류 sub-filter chips.
 const categories = [
-  { id: "sunscreen", label: "선크림", icon: SunscreenIcon, path: "/c/sunscreen" },
-  { id: "toner", label: "스킨/토너", icon: TonerIcon, path: "/c/toner" },
-  { id: "lotion", label: "로션", icon: LotionIcon, path: "alert" },
-  { id: "cream", label: "크림", icon: CreamIcon, path: "/c/cream" },
-  { id: "serum", label: "세럼", icon: SerumIcon, path: "/c/serum" },
-  { id: "cleansing", label: "클렌징", icon: CleansingIcon, path: "/c/cleansing" },
-  { id: "mask", label: "마스크", icon: MaskIcon, path: "alert" },
-  { id: "more", label: "더보기", icon: MoreGridIcon, path: "alert" },
+  { id: "suncare", label: "선케어", icon: SunscreenIcon, path: "/c/suncare" },
+  { id: "skincare", label: "스킨케어", icon: TonerIcon, path: "/c/skincare" },
+  { id: "cleansing-care", label: "클렌징", icon: CleansingIcon, path: "/c/cleansing-care" },
+  { id: "maskpack", label: "마스크팩", icon: MaskIcon, path: "/c/maskpack" },
+  { id: "bodycare", label: "바디케어", icon: LotionIcon, path: "/c/bodycare" },
+  { id: "base-makeup", label: "베이스 메이크업", icon: CreamIcon, path: "/c/base-makeup" },
 ];
 
 export function SkinTypeAndCategorySection({
   selectedSkin,
   onSkinSelect,
 }: SkinTypeAndCategorySectionProps) {
-  
-  const handleCategoryClick = (e: React.MouseEvent, path: string, label: string) => {
-    if (path === 'alert') {
-      e.preventDefault();
-      alert(`"${label}" 카테고리는 준비 중입니다! (Phase 5 출시 예정)`);
-    }
-  };
-
   return (
     <section className="space-y-7 px-4 py-3 bg-bg">
       {/* 1. 피부 타입 */}
@@ -118,13 +107,11 @@ export function SkinTypeAndCategorySection({
         <div className="grid grid-cols-4 gap-2.5">
           {categories.map((item) => {
             const Icon = item.icon;
-            const isAlert = item.path === 'alert';
 
             return (
               <Link
                 key={item.id}
-                href={isAlert ? '#' : item.path}
-                onClick={(e) => isAlert && handleCategoryClick(e, item.path, item.label)}
+                href={item.path}
                 aria-label={`${item.label} 카테고리 보기`}
                 className="group flex min-h-[96px] flex-col items-center justify-center rounded-[18px] border border-line bg-surface px-2 py-3 shadow-[0_8px_24px_rgba(65,0,22,0.06)] transition-all duration-200 hover:-translate-y-0.5 hover:border-accent hover:bg-accent-soft/10 active:scale-[0.96] text-center"
               >
