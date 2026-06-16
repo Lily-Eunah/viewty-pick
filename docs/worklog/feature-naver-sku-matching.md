@@ -72,6 +72,14 @@ Naver Shopping API 매칭(`pickOfficialOffer`)이 큐레이션한 **단품**이 
 
 **결정(운영자)**: 전체 sync **보류**(시트 오타 교정 먼저), 웹 반영(deploy) **보류**. → 아래 TODO로 인계.
 
+## 2-tier 매처 (tier-1 링크-id 앵커, 2026-06-16)
+실험(`docs/worklog/naver-id-anchor-experiment.md`): `item.productId == 큐레이션 N` 0/40, 그러나 `item.link → /products/{N}` **60%**. → 링크 경유 앵커링 도입.
+- **Tier-1 (`pickAnchoredOffer`)**: 큐레이션 URL의 채널상품번호 N(`resolveCuratedProductNo`, naver.me는 리다이렉트 1회·캐시·전역 캡)로 검색 결과의 `link`를 매칭 → **운영자 정확 SKU**. 단품이면 채택, 세트면 제외(`anchorWasSet`) + 시트정리 신호.
+- **Tier-2 (폴백)**: 앵커 미스(~40%) 시 기존 공식몰+단품우선+변형/폼+벌크 제목매칭.
+- `searchNaverShopping` display 40→100(앵커 hit·후보 폭 ↑). OY는 oy.run URL이라 N 없음 → tier-2.
+- 맵 재실행(read-only) before/after: **OK 54 유지(회귀 없음)** — naver OK 이동은 전부 ANCHOR_SET(큐레이션 URL=세트, 의도)이고 display=100+앵커로 단품 신규매칭이 상쇄. 피지오겔 #77은 앵커로 정답 SKU 복구. **시트 URL=세트 13건** 정리 리스트 산출(catalog-match-map.md).
+- 테스트: `productNoFrom`, `pickAnchoredOffer`(단품 채택/세트 제외/미스). test:all·typecheck·build green. DB 무변경.
+
 ## 남은 TODO
 - [ ] **(운영자, 전체 sync 전 선행) 시트 상품명 오타 교정**: #85 "하이아르론"→"하이알루론", #86 "엔에이디"→"NAD"(또는 검색 매칭되는 표기). 다른 제품에도 유사 오타 가능 → 전체 sync 시 false-exclusion 분포로 추가 발견.
 - [ ] **(게이트, 보류 중) 전체 재수집**: 시트 교정 후 `npm run crawler:sync`(전체). priced vs no_offer 분포 + false exclusion/inclusion 점검 보고.

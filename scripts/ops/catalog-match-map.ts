@@ -21,15 +21,14 @@ import * as path from 'path';
 import { supabaseServer, isSupabaseServerConfigured } from '../../lib/supabase/server';
 import {
   matchNaverOffer,
-  pickOfficialOffer,
   classifyOfferComposition,
   matchesOfficialMall,
   isIndividualMallOffer,
   productIdentityScore,
+  resolveCuratedProductNo,
   cleanQuery,
   stripHtml,
   NaverShoppingItem,
-  OfferMatchInput,
 } from '../../crawler/adapters/naver';
 import { CoupangAdapter, extractCoupangProductId, isCoupangShortLink } from '../../crawler/adapters/coupang';
 import { Product, Listing, RetailerAllowlist } from '../../lib/types';
@@ -42,6 +41,7 @@ type Category =
   | 'OK_SINGLE'
   | 'NAME_MISMATCH'
   | 'URL_MULTIPACK'
+  | 'ANCHOR_SET'
   | 'NO_OFFER_LEGIT'
   | 'ALLOWLIST_GAP'
   | 'DEMO_SUSPECT'
@@ -93,15 +93,10 @@ async function diagnoseNaverLike(
   listing: Listing,
   allowedStoreName: string | null
 ): Promise<Row> {
-  const input: OfferMatchInput = {
-    brand: product.brand,
-    name: product.name,
-    volumeMl: product.volume_ml ?? null,
-    allowedStoreName,
-  };
-
-  // Authoritative result from the real matcher (live search inside).
-  const result = await matchNaverOffer(product, allowedStoreName, NAVER_ID, NAVER_SECRET);
+  // Tier-1 anchor uses the curated naver URL's channel-product number (naver only;
+  // OY's oy.run URL has none → tier-2). Authoritative result from the real matcher.
+  const anchorNo = seller === 'naver' ? await resolveCuratedProductNo(listing.url) : null;
+  const result = await matchNaverOffer(product, allowedStoreName, NAVER_ID, NAVER_SECRET, anchorNo);
   await sleep(120);
 
   // Candidate view (same query) for the "was a single available?" diagnosis.
@@ -124,10 +119,17 @@ async function diagnoseNaverLike(
   let suggestion = '';
   let matchResult: string;
 
+  const anchored = /id-anchored/.test(result.reason);
   if (result.matched) {
     const m = result.matched;
-    matchResult = `✅ ${fmt(m.lprice)}원 @${m.mallName} — ${stripHtml(m.title).slice(0, 40)}`;
+    matchResult = `✅ ${fmt(m.lprice)}원 @${m.mallName} — ${stripHtml(m.title).slice(0, 40)}${anchored ? ' [anchor]' : ''}`;
     category = 'OK_SINGLE';
+  } else if (result.anchorWasSet) {
+    // Tier-1 anchored the EXACT curated SKU but it is a set → curated naver URL
+    // points to a set page; excluded (trust-first) and flagged for sheet cleanup.
+    matchResult = `⚠️ anchor=set — ${result.reason}`;
+    category = 'ANCHOR_SET';
+    suggestion = '시트 naver URL이 세트 페이지 — 단품 상품 URL로 교체';
   } else {
     matchResult = `⛔ no_offer — ${result.reason}`;
     if (official.length > 0 && officialPassing.length === 0) {
@@ -224,7 +226,8 @@ async function diagnoseCoupang(product: Product, listing: Listing): Promise<Row>
 const CAT_LABEL: Record<Category, string> = {
   OK_SINGLE: '✅ OK 단품',
   NAME_MISMATCH: '⚠️ 이름 오타/불일치',
-  URL_MULTIPACK: '⚠️ 큐레이션 URL=다중팩/세트',
+  URL_MULTIPACK: '⚠️ 큐레이션 URL=다중팩/세트(쿠팡)',
+  ANCHOR_SET: '⚠️ 큐레이션 naver URL=세트(앵커)',
   NO_OFFER_LEGIT: '⛔ no_offer(정당)',
   ALLOWLIST_GAP: '⚠️ allowlist/입점 갭',
   DEMO_SUSPECT: '🔎 데모/오큐레이션 의심',
@@ -311,7 +314,8 @@ async function main() {
   out.push('## 운영자 수정 리스트');
   out.push('');
   fixList('1. 시트 제품명 오타/불일치', 'NAME_MISMATCH');
-  fixList('2. 큐레이션 URL = 다중팩/세트 (단품 URL 교체)', 'URL_MULTIPACK');
+  fixList('2. 큐레이션 URL = 다중팩/세트 — 쿠팡 (단품 URL 교체)', 'URL_MULTIPACK');
+  fixList('2b. 큐레이션 naver URL = 세트 (앵커가 세트로 떨어짐 — 단품 URL 교체)', 'ANCHOR_SET');
   fixList('3. allowlist/입점 갭', 'ALLOWLIST_GAP');
   fixList('4. URL 데이터 오류', 'DATA_ERROR');
   fixList('5. 데모/오큐레이션 정리 후보', 'DEMO_SUSPECT');
