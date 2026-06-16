@@ -8,32 +8,33 @@
 ## 요약 분포
 | 분류 | 건수 |
 |---|---|
-| ✅ OK 단품 | 54 |
-| ⚠️ 큐레이션 URL=다중팩/세트(쿠팡) | 5 |
-| ⚠️ 큐레이션 naver URL=세트(앵커) | 13 |
-| ⛔ no_offer(정당) | 14 |
-| ⚠️ allowlist/입점 갭 | 14 |
-| 🔎 데모/오큐레이션 의심 | 3 |
-| ⚠️ URL 데이터 오류 | 1 |
+| ✅ OK 단품(앵커, 가격) | 37 |
+| ⚠️ 큐레이션 URL=다중팩/세트 쿠팡(링크만) | 5 |
+| ⚠️ 큐레이션 naver URL=세트 앵커(링크만) | 14 |
+| 🔎 데모/오큐레이션 의심(링크만) | 2 |
+| ⚠️ URL 데이터 오류(링크만) | 1 |
+| 🔗 링크만(앵커 미스/OY-무앵커) | 45 |
 
-## 2-tier 매처 적용 결과 (tier-1 링크-id 앵커 + tier-2 폴백)
+## anchor-only 정책 적용 결과 (fuzzy 가격매칭 제거)
 
-| 분류 | tier-2만 | **+tier-1 앵커** |
+**보장 확인**
+- **가격이 붙은 네이버 listing 15건 = 전부 N-앵커 단품**(fuzzy 가격 0건). matchNaverOffer가 앵커 외 가격 경로를 갖지 않음(코드 보장).
+- **멀티쿼리 recall 성공**: 유세린 #85 = 오타명("하이아르론")인데 `유세린 세럼` recall 쿼리로 N(11355567271) 발견 → **60,900 정확 단품** 앵커.
+
+**커버리지 (before=tier1+fuzzy → after=anchor-only)**
+| 판매처 OK(가격) | before | after |
 |---|---|---|
-| ✅ OK 단품 | 54 | **54** (구성 변화) |
-| ⚠️ naver URL=세트(앵커) | — | **13** (신규) |
-| ⛔ no_offer(정당) | 21 | 14 |
-| ⚠️ allowlist/입점 갭 | 20 | 14 |
-| URL 다중팩(쿠팡) · 데모 · 데이터오류 | 5·3·1 | 5·3·1 |
+| coupang | 22 | 22 (영향 없음) |
+| naver | 20 | **15** (fuzzy-only 제거; 일부 정상가도 앵커 불가라 링크만) |
+| oliveyoung | 12 | **0** (OY는 oy.run→N 없음→링크만; 권장안) |
+| **합계 OK** | 54 | **37** |
 
-- **OK 총계 54 유지(회귀 없음)**. tier-1로 인한 naver OK 이동은 **전부 ANCHOR_SET**(큐레이션 URL이 세트라 정확히 식별→제외; 의도). 동시에 display=100+앵커로 누락됐던 단품이 새로 매칭(피지오겔 #77 naver/OY, 듀이트리·퍼셀 OY, VDL #98 등)되어 상쇄.
-- **앵커의 정확성 이득**: 피지오겔 #77 naver = `레드수딩 AI 페이셜 로션 200ml`(정답 SKU)로 앵커 → tier-2가 단순 제외하던 케이스를 **정확 단품으로 복구**. 닥터지 #76/#256은 앵커가 세트(1+1)라 ANCHOR_SET로 정확 식별.
-- 비고: #73 에뛰드 coupang은 쿠팡 검색 라이브 변동으로 이번 회차 no_offer(네이버 24,200 OK 유지) — tier-1/매처 로직과 무관.
+- **fully link-only(가격 판매처 0)된 제품 16건**: #29 #30 #35 #50 #71 #73 #81 #83 #84 #86 #90 #93 #94 #95 #97 #256. 다수는 **시트 정리로 회복 가능**(아래): naver URL=세트(앵커셋) 또는 coupang URL=팩 → 단품 URL 교체 시 정확 단품가 앵커됨.
+- 손실 유형: (a) naver fuzzy-only 정상가(토리든 #74 19,700, 에뛰드 #73 등) — 앵커 불가라 링크만(신뢰 우선, fuzzy로 안 메움). (b) **OY 자동가 전량(12건)** — 권장안(링크만+override) 결과.
 
-### 시트 정리: 큐레이션 naver URL = 세트 (13건, 단품 URL로 교체 권고)
-앵커가 운영자 URL의 정확한 채널상품을 잡았는데 그게 **세트/다중팩** 페이지임 → 단품 가격 의도면 시트 URL 교체:
-- #50 메디큐브(250ml×2) · #71 인터미션(x2더블) · #76 닥터지 포맨(1+1) · #81 에스트라(세트) · #82 아벤느(+부스트) · #84 랑콤 · #87 라운드랩(3개) · #90 브링그린(2개) · #94 아이소이(본품+리필) · #95 아르마니(리필) · #256 닥터지 선스틱(1+1) · #257 이즈앤트리(더블) · #261 몽디에스(1+1).
-> 앵커 자체는 정상(정확 SKU 식별). 세트를 단품가로 쓰지만 않으면 됨 — trust-first로 제외, URL 교체 시 단품가 회복.
+**⚠️ 운영자 확인 필요 (OY 트레이드오프, §1d)**
+- 권장안대로 OY 자동가를 전부 제거(12→0)했음. 커버리지 영향이 큼(16건 fully link-only에 OY 기여 다수: 메디큐브·인터미션·에스트라·브링그린 등).
+- **대안**: OY만 mallName='올리브영' + 엄격 제목매칭 best-effort 유지(오매칭 리스크 일부 수용) → OY 커버리지 회복. → **운영자 결정 요청**(현재는 권장안=링크만 구현 상태).
 
 ## 운영자 수정 리스트
 
@@ -59,7 +60,11 @@
   - 후보: anchored pid 8594202854
   - url: https://www.coupang.com/vp/products/8594202854?itemId=24923149433&vendorItemId=91931021297&q=%EC%8A%A4%ED%82%A8%EC%BC%80%EC%96%B4+%EB%B9%84%EA%B1%B4+%EC%BF%A0%EC%85%98&searchId=1320d671418738&sourceType=search&itemsCount=36&searchRank=0&rank=0&traceId=mqf4ufo9
 
-### 2b. 큐레이션 naver URL = 세트 (앵커가 세트로 떨어짐 — 단품 URL 교체) (13)
+### 2b. 큐레이션 naver URL = 세트 (앵커가 세트로 떨어짐 — 단품 URL 교체) (14)
+- **몽디에스 엑설런트 선크림** [naver] — 시트 naver URL이 세트 페이지 — 단품 상품 URL로 교체
+  - ⚠️ anchor=set — id-anchored to curated SKU (productNo 13009860683) but it is a set/multipack (2-count multipack) — curated URL points to a set; excluded
+  - 후보: 0 hits · official 0 (single 0) · no individual offers
+  - url: https://brand.naver.com/mongdies/products/13009860683
 - **닥터지 레드 블레미쉬 수딩 업 선 스틱** [naver] — 시트 naver URL이 세트 페이지 — 단품 상품 URL로 교체
   - ⚠️ anchor=set — id-anchored to curated SKU (productNo 8315952932) but it is a set/multipack (plus-combined extra unit (bundle/refill/set)) — curated URL points to a set; excluded
   - 후보: 40 hits · official 1 (single 0) · closest "닥터지 레드 블레미쉬 수딩 업 선스틱 듀오 세트 SPF50+ PA++" @쿠팡 id1.00
@@ -113,190 +118,128 @@
   - 후보: 40 hits · official 1 (single 1) · closest "PDRN 핑크 시카 수딩 토너" @메디큐브 id1.00
   - url: https://brand.naver.com/medicube/products/11488401506?n_media=684927&n_query=%EB%A9%94%EB%94%94%ED%81%90%EB%B8%8CPDRN%ED%95%91%ED%81%AC%ED%86%A0%EB%84%88&n_rank=1&n_ad_group=grp-a001-02-000000046839202&n_ad=nad-a001-02-000000361815636&n_campaign_type=2&n_mall_id=ncp_1o919d_01&n_mall_pid=11488401506&n_ad_group_type=2&n_match=3&NaPm=ct%3Dmqbizoan%7Cci%3DEReb01957f%2D66b1%2D11f1%2Dacfb%2D5e8cdf8985c9%7Ctr%3Dplan%7Chk%3D27c15cf45c54d9a7b397443497ceb10811f5a57b%7Cnacn%3Dex1ZCIC6PJdZB
 
-### 3. allowlist/입점 갭 (14)
-- **아로셀 멜라 TXA 선세럼** [naver] — 공식몰 mallName 미식별 — allowlist 입력 검토 (closest @올리브영)
-  - ⛔ no_offer — official mall offer(s) found but no comparable single SKU (different form/variant in same line) — excluded from comparison
-  - 후보: 40 hits · official 0 (single 0) · closest "[아이돌선세럼/24시간지속] 아로셀 멜라 TXA 선세럼 40ml" @올리브영 id1.00
-  - url: https://naver.me/5zURlN5z
-- **스타라이크 피디알엔 스킨핏 수분 선크림** [oliveyoung] — 올영 오퍼가 네이버에 안 뜸 — 올영 입점 여부/allowlist mallName 확인
-  - ⛔ no_offer — no offer from the official mall (mallName did not match allowlist/brand)
-  - 후보: 40 hits · official 0 (single 0) · closest "스타라이크 피디알엔 스킨 핏 수분 선 크림 50ml" @주식회사제이씨 id1.00
-  - url: https://oy.run/g1ip6hEbG0GQsu
-- **조선미녀 스테이 프레쉬 톤업 선크림 퍼플** [oliveyoung] — 올영 오퍼가 네이버에 안 뜸 — 올영 입점 여부/allowlist mallName 확인
-  - ⛔ no_offer — no offer from the official mall (mallName did not match allowlist/brand)
-  - 후보: 40 hits · official 0 (single 0) · closest "조선미녀 스테이프레쉬 톤업 선크림 50ml (퍼플/그린) SPF50+" @뷰티오브조선 : 조선미녀 id1.00
-  - url: https://oy.run/gsgwGOxKSzisni
-- **넘버즈인 3번 도자기결 톤업베이지 선크림** [naver] — 공식몰 mallName 미식별 — allowlist 입력 검토 (closest @올리브영)
-  - ⛔ no_offer — official mall offer(s) found but title similarity < 0.5
-  - 후보: 40 hits · official 0 (single 0) · closest "[파데프리] 넘버즈인 3번 도자기결 톤업베이지 선크림 50ml 더블기" @올리브영 id1.00
-  - url: https://brand.naver.com/numbuzin/products/5788327291
-- **이니스프리 데일리 유브이 톤업 노세범 선크림** [oliveyoung] — 올영 오퍼가 네이버에 안 뜸 — 올영 입점 여부/allowlist mallName 확인
-  - ⛔ no_offer — no offer from the official mall (mallName did not match allowlist/brand)
-  - 후보: 40 hits · official 0 (single 0) · closest "[파데프리_김아영PICK] 이니스프리 데일리 UV 톤업 노세범 선크림" @이니스프리 id0.80
-  - url: https://oy.run/rRbPHHbTfWaDJC
-- **온그리디언츠 스킨 베리어 카밍 로션** [oliveyoung] — 올영 오퍼가 네이버에 안 뜸 — 올영 입점 여부/allowlist mallName 확인
-  - ⛔ no_offer — no offer from the official mall (mallName did not match allowlist/brand)
-  - 후보: 40 hits · official 0 (single 0) · closest "[속광로션] 온그리디언츠 스킨 베리어 카밍 로션 이엑스 220ml, " @온그리디언츠 id1.00
-  - url: https://oy.run/ynduOf2kvnEYNG
-- **닥터지 레드 블레미쉬 포 맨 진정 올인원** [oliveyoung] — 올영 오퍼가 네이버에 안 뜸 — 올영 입점 여부/allowlist mallName 확인
-  - ⛔ no_offer — official mall offer(s) found but no comparable single SKU (different form/variant in same line) — excluded from comparison
-  - 후보: 40 hits · official 0 (single 0) · closest "[1+1+1] 닥터지 레드 블레미쉬 포 맨 진정 올인원 150mL" @고운세상 닥터지 id1.00
-  - url: https://oy.run/3dLNVWjpWHx9mb
-- **랑콤 제니피끄 얼티미트 세럼** [oliveyoung] — 올영 오퍼가 네이버에 안 뜸 — 올영 입점 여부/allowlist mallName 확인
-  - ⛔ no_offer — no offer from the official mall (mallName did not match allowlist/brand)
-  - 후보: 40 hits · official 0 (single 0) · closest "랑콤 제니피끄 세럼 얼티미트, 115ml, 1개" @칵테일뷰티 id1.00
-  - url: https://oy.run/lNUucBpv2Prr5L
-- **아벤느 히알루론 액티브 B3 안티에이징 세럼 ** [oliveyoung] — 올영 오퍼가 네이버에 안 뜸 — 올영 입점 여부/allowlist mallName 확인
-  - ⛔ no_offer — no offer from the official mall (mallName did not match allowlist/brand)
-  - 후보: 40 hits · official 0 (single 0) · closest "아벤느 아벤느 히알루론 액티브 B3 안티에이징 세럼 30ml" @G마켓 id1.00
-  - url: https://oy.run/om3oDrroGCSL0m
-- **파넬 시카마누 세럼쿠션** [oliveyoung] — 올영 오퍼가 네이버에 안 뜸 — 올영 입점 여부/allowlist mallName 확인
-  - ⛔ no_offer — no offer from the official mall (mallName did not match allowlist/brand)
-  - 후보: 40 hits · official 0 (single 0) · closest "파넬 시카마누 세럼쿠션 SPF45 PA++ 본품, 21호, 15g" @파넬 공식스토어 id1.00
-  - url: https://oy.run/Tp4vRrC8PncSU2
-- **블라이드 버블링 스플래쉬 마스크 인디언 그레이셜 머드** [oliveyoung] — 올영 오퍼가 네이버에 안 뜸 — 올영 입점 여부/allowlist mallName 확인
-  - ⛔ no_offer — no offer from the official mall (mallName did not match allowlist/brand)
-  - 후보: 5 hits · official 0 (single 0) · closest "머드팩투폼블라이드 버블링 스플래쉬 마스크 인디언 그레이셜 머드" @블라이드BLITHE id1.00
-  - url: https://oy.run/DDfzsAfybC0wY8
-- **랑콤 스킨 이돌 3 세럼 파인 커버** [oliveyoung] — 올영 오퍼가 네이버에 안 뜸 — 올영 입점 여부/allowlist mallName 확인
-  - ⛔ no_offer — no offer from the official mall (mallName did not match allowlist/brand)
-  - 후보: 38 hits · official 0 (single 0) · closest "랑콤 스킨 이돌 3 세럼 파인커버 쿠션 P10 14g" @TC코스메틱 id1.00
-  - url: https://oy.run/4e9XnVAahdbANL
-- **VDL 커버스테인 하이커버 쿠션** [oliveyoung] — 올영 오퍼가 네이버에 안 뜸 — 올영 입점 여부/allowlist mallName 확인
-  - ⛔ no_offer — no offer from the official mall (mallName did not match allowlist/brand)
-  - 후보: 40 hits · official 0 (single 0) · closest "VDL 커버스테인 하이커버 쿠션 (본품 +리필)  1개  A01" @쿠팡 id1.00
-  - url: https://oy.run/DQrdfAE0felLYJ
-- **코스노리 판테놀 베리어 에멀전** [oliveyoung] — 올영 오퍼가 네이버에 안 뜸 — 올영 입점 여부/allowlist mallName 확인
-  - ⛔ no_offer — no offer from the official mall (mallName did not match allowlist/brand)
-  - 후보: 40 hits · official 0 (single 0) · closest "코스노리 판테놀 베리어 로션 에멀전 150ml, 1개" @코스노리 id1.00
-  - url: https://oy.run/joRW0R0oPnvzi4
-
-### 4. URL 데이터 오류 (1)
+### 3. URL 데이터 오류 (1)
 - **넘버즈인 3번 도자기결 톤업베이지 선크림** [coupang] — 시트 URL을 제품 상세(/vp/products/{id})로 교체
   - ⛔ data_error
   - 후보: share short-link (no productId)
   - url: https://link.coupang.com/a/euTAD8gTQW
 
-### 5. 데모/오큐레이션 정리 후보 (3)
-- **후시다딘 (동화약품) 더마 트러블 징크 카밍 선크림** [naver] — 어느 판매처에도 정상 단품 없음 — 데모/오큐레이션 정리 검토
-  - ⛔ no_offer — no individual-mall offers (only catalog representatives)
+### 4. 데모/오큐레이션 정리 후보 (2)
+- **후시다딘 (동화약품) 더마 트러블 징크 카밍 선크림** [naver] — 검색 0건 — 브랜드스토어 미인덱스/단종 의심, 카탈로그 정리 검토
+  - 🔗 link-only — anchor miss — curated productNo 9999261730 not in 3 queries — link-only (no fuzzy price)
   - 후보: 0 hits · official 0 (single 0) · no individual offers
   - url: https://brand.naver.com/dongwhafusidyne/products/9999261730
-- **몽디에스 엑설런트 선크림** [naver] — 어느 판매처에도 정상 단품 없음 — 데모/오큐레이션 정리 검토
-  - ⛔ no_offer — no offer from the official mall (mallName did not match allowlist/brand)
-  - 후보: 0 hits · official 0 (single 0) · no individual offers
-  - url: https://brand.naver.com/mongdies/products/13009860683
-- **이지앤트리 체스트넛 바하 0.9 클리어 토너** [naver] — 어느 판매처에도 정상 단품 없음 — 데모/오큐레이션 정리 검토
-  - ⛔ no_offer — no offer from the official mall (mallName did not match allowlist/brand)
+- **이지앤트리 체스트넛 바하 0.9 클리어 토너** [naver] — 검색 0건 — 브랜드스토어 미인덱스/단종 의심, 카탈로그 정리 검토
+  - 🔗 link-only — anchor miss — curated productNo 12650048480 not in 3 queries — link-only (no fuzzy price)
   - 후보: 0 hits · official 0 (single 0) · no individual offers
   - url: https://brand.naver.com/isntree/products/12650048480?NaPm=ct%3Dmqbj6un9%7Cci%3DrBo15QAAAZ6%2DEchXAOAakg%2E%2E01%7Ctr%3Dpmax%7Chk%3D7be5a23627fac3a0009acb7ae9a2423541f0ef47%7Cnacn%3Dex1ZCIC6PJdZB
 
 ## per-listing 전체 표
 | # | 제품 | 판매처 | 분류 | 매처 결과 | 후보 요약 |
 |---|---|---|---|---|---|
-| 29 | 몽디에스 엑설런트 선크림 | coupang | ⚠️ 큐레이션 URL=다중팩/세트(쿠팡) | ⚠️ 33,000원 — [6개월 이상 첫 선케어] [1+1] 몽디에스 아기/유아 무기자차 선크림 (plus-combined e | anchored pid 5529437152 |
-| 29 | 몽디에스 엑설런트 선크림 | naver | 🔎 데모/오큐레이션 의심 | ⛔ no_offer — no offer from the official mall (mallName did not match a | 0 hits · official 0 (single 0) · no individual offers |
-| 30 | 후시다딘 (동화약품) 더마 트러블 징크 카밍 선크림 | coupang | ⚠️ 큐레이션 URL=다중팩/세트(쿠팡) | ⚠️ 38,530원 — 후시다인 더마 트러블 징크 카밍 선크림 SPF50+ PA++++, 50m (4-count multipa | anchored pid 7941544246 |
-| 30 | 후시다딘 (동화약품) 더마 트러블 징크 카밍 선크림 | naver | 🔎 데모/오큐레이션 의심 | ⛔ no_offer — no individual-mall offers (only catalog representatives) | 0 hits · official 0 (single 0) · no individual offers |
-| 31 | 스타라이크 피디알엔 스킨핏 수분 선크림 | coupang | ✅ OK 단품 | ✅ 16,760원 — 스타라이크 피디알엔 스킨 핏 수분 선 크림 SPF 50+ PA++++ | anchored pid 8745247214 |
-| 31 | 스타라이크 피디알엔 스킨핏 수분 선크림 | oliveyoung | ⚠️ allowlist/입점 갭 | ⛔ no_offer — no offer from the official mall (mallName did not match a | 40 hits · official 0 (single 0) · closest "스타라이크 피디알엔 스킨 핏 수분 선 크림 50m |
-| 32 | 아로셀 멜라 TXA 선세럼 | coupang | ✅ OK 단품 | ✅ 19,700원 — 아로셀 멜라 TXA 수분 선세럼 SPF50+ PA++++ | anchored pid 8885954154 |
-| 32 | 아로셀 멜라 TXA 선세럼 | naver | ⚠️ allowlist/입점 갭 | ⛔ no_offer — official mall offer(s) found but no comparable single SKU | 40 hits · official 0 (single 0) · closest "[아이돌선세럼/24시간지속] 아로셀 멜라 TXA  |
-| 32 | 아로셀 멜라 TXA 선세럼 | oliveyoung | ✅ OK 단품 | ✅ 25,000원 @올리브영 — [아이돌선세럼/24시간지속] 아로셀 멜라 TXA 선세럼 40ml | 40 hits · official 1 (single 1) · closest "[아이돌선세럼/24시간지속] 아로셀 멜라 TXA  |
-| 33 | 이니스프리 데일리 유브이 톤업 노세범 선크림 | coupang | ✅ OK 단품 | ✅ 12,490원 — 이니스프리 데일리 유브이 톤업 선크림 핑크 SPF50+ PA++++ | anchored pid 9373986892 |
-| 33 | 이니스프리 데일리 유브이 톤업 노세범 선크림 | naver | ✅ OK 단품 | ✅ 14,000원 @이니스프리 — [파데프리_김아영PICK] 이니스프리 데일리 UV 톤업 노세범 선크림 S | 40 hits · official 1 (single 1) · closest "[파데프리_김아영PICK] 이니스프리 데일리 UV |
-| 33 | 이니스프리 데일리 유브이 톤업 노세범 선크림 | oliveyoung | ⚠️ allowlist/입점 갭 | ⛔ no_offer — no offer from the official mall (mallName did not match a | 40 hits · official 0 (single 0) · closest "[파데프리_김아영PICK] 이니스프리 데일리 UV |
-| 34 | 조선미녀 스테이 프레쉬 톤업 선크림 퍼플 | coupang | ✅ OK 단품 | ✅ 14,400원 — 조선미녀 스테이 프레쉬 톤업 선크림 퍼플 SPF50+ PA++++ | anchored pid 9544152755 |
-| 34 | 조선미녀 스테이 프레쉬 톤업 선크림 퍼플 | naver | ✅ OK 단품 | ✅ 15,300원 @뷰티오브조선 : 조선미녀 — 조선미녀 스테이프레쉬 톤업 선크림 50ml (퍼플/그린) SPF50+ P [a | 40 hits · official 1 (single 1) · closest "조선미녀 스테이프레쉬 톤업 선크림 50ml (퍼플 |
-| 34 | 조선미녀 스테이 프레쉬 톤업 선크림 퍼플 | oliveyoung | ⚠️ allowlist/입점 갭 | ⛔ no_offer — no offer from the official mall (mallName did not match a | 40 hits · official 0 (single 0) · closest "조선미녀 스테이프레쉬 톤업 선크림 50ml (퍼플 |
-| 35 | 넘버즈인 3번 도자기결 톤업베이지 선크림 | coupang | ⚠️ URL 데이터 오류 | ⛔ data_error | share short-link (no productId) |
-| 35 | 넘버즈인 3번 도자기결 톤업베이지 선크림 | naver | ⚠️ allowlist/입점 갭 | ⛔ no_offer — official mall offer(s) found but title similarity < 0.5 | 40 hits · official 0 (single 0) · closest "[파데프리] 넘버즈인 3번 도자기결 톤업베이지 선 |
-| 35 | 넘버즈인 3번 도자기결 톤업베이지 선크림 | oliveyoung | ⛔ no_offer(정당) | ⛔ no_offer — official mall offer(s) found but title similarity < 0.5 | 40 hits · official 1 (single 0) · closest "[파데프리] 넘버즈인 3번 도자기결 톤업베이지 선 |
-| 50 | 메디큐브 PDRN 핑크 시카 수딩 토너 | naver | ⚠️ 큐레이션 naver URL=세트(앵커) | ⚠️ anchor=set — id-anchored to curated SKU (productNo 11488401506) but | 40 hits · official 1 (single 1) · closest "PDRN 핑크 시카 수딩 토너" @메디큐브 id1 |
-| 50 | 메디큐브 PDRN 핑크 시카 수딩 토너 | oliveyoung | ✅ OK 단품 | ✅ 15,000원 @올리브영 — [흔적미백]메디큐브 PDRN 핑크 시카 수딩 토너 250ml | 40 hits · official 1 (single 1) · closest "PDRN 핑크 시카 수딩 토너" @메디큐브 id1 |
-| 69 | 비플레인 녹두 모공 클리어링 라하 토너 | coupang | ✅ OK 단품 | ✅ 13,800원 — 비플레인 녹두 모공 클리어링 라하 토너 | anchored pid 8431337141 |
-| 69 | 비플레인 녹두 모공 클리어링 라하 토너 | naver | ✅ OK 단품 | ✅ 16,800원 @비플레인 beplain — [모공비움 토너] 비플레인 녹두 모공 클리어링 라하 토너 265ml, 1 [an | 40 hits · official 2 (single 2) · closest "[모공비움 토너] 비플레인 녹두 모공 클리어링 라 |
-| 69 | 비플레인 녹두 모공 클리어링 라하 토너 | oliveyoung | ⛔ no_offer(정당) | ⛔ no_offer — official mall offer(s) found but title similarity < 0.5 | 40 hits · official 1 (single 0) · closest "[모공비움 토너] 비플레인 녹두 모공 클리어링 라 |
-| 70 | 에스네이처 아쿠아 오아시스 토너 | coupang | ✅ OK 단품 | ✅ 14,880원 — 에스네이처 아쿠아 오아시스 토너 | anchored pid 7093360467 |
-| 70 | 에스네이처 아쿠아 오아시스 토너 | naver | ✅ OK 단품 | ✅ 18,900원 @에스네이처 — 에스네이처 아쿠아 오아시스 토너 300ml [anchor] | 40 hits · official 4 (single 2) · closest "[라운지전용] 에스네이처 아쿠아 오아시스 토너 2 |
-| 70 | 에스네이처 아쿠아 오아시스 토너 | oliveyoung | ⛔ no_offer(정당) | ⛔ no_offer — official mall offer(s) found but no comparable single SKU | 40 hits · official 1 (single 0) · closest "[라운지전용] 에스네이처 아쿠아 오아시스 토너 2 |
-| 71 | 인터미션 레스트업 세럼 스킨 | naver | ⚠️ 큐레이션 naver URL=세트(앵커) | ⚠️ anchor=set — id-anchored to curated SKU (productNo 5328668155) but  | 40 hits · official 2 (single 1) · closest "인터미션 레스트 업 세럼 스킨" @쿠팡 id1.0 |
-| 71 | 인터미션 레스트업 세럼 스킨 | oliveyoung | ✅ OK 단품 | ✅ 27,200원 @올리브영 — [단독기획]인터미션 레스트업 세럼스킨 290ml | 40 hits · official 0 (single 0) · closest "인터미션 레스트 업 세럼 스킨" @쿠팡 id1.0 |
-| 72 | 이지앤트리 체스트넛 바하 0.9 클리어 토너 | coupang | ✅ OK 단품 | ✅ 12,900원 — 이즈앤트리 체스트넛 바하 0.9% 클리어 토너 | anchored pid 6764118502 |
-| 72 | 이지앤트리 체스트넛 바하 0.9 클리어 토너 | naver | 🔎 데모/오큐레이션 의심 | ⛔ no_offer — no offer from the official mall (mallName did not match a | 0 hits · official 0 (single 0) · no individual offers |
-| 73 | 에뛰드 순정 약산성 5.5 진정 토너 | coupang | ⛔ no_offer(정당) | ⛔ no_offer — Coupang: productId 18359349 not in search results  | anchored pid 18359349 |
-| 73 | 에뛰드 순정 약산성 5.5 진정 토너 | naver | ✅ OK 단품 | ✅ 24,200원 @에뛰드 본사직영샵 — [에뛰드] 순정 약산성 5.5 진정 토너 500ml, 1개 | 40 hits · official 2 (single 2) · closest "에뛰드 순정 약산성 5.5 진정 토너" @아모레퍼 |
-| 74 | 토리든 다이브인 포맨 저분자 히알루론산 올인원 | coupang | ✅ OK 단품 | ✅ 19,930원 — 토리든 다이브인 포맨 저분자 히알루론산 올인원 | anchored pid 9304294159 |
-| 74 | 토리든 다이브인 포맨 저분자 히알루론산 올인원 | naver | ✅ OK 단품 | ✅ 19,700원 @토리든 — 토리든 다이브인 포맨 저분자 히알루론산 올인원 200ml, 1개 | 40 hits · official 2 (single 2) · closest "토리든 다이브인 포맨 저분자 히알루론산 올인원 2 |
-| 74 | 토리든 다이브인 포맨 저분자 히알루론산 올인원 | oliveyoung | ⛔ no_offer(정당) | ⛔ no_offer — no offer from the official mall (mallName did not match a | 40 hits · official 1 (single 0) · closest "토리든 다이브인 포맨 저분자 히알루론산 올인원 2 |
-| 75 | 코스노리 판테놀 베리어 에멀전 | coupang | ✅ OK 단품 | ✅ 16,800원 — 코스노리 판테놀 베리어 에멀전, 150ml, 1개 | anchored pid 7892362977 |
-| 75 | 코스노리 판테놀 베리어 에멀전 | naver | ✅ OK 단품 | ✅ 18,000원 @코스노리 — 코스노리 판테놀 베리어 로션 에멀전 150ml, 1개 [anchor] | 40 hits · official 1 (single 1) · closest "코스노리 판테놀 베리어 로션 에멀전 150ml,  |
-| 75 | 코스노리 판테놀 베리어 에멀전 | oliveyoung | ⚠️ allowlist/입점 갭 | ⛔ no_offer — no offer from the official mall (mallName did not match a | 40 hits · official 0 (single 0) · closest "코스노리 판테놀 베리어 로션 에멀전 150ml,  |
-| 76 | 닥터지 레드 블레미쉬 포 맨 진정 올인원 | coupang | ✅ OK 단품 | ✅ 17,000원 — 닥터지 레드 블레미쉬 포 맨 진정 올인원 | anchored pid 8660511597 |
-| 76 | 닥터지 레드 블레미쉬 포 맨 진정 올인원 | naver | ⚠️ 큐레이션 naver URL=세트(앵커) | ⚠️ anchor=set — id-anchored to curated SKU (productNo 11602103992) but | 40 hits · official 2 (single 0) · closest "[1+1+1] 닥터지 레드 블레미쉬 포 맨 진정  |
-| 76 | 닥터지 레드 블레미쉬 포 맨 진정 올인원 | oliveyoung | ⚠️ allowlist/입점 갭 | ⛔ no_offer — official mall offer(s) found but no comparable single SKU | 40 hits · official 0 (single 0) · closest "[1+1+1] 닥터지 레드 블레미쉬 포 맨 진정  |
-| 77 | 피지오겔 레드수딩 AI 로션 | coupang | ✅ OK 단품 | ✅ 22,410원 — 피지오겔 레드수딩 AI 로션 | anchored pid 6729084280 |
-| 77 | 피지오겔 레드수딩 AI 로션 | naver | ✅ OK 단품 | ✅ 25,900원 @피지오겔 공식몰 — 피지오겔 레드수딩 AI 페이셜 로션 200ml 민감피부장벽 진정 [anchor] | 40 hits · official 0 (single 0) · closest "피지오겔 레드수딩 AI 로션" @쿠팡 id1.00 |
-| 77 | 피지오겔 레드수딩 AI 로션 | oliveyoung | ✅ OK 단품 | ✅ 37,500원 @올리브영 — 피지오겔 레드수딩 AI 진정보습 로션 200ml | 40 hits · official 0 (single 0) · closest "피지오겔 레드수딩 AI 로션" @쿠팡 id1.00 |
-| 78 | 온그리디언츠 스킨 베리어 카밍 로션 | naver | ✅ OK 단품 | ✅ 24,900원 @온그리디언츠 — [속광로션] 온그리디언츠 스킨 베리어 카밍 로션 이엑스 220ml, 1개 [anchor] | 40 hits · official 3 (single 1) · closest "[속광로션] 온그리디언츠 스킨 베리어 카밍 로션  |
-| 78 | 온그리디언츠 스킨 베리어 카밍 로션 | oliveyoung | ⚠️ allowlist/입점 갭 | ⛔ no_offer — no offer from the official mall (mallName did not match a | 40 hits · official 0 (single 0) · closest "[속광로션] 온그리디언츠 스킨 베리어 카밍 로션  |
-| 79 | 듀이트리 AC 딥 장벽 진정 앰플 | coupang | ✅ OK 단품 | ✅ 14,800원 — 듀이트리 AC 딥 장벽 진정 앰플 | anchored pid 8431559881 |
-| 79 | 듀이트리 AC 딥 장벽 진정 앰플 | naver | ✅ OK 단품 | ✅ 18,900원 @듀이트리 — [듀이트리] AC 딥 장벽 진정 보습 앰플 60ml [anchor] | 40 hits · official 1 (single 1) · closest "듀이트리 AC 딥 모이스처 장벽 진정 앰플 60m |
-| 79 | 듀이트리 AC 딥 장벽 진정 앰플 | oliveyoung | ✅ OK 단품 | ✅ 22,400원 @올리브영 — [시카PDRN/장벽앰플] 듀이트리 AC 딥 장벽 진정 보습 앰플 60ml | 40 hits · official 1 (single 0) · closest "듀이트리 AC 딥 모이스처 장벽 진정 앰플 60m |
-| 80 | 코스알엑스 더 알파 알부틴 2 디스컬러레이션 케어 세럼 | coupang | ✅ OK 단품 | ✅ 17,340원 — 코스알엑스 더 알파 알부틴 2 디스컬러레이션 케어 세럼 | anchored pid 8318643689 |
-| 80 | 코스알엑스 더 알파 알부틴 2 디스컬러레이션 케어 세럼 | naver | ✅ OK 단품 | ✅ 21,390원 @코스알엑스 — 코스알엑스 더 알파-알부틴 2 디스컬러레이션 케어 세럼 50ml, 1개 | 40 hits · official 2 (single 2) · closest "[코스알엑스] 더 알파-알부틴 2 디스컬러레이션  |
-| 80 | 코스알엑스 더 알파 알부틴 2 디스컬러레이션 케어 세럼 | oliveyoung | ✅ OK 단품 | ✅ 19,500원 @올리브영 — [흔적케어] 코스알엑스 더 알파 - 알부틴 세럼 50ml (펩타이드세럼  | 40 hits · official 0 (single 0) · closest "[코스알엑스] 더 알파-알부틴 2 디스컬러레이션  |
-| 81 | 에스트라 에이시카 365 세럼 pH 4.5 | coupang | ⛔ no_offer(정당) | ⛔ no_offer — Coupang: productId 9392392732 not in search result | anchored pid 9392392732 |
-| 81 | 에스트라 에이시카 365 세럼 pH 4.5 | naver | ⚠️ 큐레이션 naver URL=세트(앵커) | ⚠️ anchor=set — id-anchored to curated SKU (productNo 11715934703) but | 40 hits · official 3 (single 0) · closest "[더블 세트] 에스트라 에이시카365 흔적진정세럼 |
-| 81 | 에스트라 에이시카 365 세럼 pH 4.5 | oliveyoung | ✅ OK 단품 | ✅ 32,300원 @올리브영 — 에스트라 에이시카365 흔적진정세럼 pH4.5 40ml | 40 hits · official 2 (single 1) · closest "[더블 세트] 에스트라 에이시카365 흔적진정세럼 |
-| 82 | 아벤느 히알루론 액티브 B3 안티에이징 세럼  | coupang | ✅ OK 단품 | ✅ 27,590원 — 아벤느 안티에이징 HAB3 탄력 액티브 세럼 | anchored pid 8306356651 |
-| 82 | 아벤느 히알루론 액티브 B3 안티에이징 세럼  | naver | ⚠️ 큐레이션 naver URL=세트(앵커) | ⚠️ anchor=set — id-anchored to curated SKU (productNo 10698667363) but | 40 hits · official 2 (single 1) · closest "아벤느 아벤느 히알루론 액티브 B3 안티에이징 세 |
-| 82 | 아벤느 히알루론 액티브 B3 안티에이징 세럼  | oliveyoung | ⚠️ allowlist/입점 갭 | ⛔ no_offer — no offer from the official mall (mallName did not match a | 40 hits · official 0 (single 0) · closest "아벤느 아벤느 히알루론 액티브 B3 안티에이징 세 |
-| 83 | 퍼셀 880억/mL 글루타치온 플렉서블 리포좀 | naver | ✅ OK 단품 | ✅ 32,400원 @퍼셀 공식 스토어 — [투명미백] 880억/mL 글루타치온 플렉서블 리포좀 30ml, 1개 | 40 hits · official 2 (single 2) · closest "[대용량][투명미백] 880억/mL 글루타치온 플 |
-| 83 | 퍼셀 880억/mL 글루타치온 플렉서블 리포좀 | oliveyoung | ✅ OK 단품 | ✅ 22,000원 @올리브영 — [잡티톤업] 퍼셀 880억/mL 글루타치온 플렉서블 리포좀 톤업앰플 20 | 40 hits · official 0 (single 0) · closest "[대용량][투명미백] 880억/mL 글루타치온 플 |
-| 84 | 랑콤 제니피끄 얼티미트 세럼 | coupang | ⛔ no_offer(정당) | ⛔ no_offer — Coupang: productId 8464853636 not in search result | anchored pid 8464853636 |
-| 84 | 랑콤 제니피끄 얼티미트 세럼 | naver | ⚠️ 큐레이션 naver URL=세트(앵커) | ⚠️ anchor=set — id-anchored to curated SKU (productNo 10791745136) but | 40 hits · official 0 (single 0) · closest "랑콤 제니피끄 세럼 얼티미트, 115ml, 1개" |
-| 84 | 랑콤 제니피끄 얼티미트 세럼 | oliveyoung | ⚠️ allowlist/입점 갭 | ⛔ no_offer — no offer from the official mall (mallName did not match a | 40 hits · official 0 (single 0) · closest "랑콤 제니피끄 세럼 얼티미트, 115ml, 1개" |
-| 85 | 유세린 하이아르론 에피셀린 세럼 | naver | ⛔ no_offer(정당) | ⛔ no_offer — official mall offer(s) found but title similarity < 0.5 | 40 hits · official 2 (single 0) · closest "유세린 하이알루론 에피셀린 세럼 30ml 더블팩" |
-| 85 | 유세린 하이아르론 에피셀린 세럼 | oliveyoung | ⛔ no_offer(정당) | ⛔ no_offer — official mall offer(s) found but title similarity < 0.5 | 40 hits · official 1 (single 0) · closest "유세린 하이알루론 에피셀린 세럼 30ml 더블팩" |
-| 86 | 바이오힐보 엔에이디 프리즈셀 글로우 파워 세럼 | naver | ⛔ no_offer(정당) | ⛔ no_offer — no offer from the official mall (mallName did not match a | 40 hits · official 1 (single 0) · closest "바이오힐보 엔에이디 프리즈셀 글로우 파워 세럼 3 |
-| 86 | 바이오힐보 엔에이디 프리즈셀 글로우 파워 세럼 | oliveyoung | ✅ OK 단품 | ✅ 39,000원 @올리브영 — [광채세럼] 바이오힐보 NAD 프리즈셀 글로우 파워 세럼 30ml [단품 | 40 hits · official 2 (single 1) · closest "바이오힐보 엔에이디 프리즈셀 글로우 파워 세럼 3 |
-| 87 | 라운드랩 자작나무 수분 클렌저 | coupang | ✅ OK 단품 | ✅ 15,500원 — 라운드랩 자작나무 수분 클렌저 | anchored pid 9558253617 |
-| 87 | 라운드랩 자작나무 수분 클렌저 | naver | ⚠️ 큐레이션 naver URL=세트(앵커) | ⚠️ anchor=set — id-anchored to curated SKU (productNo 11378409511) but | 40 hits · official 1 (single 0) · closest "[수분촉촉] 라운드랩 자작나무 수분 클렌저 150 |
-| 87 | 라운드랩 자작나무 수분 클렌저 | oliveyoung | ⛔ no_offer(정당) | ⛔ no_offer — official mall offer(s) found but no comparable single SKU | 40 hits · official 1 (single 0) · closest "[수분촉촉] 라운드랩 자작나무 수분 클렌저 150 |
-| 88 | 몰바니 저자극 LHA 율피 젤 클렌저 | naver | ✅ OK 단품 | ✅ 28,000원 @몰바니 — 몰바니 율피 저자극 LHA 클렌징젤 200ml [anchor] | 40 hits · official 0 (single 0) · closest "몰바니 저자극 LHA 율피 젤 클렌저 200ml+ |
-| 88 | 몰바니 저자극 LHA 율피 젤 클렌저 | oliveyoung | ✅ OK 단품 | ✅ 18,900원 @올리브영 — 몰바니 저자극 LHA 율피 젤 클렌저 200ml | 40 hits · official 1 (single 1) · closest "몰바니 저자극 LHA 율피 젤 클렌저 200ml+ |
-| 89 | 니들리 마일드 효소 클렌징 파우더 | naver | ✅ OK 단품 | ✅ 17,950원 @니들리 NEEDLY — 니들리 마일드 효소 클렌징 파우더 60g [anchor] | 40 hits · official 2 (single 2) · closest "니들리 마일드 효소 클렌징 파우더 60g" @니들 |
-| 89 | 니들리 마일드 효소 클렌징 파우더 | oliveyoung | ✅ OK 단품 | ✅ 15,120원 @올리브영 — 니들리 마일드 효소 클렌징 파우더 60g | 40 hits · official 1 (single 1) · closest "니들리 마일드 효소 클렌징 파우더 60g" @니들 |
-| 90 | 브링그린 티트리 시카 딥 클렌징폼 | naver | ⚠️ 큐레이션 naver URL=세트(앵커) | ⚠️ anchor=set — id-anchored to curated SKU (productNo 8601837234) but  | 40 hits · official 2 (single 1) · closest "[고밀도효소거품] 브링그린 티트리 시카 딥클렌징폼 |
-| 90 | 브링그린 티트리 시카 딥 클렌징폼 | oliveyoung | ✅ OK 단품 | ✅ 10,500원 @올리브영 — [고밀도효소거품] 브링그린 티트리 시카 딥클렌징폼 기획 (더블/대용량) | 40 hits · official 1 (single 1) · closest "[고밀도효소거품] 브링그린 티트리 시카 딥클렌징폼 |
-| 91 | 일리윤 젠틀 딥 페이셜 클렌저 | coupang | ✅ OK 단품 | ✅ 16,600원 — 일리윤 젠틀 딥 페이셜 클렌저 | anchored pid 8688664449 |
-| 91 | 일리윤 젠틀 딥 페이셜 클렌저 | naver | ✅ OK 단품 | ✅ 17,600원 @아모레퍼시픽몰 헤어바디 — 일리윤 젠틀 딥 민감 피부 페이셜 클렌저 250ml [anchor] | 40 hits · official 1 (single 1) · closest "일리윤 젠틀 딥 페이셜 클렌저" @아모레퍼시픽공식 |
-| 91 | 일리윤 젠틀 딥 페이셜 클렌저 | oliveyoung | ⛔ no_offer(정당) | ⛔ no_offer — official mall offer(s) found but title similarity < 0.5 | 40 hits · official 1 (single 0) · closest "일리윤 젠틀 딥 페이셜 클렌저" @아모레퍼시픽공식 |
-| 92 | 블라이드 버블링 스플래쉬 마스크 인디언 그레이셜 머드 | coupang | ✅ OK 단품 | ✅ 21,000원 — 블라이드 얼음모공팩 인디언 머드팩투폼 클렌징폼 120ml, 클레이팩 모공 | anchored pid 8091623533 |
-| 92 | 블라이드 버블링 스플래쉬 마스크 인디언 그레이셜 머드 | naver | ✅ OK 단품 | ✅ 21,600원 @블라이드BLITHE — 머드팩투폼블라이드 버블링 스플래쉬 마스크 인디언 그레이셜 머드 | 5 hits · official 1 (single 1) · closest "머드팩투폼블라이드 버블링 스플래쉬 마스크 인디언 그 |
-| 92 | 블라이드 버블링 스플래쉬 마스크 인디언 그레이셜 머드 | oliveyoung | ⚠️ allowlist/입점 갭 | ⛔ no_offer — no offer from the official mall (mallName did not match a | 5 hits · official 0 (single 0) · closest "머드팩투폼블라이드 버블링 스플래쉬 마스크 인디언 그 |
-| 93 | 랑콤 스킨 이돌 3 세럼 파인 커버 | coupang | ⛔ no_offer(정당) | ⛔ no_offer — Coupang: productId 9553155211 not in search result | anchored pid 9553155211 |
-| 93 | 랑콤 스킨 이돌 3 세럼 파인 커버 | oliveyoung | ⚠️ allowlist/입점 갭 | ⛔ no_offer — no offer from the official mall (mallName did not match a | 38 hits · official 0 (single 0) · closest "랑콤 스킨 이돌 3 세럼 파인커버 쿠션 P10 1 |
-| 94 | 아이소이 스킨케어 비건 쿠션 | coupang | ⚠️ 큐레이션 URL=다중팩/세트(쿠팡) | ⚠️ 35,900원 — 아이소이 스킨케어 비건 쿠션 21호(본품+리필) (plus-combined extra unit (bun | anchored pid 8594202854 |
-| 94 | 아이소이 스킨케어 비건 쿠션 | naver | ⚠️ 큐레이션 naver URL=세트(앵커) | ⚠️ anchor=set — id-anchored to curated SKU (productNo 7899595094) but  | 40 hits · official 3 (single 1) · closest "[N단독/3개] 아이소이 스킨케어 비건 제로 쿠션 |
-| 95 | 아르마니 루미너스 실크 프리마 글로우 쿠션 | naver | ⚠️ 큐레이션 naver URL=세트(앵커) | ⚠️ anchor=set — id-anchored to curated SKU (productNo 12139954560) but | 40 hits · official 9 (single 0) · closest "[아르마니 뷰티][리필위크] NEW 루미너스 실크 |
-| 96 | 파넬 시카마누 세럼쿠션 | naver | ✅ OK 단품 | ✅ 22,000원 @파넬 공식스토어 — 파넬 시카마누 세럼쿠션 SPF45 PA++ 본품, 21호, 15g [anchor] | 40 hits · official 16 (single 5) · closest "파넬 시카마누 세럼쿠션 SPF45 PA++ 본품 |
-| 96 | 파넬 시카마누 세럼쿠션 | oliveyoung | ⚠️ allowlist/입점 갭 | ⛔ no_offer — no offer from the official mall (mallName did not match a | 40 hits · official 0 (single 0) · closest "파넬 시카마누 세럼쿠션 SPF45 PA++ 본품, |
-| 97 | 에스쁘아 비 벨벳 커버 쿠션 | coupang | ⚠️ 큐레이션 URL=다중팩/세트(쿠팡) | ⚠️ 23,100원 — 에스쁘아 비벨벳 커버 쿠션 13g + 퍼프 2p 세트 (plus-combined extra unit ( | anchored pid 9302781585 |
-| 97 | 에스쁘아 비 벨벳 커버 쿠션 | naver | ✅ OK 단품 | ✅ 12,000원 @에스쁘아 본사직영샵 — 에스쁘아 NEW 비벨벳 커버쿠션 미니 SPF42 PA++ 4.5g | 40 hits · official 7 (single 1) · closest "에스쁘아 NEW 비벨벳 커버 쿠션 리필 SPF42 |
-| 97 | 에스쁘아 비 벨벳 커버 쿠션 | oliveyoung | ⛔ no_offer(정당) | ⛔ no_offer — official mall offer(s) found but no comparable single SKU | 40 hits · official 1 (single 0) · closest "에스쁘아 NEW 비벨벳 커버 쿠션 리필 SPF42 |
-| 98 | VDL 커버스테인 하이커버 쿠션 | coupang | ✅ OK 단품 | ✅ 30,780원 — 브이디엘 커버 스테인 하이커버 쿠션 | anchored pid 9216167170 |
-| 98 | VDL 커버스테인 하이커버 쿠션 | naver | ✅ OK 단품 | ✅ 32,400원 @VDL 공식플래그십 스토어 — VDL 커버스테인 하이커버 쿠션 13g (SPF35/ PA++) [ancho | 40 hits · official 2 (single 0) · closest "VDL 커버스테인 하이커버 쿠션 (본품 +리필)  |
-| 98 | VDL 커버스테인 하이커버 쿠션 | oliveyoung | ⚠️ allowlist/입점 갭 | ⛔ no_offer — no offer from the official mall (mallName did not match a | 40 hits · official 0 (single 0) · closest "VDL 커버스테인 하이커버 쿠션 (본품 +리필)  |
-| 99 | 미샤 래디언스 퍼펙트핏 쿠션 | coupang | ✅ OK 단품 | ✅ 10,450원 — 미샤 래디언스 퍼펙트핏 쿠션 15g | anchored pid 1665858959 |
-| 256 | 닥터지 레드 블레미쉬 수딩 업 선 스틱 | coupang | ⚠️ 큐레이션 URL=다중팩/세트(쿠팡) | ⚠️ 19,000원 — 닥터지 레드 블레미쉬 수딩 업 선스틱 듀오 세트 SPF50+ PA++++ (set/bundle keyw | anchored pid 7975902054 |
-| 256 | 닥터지 레드 블레미쉬 수딩 업 선 스틱 | naver | ⚠️ 큐레이션 naver URL=세트(앵커) | ⚠️ anchor=set — id-anchored to curated SKU (productNo 8315952932) but  | 40 hits · official 1 (single 0) · closest "닥터지 레드 블레미쉬 수딩 업 선스틱 듀오 세트  |
-| 257 | 이즈앤트리 어니언 프레쉬 라이트 선스틱 | coupang | ✅ OK 단품 | ✅ 9,070원 — 이즈앤트리 어니언 프레쉬 라이트 선스틱 SPF50+ PA++++ | anchored pid 7982068790 |
-| 257 | 이즈앤트리 어니언 프레쉬 라이트 선스틱 | naver | ⚠️ 큐레이션 naver URL=세트(앵커) | ⚠️ anchor=set — id-anchored to curated SKU (productNo 9988052762) but  | 40 hits · official 0 (single 0) · closest "이즈앤트리 어니언 프레쉬 라이트 선스틱 SPF50 |
-| 258 | 유이크 바이옴 레미디 퍼펙트 보송 선스틱 | coupang | ✅ OK 단품 | ✅ 19,630원 — 유이크 바이옴 레미디 퍼펙트 보송 선스틱 | anchored pid 8012195103 |
-| 258 | 유이크 바이옴 레미디 퍼펙트 보송 선스틱 | naver | ✅ OK 단품 | ✅ 19,200원 @UIQ 유이크 — 유이크 바이옴 레미디 퍼펙트 보송 선스틱 18g [anchor] | 40 hits · official 5 (single 3) · closest "유이크 바이옴 레미디 퍼펙트 보송 선스틱 18g" |
-| 261 | 몽디에스 선쿠션 | coupang | ✅ OK 단품 | ✅ 35,000원 — 몽디에스 아기 유아 어린이 징크 논나노 무기자차 쿨링 선쿠션 SPF50+ | anchored pid 9459679505 |
-| 261 | 몽디에스 선쿠션 | naver | ⚠️ 큐레이션 naver URL=세트(앵커) | ⚠️ anchor=set — id-anchored to curated SKU (productNo 6069991995) but  | 35 hits · official 2 (single 0) · closest "몽디에스 선쿠션 12g (SPF43) 유아선크림, |
+| 29 | 몽디에스 엑설런트 선크림 | coupang | ⚠️ 큐레이션 URL=다중팩/세트 쿠팡(링크만) | ⚠️ 33,000원 — [6개월 이상 첫 선케어] [1+1] 몽디에스 아기/유아 무기자차 선크림 (plus-combined e | anchored pid 5529437152 |
+| 29 | 몽디에스 엑설런트 선크림 | naver | ⚠️ 큐레이션 naver URL=세트 앵커(링크만) | ⚠️ anchor=set — id-anchored to curated SKU (productNo 13009860683) but | 0 hits · official 0 (single 0) · no individual offers |
+| 30 | 후시다딘 (동화약품) 더마 트러블 징크 카밍 선크림 | coupang | ⚠️ 큐레이션 URL=다중팩/세트 쿠팡(링크만) | ⚠️ 38,530원 — 후시다인 더마 트러블 징크 카밍 선크림 SPF50+ PA++++, 50m (4-count multipa | anchored pid 7941544246 |
+| 30 | 후시다딘 (동화약품) 더마 트러블 징크 카밍 선크림 | naver | 🔎 데모/오큐레이션 의심(링크만) | 🔗 link-only — anchor miss — curated productNo 9999261730 not in 3 que | 0 hits · official 0 (single 0) · no individual offers |
+| 31 | 스타라이크 피디알엔 스킨핏 수분 선크림 | coupang | ✅ OK 단품(앵커, 가격) | ✅ 16,760원 — 스타라이크 피디알엔 스킨 핏 수분 선 크림 SPF 50+ PA++++ | anchored pid 8745247214 |
+| 31 | 스타라이크 피디알엔 스킨핏 수분 선크림 | oliveyoung | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — no curated productId to anchor — link-only | 40 hits · official 0 (single 0) · closest "스타라이크 피디알엔 스킨 핏 수분 선 크림 50m |
+| 32 | 아로셀 멜라 TXA 선세럼 | coupang | ✅ OK 단품(앵커, 가격) | ✅ 19,700원 — 아로셀 멜라 TXA 수분 선세럼 SPF50+ PA++++ | anchored pid 8885954154 |
+| 32 | 아로셀 멜라 TXA 선세럼 | naver | ✅ OK 단품(앵커, 가격) | ✅ 25,000원 @아로셀 — [10% 추가적립] 100만 유튜버 PICK! 아로셀 멜라 트라넥스 선  [anchor] | 40 hits · official 0 (single 0) · closest "[아이돌선세럼/24시간지속] 아로셀 멜라 TXA  |
+| 32 | 아로셀 멜라 TXA 선세럼 | oliveyoung | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — no curated productId to anchor — link-only | 40 hits · official 1 (single 1) · closest "[아이돌선세럼/24시간지속] 아로셀 멜라 TXA  |
+| 33 | 이니스프리 데일리 유브이 톤업 노세범 선크림 | coupang | ✅ OK 단품(앵커, 가격) | ✅ 12,490원 — 이니스프리 데일리 유브이 톤업 선크림 핑크 SPF50+ PA++++ | anchored pid 9373986892 |
+| 33 | 이니스프리 데일리 유브이 톤업 노세범 선크림 | naver | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — anchor miss — curated productNo 13155811785 not in 3 qu | 40 hits · official 1 (single 1) · closest "[파데프리_김아영PICK] 이니스프리 데일리 UV |
+| 33 | 이니스프리 데일리 유브이 톤업 노세범 선크림 | oliveyoung | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — no curated productId to anchor — link-only | 40 hits · official 0 (single 0) · closest "[파데프리_김아영PICK] 이니스프리 데일리 UV |
+| 34 | 조선미녀 스테이 프레쉬 톤업 선크림 퍼플 | coupang | ✅ OK 단품(앵커, 가격) | ✅ 14,400원 — 조선미녀 스테이 프레쉬 톤업 선크림 퍼플 SPF50+ PA++++ | anchored pid 9544152755 |
+| 34 | 조선미녀 스테이 프레쉬 톤업 선크림 퍼플 | naver | ✅ OK 단품(앵커, 가격) | ✅ 15,300원 @뷰티오브조선 : 조선미녀 — 조선미녀 스테이프레쉬 톤업 선크림 50ml (퍼플/그린) SPF50+ P [a | 40 hits · official 1 (single 1) · closest "조선미녀 스테이프레쉬 톤업 선크림 50ml (퍼플 |
+| 34 | 조선미녀 스테이 프레쉬 톤업 선크림 퍼플 | oliveyoung | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — no curated productId to anchor — link-only | 40 hits · official 0 (single 0) · closest "조선미녀 스테이프레쉬 톤업 선크림 50ml (퍼플 |
+| 35 | 넘버즈인 3번 도자기결 톤업베이지 선크림 | coupang | ⚠️ URL 데이터 오류(링크만) | ⛔ data_error | share short-link (no productId) |
+| 35 | 넘버즈인 3번 도자기결 톤업베이지 선크림 | naver | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — anchor miss — curated productNo 5788327291 not in 3 que | 40 hits · official 0 (single 0) · closest "[파데프리] 넘버즈인 3번 도자기결 톤업베이지 선 |
+| 35 | 넘버즈인 3번 도자기결 톤업베이지 선크림 | oliveyoung | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — no curated productId to anchor — link-only | 40 hits · official 1 (single 0) · closest "[파데프리] 넘버즈인 3번 도자기결 톤업베이지 선 |
+| 50 | 메디큐브 PDRN 핑크 시카 수딩 토너 | naver | ⚠️ 큐레이션 naver URL=세트 앵커(링크만) | ⚠️ anchor=set — id-anchored to curated SKU (productNo 11488401506) but | 40 hits · official 1 (single 1) · closest "PDRN 핑크 시카 수딩 토너" @메디큐브 id1 |
+| 50 | 메디큐브 PDRN 핑크 시카 수딩 토너 | oliveyoung | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — no curated productId to anchor — link-only | 40 hits · official 1 (single 1) · closest "PDRN 핑크 시카 수딩 토너" @메디큐브 id1 |
+| 69 | 비플레인 녹두 모공 클리어링 라하 토너 | coupang | ✅ OK 단품(앵커, 가격) | ✅ 13,800원 — 비플레인 녹두 모공 클리어링 라하 토너 | anchored pid 8431337141 |
+| 69 | 비플레인 녹두 모공 클리어링 라하 토너 | naver | ✅ OK 단품(앵커, 가격) | ✅ 16,800원 @비플레인 beplain — [모공비움 토너] 비플레인 녹두 모공 클리어링 라하 토너 265ml, 1 [an | 40 hits · official 2 (single 2) · closest "[모공비움 토너] 비플레인 녹두 모공 클리어링 라 |
+| 69 | 비플레인 녹두 모공 클리어링 라하 토너 | oliveyoung | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — no curated productId to anchor — link-only | 40 hits · official 1 (single 0) · closest "[모공비움 토너] 비플레인 녹두 모공 클리어링 라 |
+| 70 | 에스네이처 아쿠아 오아시스 토너 | coupang | ✅ OK 단품(앵커, 가격) | ✅ 14,880원 — 에스네이처 아쿠아 오아시스 토너 | anchored pid 7093360467 |
+| 70 | 에스네이처 아쿠아 오아시스 토너 | naver | ✅ OK 단품(앵커, 가격) | ✅ 18,900원 @에스네이처 — 에스네이처 아쿠아 오아시스 토너 300ml [anchor] | 40 hits · official 4 (single 2) · closest "[라운지전용] 에스네이처 아쿠아 오아시스 토너 2 |
+| 70 | 에스네이처 아쿠아 오아시스 토너 | oliveyoung | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — no curated productId to anchor — link-only | 40 hits · official 1 (single 0) · closest "[라운지전용] 에스네이처 아쿠아 오아시스 토너 2 |
+| 71 | 인터미션 레스트업 세럼 스킨 | naver | ⚠️ 큐레이션 naver URL=세트 앵커(링크만) | ⚠️ anchor=set — id-anchored to curated SKU (productNo 5328668155) but  | 40 hits · official 2 (single 1) · closest "인터미션 레스트 업 세럼 스킨" @쿠팡 id1.0 |
+| 71 | 인터미션 레스트업 세럼 스킨 | oliveyoung | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — no curated productId to anchor — link-only | 40 hits · official 0 (single 0) · closest "인터미션 레스트 업 세럼 스킨" @쿠팡 id1.0 |
+| 72 | 이지앤트리 체스트넛 바하 0.9 클리어 토너 | coupang | ✅ OK 단품(앵커, 가격) | ✅ 12,900원 — 이즈앤트리 체스트넛 바하 0.9% 클리어 토너 | anchored pid 6764118502 |
+| 72 | 이지앤트리 체스트넛 바하 0.9 클리어 토너 | naver | 🔎 데모/오큐레이션 의심(링크만) | 🔗 link-only — anchor miss — curated productNo 12650048480 not in 3 qu | 0 hits · official 0 (single 0) · no individual offers |
+| 73 | 에뛰드 순정 약산성 5.5 진정 토너 | coupang | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — no_offer: Coupang: productId 18359349 not in searc | anchored pid 18359349 |
+| 73 | 에뛰드 순정 약산성 5.5 진정 토너 | naver | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — anchor miss — curated productNo 10516809109 not in 3 qu | 40 hits · official 2 (single 2) · closest "에뛰드 순정 약산성 5.5 진정 토너" @아모레퍼 |
+| 74 | 토리든 다이브인 포맨 저분자 히알루론산 올인원 | coupang | ✅ OK 단품(앵커, 가격) | ✅ 19,930원 — 토리든 다이브인 포맨 저분자 히알루론산 올인원 | anchored pid 9304294159 |
+| 74 | 토리든 다이브인 포맨 저분자 히알루론산 올인원 | naver | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — anchor miss — curated productNo 11604693319 not in 3 qu | 40 hits · official 2 (single 2) · closest "토리든 다이브인 포맨 저분자 히알루론산 올인원 2 |
+| 74 | 토리든 다이브인 포맨 저분자 히알루론산 올인원 | oliveyoung | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — no curated productId to anchor — link-only | 40 hits · official 1 (single 0) · closest "토리든 다이브인 포맨 저분자 히알루론산 올인원 2 |
+| 75 | 코스노리 판테놀 베리어 에멀전 | coupang | ✅ OK 단품(앵커, 가격) | ✅ 16,800원 — 코스노리 판테놀 베리어 에멀전, 150ml, 1개 | anchored pid 7892362977 |
+| 75 | 코스노리 판테놀 베리어 에멀전 | naver | ✅ OK 단품(앵커, 가격) | ✅ 18,000원 @코스노리 — 코스노리 판테놀 베리어 로션 에멀전 150ml, 1개 [anchor] | 40 hits · official 1 (single 1) · closest "코스노리 판테놀 베리어 로션 에멀전 150ml,  |
+| 75 | 코스노리 판테놀 베리어 에멀전 | oliveyoung | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — no curated productId to anchor — link-only | 40 hits · official 0 (single 0) · closest "코스노리 판테놀 베리어 로션 에멀전 150ml,  |
+| 76 | 닥터지 레드 블레미쉬 포 맨 진정 올인원 | coupang | ✅ OK 단품(앵커, 가격) | ✅ 17,000원 — 닥터지 레드 블레미쉬 포 맨 진정 올인원 | anchored pid 8660511597 |
+| 76 | 닥터지 레드 블레미쉬 포 맨 진정 올인원 | naver | ⚠️ 큐레이션 naver URL=세트 앵커(링크만) | ⚠️ anchor=set — id-anchored to curated SKU (productNo 11602103992) but | 40 hits · official 2 (single 0) · closest "[1+1+1] 닥터지 레드 블레미쉬 포 맨 진정  |
+| 76 | 닥터지 레드 블레미쉬 포 맨 진정 올인원 | oliveyoung | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — no curated productId to anchor — link-only | 40 hits · official 0 (single 0) · closest "[1+1+1] 닥터지 레드 블레미쉬 포 맨 진정  |
+| 77 | 피지오겔 레드수딩 AI 로션 | coupang | ✅ OK 단품(앵커, 가격) | ✅ 22,410원 — 피지오겔 레드수딩 AI 로션 | anchored pid 6729084280 |
+| 77 | 피지오겔 레드수딩 AI 로션 | naver | ✅ OK 단품(앵커, 가격) | ✅ 25,900원 @피지오겔 공식몰 — 피지오겔 레드수딩 AI 페이셜 로션 200ml 민감피부장벽 진정 [anchor] | 40 hits · official 0 (single 0) · closest "피지오겔 레드수딩 AI 로션" @쿠팡 id1.00 |
+| 77 | 피지오겔 레드수딩 AI 로션 | oliveyoung | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — no curated productId to anchor — link-only | 40 hits · official 0 (single 0) · closest "피지오겔 레드수딩 AI 로션" @쿠팡 id1.00 |
+| 78 | 온그리디언츠 스킨 베리어 카밍 로션 | naver | ✅ OK 단품(앵커, 가격) | ✅ 24,900원 @온그리디언츠 — [속광로션] 온그리디언츠 스킨 베리어 카밍 로션 이엑스 220ml, 1개 [anchor] | 40 hits · official 3 (single 1) · closest "[속광로션] 온그리디언츠 스킨 베리어 카밍 로션  |
+| 78 | 온그리디언츠 스킨 베리어 카밍 로션 | oliveyoung | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — no curated productId to anchor — link-only | 40 hits · official 0 (single 0) · closest "[속광로션] 온그리디언츠 스킨 베리어 카밍 로션  |
+| 79 | 듀이트리 AC 딥 장벽 진정 앰플 | coupang | ✅ OK 단품(앵커, 가격) | ✅ 14,800원 — 듀이트리 AC 딥 장벽 진정 앰플 | anchored pid 8431559881 |
+| 79 | 듀이트리 AC 딥 장벽 진정 앰플 | naver | ✅ OK 단품(앵커, 가격) | ✅ 18,900원 @듀이트리 — [듀이트리] AC 딥 장벽 진정 보습 앰플 60ml [anchor] | 40 hits · official 1 (single 1) · closest "듀이트리 AC 딥 모이스처 장벽 진정 앰플 60m |
+| 79 | 듀이트리 AC 딥 장벽 진정 앰플 | oliveyoung | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — no curated productId to anchor — link-only | 40 hits · official 1 (single 0) · closest "듀이트리 AC 딥 모이스처 장벽 진정 앰플 60m |
+| 80 | 코스알엑스 더 알파 알부틴 2 디스컬러레이션 케어 세럼 | coupang | ✅ OK 단품(앵커, 가격) | ✅ 17,340원 — 코스알엑스 더 알파 알부틴 2 디스컬러레이션 케어 세럼 | anchored pid 8318643689 |
+| 80 | 코스알엑스 더 알파 알부틴 2 디스컬러레이션 케어 세럼 | naver | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — anchor miss — curated productNo 10796508170 not in 3 qu | 40 hits · official 2 (single 2) · closest "[코스알엑스] 더 알파-알부틴 2 디스컬러레이션  |
+| 80 | 코스알엑스 더 알파 알부틴 2 디스컬러레이션 케어 세럼 | oliveyoung | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — no curated productId to anchor — link-only | 40 hits · official 0 (single 0) · closest "[코스알엑스] 더 알파-알부틴 2 디스컬러레이션  |
+| 81 | 에스트라 에이시카 365 세럼 pH 4.5 | coupang | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — no_offer: Coupang: productId 9392392732 not in sea | anchored pid 9392392732 |
+| 81 | 에스트라 에이시카 365 세럼 pH 4.5 | naver | ⚠️ 큐레이션 naver URL=세트 앵커(링크만) | ⚠️ anchor=set — id-anchored to curated SKU (productNo 11715934703) but | 40 hits · official 3 (single 0) · closest "[더블 세트] 에스트라 에이시카365 흔적진정세럼 |
+| 81 | 에스트라 에이시카 365 세럼 pH 4.5 | oliveyoung | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — no curated productId to anchor — link-only | 40 hits · official 2 (single 1) · closest "[더블 세트] 에스트라 에이시카365 흔적진정세럼 |
+| 82 | 아벤느 히알루론 액티브 B3 안티에이징 세럼  | coupang | ✅ OK 단품(앵커, 가격) | ✅ 27,590원 — 아벤느 안티에이징 HAB3 탄력 액티브 세럼 | anchored pid 8306356651 |
+| 82 | 아벤느 히알루론 액티브 B3 안티에이징 세럼  | naver | ⚠️ 큐레이션 naver URL=세트 앵커(링크만) | ⚠️ anchor=set — id-anchored to curated SKU (productNo 10698667363) but | 40 hits · official 2 (single 1) · closest "아벤느 아벤느 히알루론 액티브 B3 안티에이징 세 |
+| 82 | 아벤느 히알루론 액티브 B3 안티에이징 세럼  | oliveyoung | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — no curated productId to anchor — link-only | 40 hits · official 0 (single 0) · closest "아벤느 아벤느 히알루론 액티브 B3 안티에이징 세 |
+| 83 | 퍼셀 880억/mL 글루타치온 플렉서블 리포좀 | naver | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — anchor miss — curated productNo 13000644987 not in 2 qu | 40 hits · official 2 (single 2) · closest "[대용량][투명미백] 880억/mL 글루타치온 플 |
+| 83 | 퍼셀 880억/mL 글루타치온 플렉서블 리포좀 | oliveyoung | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — no curated productId to anchor — link-only | 40 hits · official 0 (single 0) · closest "[대용량][투명미백] 880억/mL 글루타치온 플 |
+| 84 | 랑콤 제니피끄 얼티미트 세럼 | coupang | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — no_offer: Coupang: productId 8464853636 not in sea | anchored pid 8464853636 |
+| 84 | 랑콤 제니피끄 얼티미트 세럼 | naver | ⚠️ 큐레이션 naver URL=세트 앵커(링크만) | ⚠️ anchor=set — id-anchored to curated SKU (productNo 10791745136) but | 40 hits · official 0 (single 0) · closest "랑콤 제니피끄 세럼 얼티미트, 115ml, 1개" |
+| 84 | 랑콤 제니피끄 얼티미트 세럼 | oliveyoung | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — no curated productId to anchor — link-only | 40 hits · official 0 (single 0) · closest "랑콤 제니피끄 세럼 얼티미트, 115ml, 1개" |
+| 85 | 유세린 하이아르론 에피셀린 세럼 | naver | ✅ OK 단품(앵커, 가격) | ✅ 60,900원 @유세린공식스토어 — 유세린 하이알루론 에피셀린 세럼 30ml [anchor] | 40 hits · official 2 (single 0) · closest "유세린 하이알루론 에피셀린 세럼 30ml 더블팩" |
+| 85 | 유세린 하이아르론 에피셀린 세럼 | oliveyoung | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — no curated productId to anchor — link-only | 40 hits · official 1 (single 0) · closest "유세린 하이알루론 에피셀린 세럼 30ml 더블팩" |
+| 86 | 바이오힐보 엔에이디 프리즈셀 글로우 파워 세럼 | naver | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — anchor miss — curated productNo 12443904908 not in 3 qu | 40 hits · official 1 (single 0) · closest "바이오힐보 엔에이디 프리즈셀 글로우 파워 세럼 3 |
+| 86 | 바이오힐보 엔에이디 프리즈셀 글로우 파워 세럼 | oliveyoung | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — no curated productId to anchor — link-only | 40 hits · official 2 (single 1) · closest "바이오힐보 엔에이디 프리즈셀 글로우 파워 세럼 3 |
+| 87 | 라운드랩 자작나무 수분 클렌저 | coupang | ✅ OK 단품(앵커, 가격) | ✅ 15,500원 — 라운드랩 자작나무 수분 클렌저 | anchored pid 9558253617 |
+| 87 | 라운드랩 자작나무 수분 클렌저 | naver | ⚠️ 큐레이션 naver URL=세트 앵커(링크만) | ⚠️ anchor=set — id-anchored to curated SKU (productNo 11378409511) but | 40 hits · official 1 (single 0) · closest "[수분촉촉] 라운드랩 자작나무 수분 클렌저 150 |
+| 87 | 라운드랩 자작나무 수분 클렌저 | oliveyoung | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — no curated productId to anchor — link-only | 40 hits · official 1 (single 0) · closest "[수분촉촉] 라운드랩 자작나무 수분 클렌저 150 |
+| 88 | 몰바니 저자극 LHA 율피 젤 클렌저 | naver | ✅ OK 단품(앵커, 가격) | ✅ 28,000원 @몰바니 — 몰바니 율피 저자극 LHA 클렌징젤 200ml [anchor] | 40 hits · official 0 (single 0) · closest "몰바니 저자극 LHA 율피 젤 클렌저 200ml+ |
+| 88 | 몰바니 저자극 LHA 율피 젤 클렌저 | oliveyoung | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — no curated productId to anchor — link-only | 40 hits · official 1 (single 1) · closest "몰바니 저자극 LHA 율피 젤 클렌저 200ml+ |
+| 89 | 니들리 마일드 효소 클렌징 파우더 | naver | ✅ OK 단품(앵커, 가격) | ✅ 17,950원 @니들리 NEEDLY — 니들리 마일드 효소 클렌징 파우더 60g [anchor] | 40 hits · official 2 (single 2) · closest "니들리 마일드 효소 클렌징 파우더 60g" @니들 |
+| 89 | 니들리 마일드 효소 클렌징 파우더 | oliveyoung | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — no curated productId to anchor — link-only | 40 hits · official 1 (single 1) · closest "니들리 마일드 효소 클렌징 파우더 60g" @니들 |
+| 90 | 브링그린 티트리 시카 딥 클렌징폼 | naver | ⚠️ 큐레이션 naver URL=세트 앵커(링크만) | ⚠️ anchor=set — id-anchored to curated SKU (productNo 8601837234) but  | 40 hits · official 2 (single 1) · closest "[고밀도효소거품] 브링그린 티트리 시카 딥클렌징폼 |
+| 90 | 브링그린 티트리 시카 딥 클렌징폼 | oliveyoung | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — no curated productId to anchor — link-only | 40 hits · official 1 (single 1) · closest "[고밀도효소거품] 브링그린 티트리 시카 딥클렌징폼 |
+| 91 | 일리윤 젠틀 딥 페이셜 클렌저 | coupang | ✅ OK 단품(앵커, 가격) | ✅ 16,600원 — 일리윤 젠틀 딥 페이셜 클렌저 | anchored pid 8688664449 |
+| 91 | 일리윤 젠틀 딥 페이셜 클렌저 | naver | ✅ OK 단품(앵커, 가격) | ✅ 17,600원 @아모레퍼시픽몰 헤어바디 — 일리윤 젠틀 딥 민감 피부 페이셜 클렌저 250ml [anchor] | 40 hits · official 1 (single 1) · closest "일리윤 젠틀 딥 페이셜 클렌저" @아모레퍼시픽공식 |
+| 91 | 일리윤 젠틀 딥 페이셜 클렌저 | oliveyoung | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — no curated productId to anchor — link-only | 40 hits · official 1 (single 0) · closest "일리윤 젠틀 딥 페이셜 클렌저" @아모레퍼시픽공식 |
+| 92 | 블라이드 버블링 스플래쉬 마스크 인디언 그레이셜 머드 | coupang | ✅ OK 단품(앵커, 가격) | ✅ 21,000원 — 블라이드 얼음모공팩 인디언 머드팩투폼 클렌징폼 120ml, 클레이팩 모공 | anchored pid 8091623533 |
+| 92 | 블라이드 버블링 스플래쉬 마스크 인디언 그레이셜 머드 | naver | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — anchor miss — curated productNo 4777507234 not in 3 que | 5 hits · official 1 (single 1) · closest "머드팩투폼블라이드 버블링 스플래쉬 마스크 인디언 그 |
+| 92 | 블라이드 버블링 스플래쉬 마스크 인디언 그레이셜 머드 | oliveyoung | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — no curated productId to anchor — link-only | 5 hits · official 0 (single 0) · closest "머드팩투폼블라이드 버블링 스플래쉬 마스크 인디언 그 |
+| 93 | 랑콤 스킨 이돌 3 세럼 파인 커버 | coupang | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — no_offer: Coupang: productId 9553155211 not in sea | anchored pid 9553155211 |
+| 93 | 랑콤 스킨 이돌 3 세럼 파인 커버 | oliveyoung | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — no curated productId to anchor — link-only | 38 hits · official 0 (single 0) · closest "랑콤 스킨 이돌 3 세럼 파인커버 쿠션 P10 1 |
+| 94 | 아이소이 스킨케어 비건 쿠션 | coupang | ⚠️ 큐레이션 URL=다중팩/세트 쿠팡(링크만) | ⚠️ 35,900원 — 아이소이 스킨케어 비건 쿠션 21호(본품+리필) (plus-combined extra unit (bun | anchored pid 8594202854 |
+| 94 | 아이소이 스킨케어 비건 쿠션 | naver | ⚠️ 큐레이션 naver URL=세트 앵커(링크만) | ⚠️ anchor=set — id-anchored to curated SKU (productNo 7899595094) but  | 40 hits · official 3 (single 1) · closest "[N단독/3개] 아이소이 스킨케어 비건 제로 쿠션 |
+| 95 | 아르마니 루미너스 실크 프리마 글로우 쿠션 | naver | ⚠️ 큐레이션 naver URL=세트 앵커(링크만) | ⚠️ anchor=set — id-anchored to curated SKU (productNo 12139954560) but | 40 hits · official 9 (single 0) · closest "[아르마니 뷰티][리필위크] NEW 루미너스 실크 |
+| 96 | 파넬 시카마누 세럼쿠션 | naver | ✅ OK 단품(앵커, 가격) | ✅ 22,000원 @파넬 공식스토어 — 파넬 시카마누 세럼쿠션 SPF45 PA++ 본품, 21호, 15g [anchor] | 40 hits · official 16 (single 5) · closest "파넬 시카마누 세럼쿠션 SPF45 PA++ 본품 |
+| 96 | 파넬 시카마누 세럼쿠션 | oliveyoung | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — no curated productId to anchor — link-only | 40 hits · official 0 (single 0) · closest "파넬 시카마누 세럼쿠션 SPF45 PA++ 본품, |
+| 97 | 에스쁘아 비 벨벳 커버 쿠션 | coupang | ⚠️ 큐레이션 URL=다중팩/세트 쿠팡(링크만) | ⚠️ 23,100원 — 에스쁘아 비벨벳 커버 쿠션 13g + 퍼프 2p 세트 (plus-combined extra unit ( | anchored pid 9302781585 |
+| 97 | 에스쁘아 비 벨벳 커버 쿠션 | naver | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — anchor miss — curated productNo 6354332173 not in 3 que | 40 hits · official 7 (single 1) · closest "에스쁘아 NEW 비벨벳 커버 쿠션 리필 SPF42 |
+| 97 | 에스쁘아 비 벨벳 커버 쿠션 | oliveyoung | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — no curated productId to anchor — link-only | 40 hits · official 1 (single 0) · closest "에스쁘아 NEW 비벨벳 커버 쿠션 리필 SPF42 |
+| 98 | VDL 커버스테인 하이커버 쿠션 | coupang | ✅ OK 단품(앵커, 가격) | ✅ 30,780원 — 브이디엘 커버 스테인 하이커버 쿠션 | anchored pid 9216167170 |
+| 98 | VDL 커버스테인 하이커버 쿠션 | naver | ✅ OK 단품(앵커, 가격) | ✅ 32,400원 @VDL 공식플래그십 스토어 — VDL 커버스테인 하이커버 쿠션 13g (SPF35/ PA++) [ancho | 40 hits · official 2 (single 0) · closest "VDL 커버스테인 하이커버 쿠션 (본품 +리필)  |
+| 98 | VDL 커버스테인 하이커버 쿠션 | oliveyoung | 🔗 링크만(앵커 미스/OY-무앵커) | 🔗 link-only — no curated productId to anchor — link-only | 40 hits · official 0 (single 0) · closest "VDL 커버스테인 하이커버 쿠션 (본품 +리필)  |
+| 99 | 미샤 래디언스 퍼펙트핏 쿠션 | coupang | ✅ OK 단품(앵커, 가격) | ✅ 10,450원 — 미샤 래디언스 퍼펙트핏 쿠션 15g | anchored pid 1665858959 |
+| 256 | 닥터지 레드 블레미쉬 수딩 업 선 스틱 | coupang | ⚠️ 큐레이션 URL=다중팩/세트 쿠팡(링크만) | ⚠️ 19,000원 — 닥터지 레드 블레미쉬 수딩 업 선스틱 듀오 세트 SPF50+ PA++++ (set/bundle keyw | anchored pid 7975902054 |
+| 256 | 닥터지 레드 블레미쉬 수딩 업 선 스틱 | naver | ⚠️ 큐레이션 naver URL=세트 앵커(링크만) | ⚠️ anchor=set — id-anchored to curated SKU (productNo 8315952932) but  | 40 hits · official 1 (single 0) · closest "닥터지 레드 블레미쉬 수딩 업 선스틱 듀오 세트  |
+| 257 | 이즈앤트리 어니언 프레쉬 라이트 선스틱 | coupang | ✅ OK 단품(앵커, 가격) | ✅ 9,070원 — 이즈앤트리 어니언 프레쉬 라이트 선스틱 SPF50+ PA++++ | anchored pid 7982068790 |
+| 257 | 이즈앤트리 어니언 프레쉬 라이트 선스틱 | naver | ⚠️ 큐레이션 naver URL=세트 앵커(링크만) | ⚠️ anchor=set — id-anchored to curated SKU (productNo 9988052762) but  | 40 hits · official 0 (single 0) · closest "이즈앤트리 어니언 프레쉬 라이트 선스틱 SPF50 |
+| 258 | 유이크 바이옴 레미디 퍼펙트 보송 선스틱 | coupang | ✅ OK 단품(앵커, 가격) | ✅ 19,630원 — 유이크 바이옴 레미디 퍼펙트 보송 선스틱 | anchored pid 8012195103 |
+| 258 | 유이크 바이옴 레미디 퍼펙트 보송 선스틱 | naver | ✅ OK 단품(앵커, 가격) | ✅ 19,200원 @UIQ 유이크 — 유이크 바이옴 레미디 퍼펙트 보송 선스틱 18g [anchor] | 40 hits · official 5 (single 3) · closest "유이크 바이옴 레미디 퍼펙트 보송 선스틱 18g" |
+| 261 | 몽디에스 선쿠션 | coupang | ✅ OK 단품(앵커, 가격) | ✅ 35,000원 — 몽디에스 아기 유아 어린이 징크 논나노 무기자차 쿨링 선쿠션 SPF50+ | anchored pid 9459679505 |
+| 261 | 몽디에스 선쿠션 | naver | ⚠️ 큐레이션 naver URL=세트 앵커(링크만) | ⚠️ anchor=set — id-anchored to curated SKU (productNo 6069991995) but  | 35 hits · official 2 (single 0) · closest "몽디에스 선쿠션 12g (SPF43) 유아선크림, |
 
 > 정당한 no_offer(세트only/미입점)는 수정 불필요(trust-first 의도). 위 1~5만 시트 정리 대상.

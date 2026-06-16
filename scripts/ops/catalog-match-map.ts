@@ -37,16 +37,17 @@ const NAVER_ID = process.env.NAVER_CLIENT_ID || '';
 const NAVER_SECRET = process.env.NAVER_CLIENT_SECRET || '';
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// Anchor-only price policy: price = OK_SINGLE only; everything else is link-only
+// (no fuzzy price). NAME_MISMATCH/DEMO/ANCHOR_SET/URL_MULTIPACK/DATA_ERROR are the
+// actionable sub-reasons; LINK_ONLY = expected/structural (N not on Naver, or OY).
 type Category =
   | 'OK_SINGLE'
   | 'NAME_MISMATCH'
   | 'URL_MULTIPACK'
   | 'ANCHOR_SET'
-  | 'NO_OFFER_LEGIT'
-  | 'ALLOWLIST_GAP'
   | 'DEMO_SUSPECT'
   | 'DATA_ERROR'
-  | 'AMBIGUOUS';
+  | 'LINK_ONLY';
 
 interface Row {
   productId: number;
@@ -131,35 +132,25 @@ async function diagnoseNaverLike(
     category = 'ANCHOR_SET';
     suggestion = '시트 naver URL이 세트 페이지 — 단품 상품 URL로 교체';
   } else {
-    matchResult = `⛔ no_offer — ${result.reason}`;
-    if (official.length > 0 && officialPassing.length === 0) {
-      // Official offer(s) exist but title similarity failed → likely a name typo.
+    // Anchor miss → link-only (no fuzzy price). Sub-diagnose the WHY for the operator.
+    matchResult = `🔗 link-only — ${result.reason}`;
+    if (seller === 'oliveyoung') {
+      category = 'LINK_ONLY';
+      suggestion = 'OY는 oy.run이라 N 앵커 불가 → 링크만; 중요 제품은 manual_override로 가격 지정';
+    } else if (items.length === 0) {
+      category = 'DEMO_SUSPECT';
+      suggestion = '검색 0건 — 브랜드스토어 미인덱스/단종 의심, 카탈로그 정리 검토';
+    } else if (official.length > 0 && officialPassing.length === 0 && anySingleSomewhere) {
+      // The product clearly exists (official offer w/ high closest id) but our query
+      // didn't surface the curated N — often a sheet product-name typo.
       category = 'NAME_MISMATCH';
       const hint = official
         .map((it) => ({ it, s: productIdentityScore(it.title, product.name) }))
         .sort((a, b) => b.s - a.s)[0];
-      suggestion = hint
-        ? `시트 제품명 확인 — 실제 제목 예: "${stripHtml(hint.it.title).slice(0, 50)}"`
-        : '시트 제품명 확인';
-    } else if (officialPassing.length > 0 && officialSingles.length === 0) {
-      category = 'NO_OFFER_LEGIT';
-      suggestion = '단품 없음(세트/기획만) — 의도된 제외, 수정 불필요';
-    } else if (official.length === 0) {
-      if (anySingleSomewhere) {
-        // Product exists as a single at a non-official mall → official store not
-        // surfacing. For OY this is an allowlist/입점 question; for naver, allowlist.
-        category = 'ALLOWLIST_GAP';
-        suggestion =
-          seller === 'oliveyoung'
-            ? '올영 오퍼가 네이버에 안 뜸 — 올영 입점 여부/allowlist mallName 확인'
-            : `공식몰 mallName 미식별 — allowlist 입력 검토 (closest @${closest?.it.mallName})`;
-      } else {
-        category = 'DEMO_SUSPECT';
-        suggestion = '어느 판매처에도 정상 단품 없음 — 데모/오큐레이션 정리 검토';
-      }
+      suggestion = hint ? `시트 제품명 확인 — 실제 제목 예: "${stripHtml(hint.it.title).slice(0, 50)}"` : '시트 제품명 확인';
     } else {
-      category = 'AMBIGUOUS';
-      suggestion = '모호 — 수동 확인';
+      category = 'LINK_ONLY';
+      suggestion = `큐레이션 N이 검색에 안 뜸 → 링크만(정상/구조적). closest @${closest?.it.mallName ?? '—'}`;
     }
   }
 
@@ -194,7 +185,7 @@ async function diagnoseCoupang(product: Product, listing: Listing): Promise<Row>
     return {
       productId: product.id, brand: product.brand || '', name: product.name, seller: 'coupang', url,
       candidateSummary: 'fetch error', matchResult: `⛔ failed — ${(e as Error).message.slice(0, 60)}`,
-      category: 'AMBIGUOUS', suggestion: '재시도/수동 확인',
+      category: 'LINK_ONLY', suggestion: '쿠팡 fetch 오류 — 재시도/수동 확인',
     };
   }
   const title = offer.sourceText || '';
@@ -218,21 +209,19 @@ async function diagnoseCoupang(product: Product, listing: Listing): Promise<Row>
   return {
     productId: product.id, brand: product.brand || '', name: product.name, seller: 'coupang', url,
     candidateSummary: `anchored pid ${pid}`,
-    matchResult: `⛔ ${offer.outcome || 'no_offer'} — ${stripHtml(title).slice(0, 50)}`,
-    category: 'NO_OFFER_LEGIT', suggestion: 'productId 검색 미노출 — 링크전용(정당) 또는 시트 URL 확인',
+    matchResult: `🔗 link-only — ${offer.outcome || 'no_offer'}: ${stripHtml(title).slice(0, 40)}`,
+    category: 'LINK_ONLY', suggestion: 'productId 검색 미노출 — 링크전용 또는 시트 URL 확인',
   };
 }
 
 const CAT_LABEL: Record<Category, string> = {
-  OK_SINGLE: '✅ OK 단품',
-  NAME_MISMATCH: '⚠️ 이름 오타/불일치',
-  URL_MULTIPACK: '⚠️ 큐레이션 URL=다중팩/세트(쿠팡)',
-  ANCHOR_SET: '⚠️ 큐레이션 naver URL=세트(앵커)',
-  NO_OFFER_LEGIT: '⛔ no_offer(정당)',
-  ALLOWLIST_GAP: '⚠️ allowlist/입점 갭',
-  DEMO_SUSPECT: '🔎 데모/오큐레이션 의심',
-  DATA_ERROR: '⚠️ URL 데이터 오류',
-  AMBIGUOUS: '🔎 모호',
+  OK_SINGLE: '✅ OK 단품(앵커, 가격)',
+  NAME_MISMATCH: '⚠️ 이름 오타/불일치(링크만)',
+  URL_MULTIPACK: '⚠️ 큐레이션 URL=다중팩/세트 쿠팡(링크만)',
+  ANCHOR_SET: '⚠️ 큐레이션 naver URL=세트 앵커(링크만)',
+  DEMO_SUSPECT: '🔎 데모/오큐레이션 의심(링크만)',
+  DATA_ERROR: '⚠️ URL 데이터 오류(링크만)',
+  LINK_ONLY: '🔗 링크만(앵커 미스/OY-무앵커)',
 };
 
 async function main() {
@@ -313,13 +302,12 @@ async function main() {
   };
   out.push('## 운영자 수정 리스트');
   out.push('');
-  fixList('1. 시트 제품명 오타/불일치', 'NAME_MISMATCH');
+  fixList('1. 시트 제품명 오타/불일치 (앵커 회복용 — 링크만 상태)', 'NAME_MISMATCH');
   fixList('2. 큐레이션 URL = 다중팩/세트 — 쿠팡 (단품 URL 교체)', 'URL_MULTIPACK');
   fixList('2b. 큐레이션 naver URL = 세트 (앵커가 세트로 떨어짐 — 단품 URL 교체)', 'ANCHOR_SET');
-  fixList('3. allowlist/입점 갭', 'ALLOWLIST_GAP');
-  fixList('4. URL 데이터 오류', 'DATA_ERROR');
-  fixList('5. 데모/오큐레이션 정리 후보', 'DEMO_SUSPECT');
-  fixList('6. 모호 (수동 확인)', 'AMBIGUOUS');
+  fixList('3. URL 데이터 오류', 'DATA_ERROR');
+  fixList('4. 데모/오큐레이션 정리 후보', 'DEMO_SUSPECT');
+  // LINK_ONLY(앵커 미스/OY-무앵커)는 다수·구조적이라 개별 나열 대신 per-listing 표 참조.
 
   // ----- full per-listing table -----
   out.push('## per-listing 전체 표');

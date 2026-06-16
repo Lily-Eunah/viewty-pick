@@ -80,6 +80,14 @@ Naver Shopping API 매칭(`pickOfficialOffer`)이 큐레이션한 **단품**이 
 - 맵 재실행(read-only) before/after: **OK 54 유지(회귀 없음)** — naver OK 이동은 전부 ANCHOR_SET(큐레이션 URL=세트, 의도)이고 display=100+앵커로 단품 신규매칭이 상쇄. 피지오겔 #77은 앵커로 정답 SKU 복구. **시트 URL=세트 13건** 정리 리스트 산출(catalog-match-map.md).
 - 테스트: `productNoFrom`, `pickAnchoredOffer`(단품 채택/세트 제외/미스). test:all·typecheck·build green. DB 무변경.
 
+## anchor-only 정책 + 멀티쿼리 recall (2026-06-16, 운영자 결정)
+**결정**: 네이버 가격 소스는 **N-앵커로 확정된 큐레이션 단품만**. 앵커 미스 → **링크만(no_offer, fail_count 미증가)**. fuzzy 제목/변형 가격매칭은 **가격 소스에서 제거**(이름 비슷한 다른 제품가 노출 방지).
+- `matchNaverOffer` = anchor-only: `buildAnchorQueries`(brand+name, brand+첫토큰, **brand+폼명사** 예 "유세린 세럼")로 멀티쿼리 recall → `pickAnchoredOffer`. 앵커 없으면 no_offer(링크만). `pickOfficialOffer`/`hasFormConflict`는 **OY-strict 대안용**으로 export 유지하되 가격 경로 미사용.
+- **OY(oy.run, N 없음)**: anchorProductNo=null → 즉시 링크만(검색 안 함). 가격은 manual_override 있을 때만(권장안). ⚠️ **대안(엄격 OY 매칭)은 운영자 확인 대기**.
+- 맵 재실행 결과: **네이버 가격 15건 전부 앵커 단품(fuzzy 0)**. 유세린 #85 recall로 60,900 회복. 커버리지 OK 54→37(naver 20→15, OY 12→0), fully link-only 16건(다수 시트정리로 회복 가능). 상세·OY 트레이드오프: `catalog-match-map.md`.
+- 테스트: `buildAnchorQueries`(폼명사 recall), `pickAnchoredOffer`(단품/세트/미스). test:all·typecheck·build·lint green. DB 무변경.
+- **후속(웹)**: 링크만 행 증가 → tier-4 link-only UI 필요(가격 없는 네이버/OY를 "보기" 링크로). 별도 웹 PR.
+
 ## 남은 TODO
 - [ ] **(운영자, 전체 sync 전 선행) 시트 상품명 오타 교정**: #85 "하이아르론"→"하이알루론", #86 "엔에이디"→"NAD"(또는 검색 매칭되는 표기). 다른 제품에도 유사 오타 가능 → 전체 sync 시 false-exclusion 분포로 추가 발견.
 - [ ] **(게이트, 보류 중) 전체 재수집**: 시트 교정 후 `npm run crawler:sync`(전체). priced vs no_offer 분포 + false exclusion/inclusion 점검 보고.
