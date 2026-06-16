@@ -17,6 +17,7 @@ import {
   hasFormConflict,
   productNoFrom,
   pickAnchoredOffer,
+  buildAnchorQueries,
   NaverShoppingItem,
   OfferMatchInput,
 } from '../naver';
@@ -239,9 +240,20 @@ it('anchored SET → excluded (anchorWasSet) + sheet-URL signal', () => {
   assert(r !== null && r.matched === null, 'set anchor must be excluded');
   assert(r!.anchorWasSet === true, 'anchorWasSet flag set for sheet-URL cleanup');
 });
-it('anchor number not in results → null (fall through to tier-2)', () => {
+it('anchor number not in results → null (caller → link-only)', () => {
   const r = pickAnchoredOffer([item({ link: 'https://smartstore.naver.com/x/products/111' })], '999');
   assert(r === null, 'no matching link → null');
+});
+
+console.log('\n--- multi-query anchor recall ---');
+it('buildAnchorQueries adds a brand+form-noun recall query', () => {
+  const qs = buildAnchorQueries('유세린', '하이아르론 에피셀린 세럼');
+  assert(qs.includes('유세린 세럼'), `expected a "유세린 세럼" recall query, got ${JSON.stringify(qs)}`);
+});
+it('buildAnchorQueries includes the precise brand+name query', () => {
+  const qs = buildAnchorQueries('토리든', '다이브인 포맨 저분자 히알루론산 올인원');
+  assert(qs.some((q) => q.includes('다이브인')), 'precise query present');
+  assert(qs.includes('토리든 올인원'), `form-noun recall present, got ${JSON.stringify(qs)}`);
 });
 
 // ---------------------------------------------------------------------------

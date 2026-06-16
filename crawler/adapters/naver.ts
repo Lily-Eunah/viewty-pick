@@ -393,40 +393,63 @@ export interface NaverProductLike {
 }
 
 /**
- * Search the Shopping API for a product (broad → narrow queries, stop at first
- * match) and pick the offer from the given official mall (`allowedStoreName`).
- * Same matcher for a brand store and for OliveYoung — only the mall differs.
+ * Candidate search queries to maximize the chance the curated SKU (and thus its
+ * channel-product number N) appears in results. Broad → narrow:
+ *   1. brand + full name (precise)            2. brand + first name token
+ *   3. brand + form/category noun (세럼/크림/토너…)  — recovers typo'd names
+ *      (e.g. "유세린 하이아르론…" → "유세린 세럼") so the brand store's offer surfaces.
+ */
+export function buildAnchorQueries(brand: string | null, name: string): string[] {
+  const brandWord = brand ? brand.split(' ')[0] : '';
+  const nameWord = name ? name.split(' ')[0] : '';
+  const formNoun = formNounsIn(name)[0];
+  return Array.from(
+    new Set(
+      [cleanQuery(brand, name), `${brandWord} ${nameWord}`.trim(), formNoun ? `${brandWord} ${formNoun}`.trim() : '']
+        .filter((c) => c.length > 0)
+    )
+  );
+}
+
+/**
+ * Resolve a Naver price by ANCHORING to the operator-curated SKU only.
+ *
+ * Policy (operator decision): the price comes solely from the result whose link is
+ * the curated channel-product number N. There is NO fuzzy title/variant price
+ * fallback — a name-similar but different product's price (e.g. a 크림 for a 로션,
+ * or a different size) is worse than no price (trust-first). On anchor miss the
+ * caller surfaces the listing as link-only (no_offer, no fail_count).
+ *
+ * Multi-query recall (buildAnchorQueries) widens the search to find N. OliveYoung
+ * (oy.run, no curated N) short-circuits to link-only here; its price comes only
+ * from a manual_override (applied in run.ts).
+ *
+ * NOTE: pickOfficialOffer / hasFormConflict remain exported for the OY-strict
+ * matching ALTERNATIVE, but are intentionally NOT used in this price path.
  */
 export async function matchNaverOffer(
   product: NaverProductLike,
-  allowedStoreName: string | null,
+  allowedStoreName: string | null, // unused in anchor-only path; kept for the OY-strict alternative
   clientId: string,
   clientSecret: string,
   anchorProductNo: string | null = null
 ): Promise<OfferMatchResult> {
-  const brandWord = product.brand ? product.brand.split(' ')[0] : '';
-  const nameWord = product.name ? product.name.split(' ')[0] : '';
-  const candidates = Array.from(
-    new Set([cleanQuery(product.brand, product.name), `${brandWord} ${nameWord}`].filter((c) => c.length > 0))
-  );
-
-  const input: OfferMatchInput = {
-    brand: product.brand,
-    name: product.name,
-    volumeMl: product.volume_ml ?? null,
-    allowedStoreName,
-  };
-
-  // Two-tier: tier-1 link-id anchor (exact curated SKU) wins across any query;
-  // otherwise fall back to tier-2 official-mall + single/variant title matching.
-  let tier2: OfferMatchResult = { matched: null, parsedVolumeRaw: null, identityScore: null, reason: 'no queries produced results' };
+  void allowedStoreName;
+  if (!anchorProductNo) {
+    return { matched: null, parsedVolumeRaw: null, identityScore: null, reason: 'no curated productId to anchor — link-only' };
+  }
+  const candidates = buildAnchorQueries(product.brand, product.name);
   for (const query of candidates) {
     const items = await searchNaverShopping(query, clientId, clientSecret);
     const anchor = pickAnchoredOffer(items, anchorProductNo);
-    if (anchor) return anchor; // anchored single (matched) OR anchored set (excluded) — authoritative
-    if (!tier2.matched) tier2 = pickOfficialOffer(items, input);
+    if (anchor) return anchor; // anchored single (price) OR anchored set (link-only + signal)
   }
-  return tier2;
+  return {
+    matched: null,
+    parsedVolumeRaw: null,
+    identityScore: null,
+    reason: `anchor miss — curated productNo ${anchorProductNo} not in ${candidates.length} queries — link-only (no fuzzy price)`,
+  };
 }
 
 // ---------------------------------------------------------------------------
