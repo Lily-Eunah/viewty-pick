@@ -21,7 +21,7 @@ import { Listing, Product, RetailerAllowlist } from '../../lib/types';
 import { PriceOffer, RetailerAdapter } from './index';
 import { isSupabaseServerConfigured, supabaseServer } from '../../lib/supabase/server';
 import { loadMockDB } from '../../lib/supabase/mockDb';
-import { extractPackageFromTitle } from '../core/packageExtractor';
+import { extractPackageFromTitle, stripPromoGifts } from '../core/packageExtractor';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -505,9 +505,14 @@ export function pickOliveYoungOffer(items: NaverShoppingItem[], productName: str
   if (oy.length === 0) {
     return { matched: null, parsedVolumeRaw: null, identityScore: null, reason: 'no 올리브영 offer on Naver (Tier 4 link-only)' };
   }
+  // Score/judge on the GIFT-STRIPPED title so a freebie ("(+올인원크림 30ml)") cannot
+  // lend its token to a different product (e.g. a 토너 set masquerading as 올인원).
   const scored = oy
-    .map((it) => ({ it, s: productIdentityScore(it.title, productName) }))
-    .filter((x) => !hasFormConflict(productName, x.it.title))
+    .map((it) => {
+      const t = stripPromoGifts(stripHtml(it.title));
+      return { it, t, s: productIdentityScore(t, productName) };
+    })
+    .filter((x) => !hasFormConflict(productName, x.t))
     .sort((a, b) => b.s - a.s);
   if (scored.length === 0 || scored[0].s < OY_MIN_SIMILARITY) {
     return { matched: null, parsedVolumeRaw: null, identityScore: scored[0]?.s ?? null, reason: `no confident 올리브영 offer (best ${(scored[0]?.s ?? 0).toFixed(2)} < ${OY_MIN_SIMILARITY}) — Tier 4 link-only` };
@@ -517,13 +522,13 @@ export function pickOliveYoungOffer(items: NaverShoppingItem[], productName: str
   if (scored.length > 1 && top.s - scored[1].s < 0.1 && top.it.lprice !== scored[1].it.lprice) {
     return { matched: null, parsedVolumeRaw: null, identityScore: top.s, reason: `multiple close 올리브영 candidates (${top.it.lprice}/${scored[1].it.lprice}) — hold/inspection`, needsInspection: true };
   }
-  const ext = extractPackageFromTitle(stripHtml(top.it.title));
+  const ext = extractPackageFromTitle(top.t);
   if (ext.heterogeneous) {
     return { matched: null, parsedVolumeRaw: null, identityScore: top.s, reason: '올리브영 offer is a heterogeneous set — hold/inspection', needsInspection: true };
   }
   // Core-token guard: a distinctive token of the curated name must be in the title.
   const distinct = distinctiveTokens(productName);
-  const titleNorm = stripHtml(top.it.title).toLowerCase().replace(/\s+/g, '');
+  const titleNorm = top.t.toLowerCase().replace(/\s+/g, '');
   const coreTokenPresent = distinct.length === 0 || distinct.some((t) => titleNorm.includes(t));
   if (top.s >= OY_AUTO_PRICE_SIMILARITY && coreTokenPresent) {
     const parsedVolumeRaw = ext.detected && ext.unitType === 'ml' && ext.unitAmount !== null ? ext.unitAmount : null;
@@ -544,7 +549,14 @@ export async function matchOliveYoungOffer(
   clientId: string,
   clientSecret: string
 ): Promise<OfferMatchResult> {
-  const candidates = buildAnchorQueries(product.brand, product.name);
+  // Recall: brand+name queries PLUS a "+올리브영" query that pulls the OliveYoung
+  // sales-point's own listing into the result window (brand+name alone often ranks
+  // it out — verified: #34 / #76 singles only surface with this). The mallName
+  // filter in pickOliveYoungOffer still gates adoption, so title-stuffed resellers
+  // are excluded — the appended term only improves recall, not trust.
+  const candidates = Array.from(
+    new Set([...buildAnchorQueries(product.brand, product.name), `${cleanQuery(product.brand, product.name)} 올리브영`])
+  );
   let inspection: OfferMatchResult | null = null;
   for (const query of candidates) {
     const items = await searchNaverShopping(query, clientId, clientSecret);

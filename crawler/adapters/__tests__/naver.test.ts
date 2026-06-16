@@ -279,6 +279,13 @@ it('OY correct product (high sim + core token) → auto-priced', () => {
   const r = pickOliveYoungOffer([right], '조선미녀 스테이 프레쉬 톤업 선크림 퍼플');
   assert(r.matched !== null && r.matched.lprice === '15300', `correct OY single should auto-price, got ${r.matched?.lprice}`);
 });
+it('OY gift-stripped scoring: 토너 set with "(+올인원크림)" gift → held (form conflict)', () => {
+  // The gift must not lend its 올인원 token; after gift-strip the offer is a 토너,
+  // which form-conflicts with the curated 올인원 → not auto-priced (#76).
+  const tonerGift = oyItem({ title: '[증정 기획] 닥터지 레드 블레미쉬 포 맨 멀티 수딩 토너 200ml 기획세트 (+올인원크림 30ml)', lprice: '31000', link: 'https://smartstore.naver.com/x/products/761' });
+  const r = pickOliveYoungOffer([tonerGift], '닥터지 레드 블레미쉬 포 맨 진정 올인원');
+  assert(r.matched === null, '토너 set (gift=올인원크림) must not auto-price as 올인원');
+});
 it('OY two close candidates, different prices → hold (ambiguous)', () => {
   const a = oyItem({ title: '토리든 다이브인 포맨 올인원 200ml', lprice: '19700', link: 'https://smartstore.naver.com/x/products/741' });
   const b = oyItem({ title: '토리든 다이브인 포맨 올인원 200ml 리뉴얼', lprice: '22000', link: 'https://smartstore.naver.com/x/products/742' });
