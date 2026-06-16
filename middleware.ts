@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-export function proxy(request: NextRequest) {
+// NOTE: Next 16 renamed middleware -> proxy, but `proxy` runs on the Node.js
+// runtime which the OpenNext Cloudflare adapter does not yet support
+// (opennextjs-cloudflare#962). The deprecated `middleware.ts` (Edge runtime) is
+// still supported by Next 16 and by OpenNext, and this gate only uses Edge-safe
+// APIs (NextResponse, process.env, atob). Revisit once OpenNext supports proxy.
+export function middleware(request: NextRequest) {
   if (request.nextUrl.pathname.startsWith('/admin/status')) {
     const adminUser = process.env.ADMIN_STATUS_USER;
     const adminPass = process.env.ADMIN_STATUS_PASSWORD;

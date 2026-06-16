@@ -36,6 +36,13 @@ yarn-error.log*
 # vercel
 .vercel
 
+# cloudflare / opennext (build output + local secrets)
+/.open-next/
+/.wrangler/
+.dev.vars
+.dev.vars.*
+cloudflare-env.d.ts
+
 # live-check artifacts & inferred ground-truth (network/key-dependent dumps;
 # may contain affiliate tokens — keep out of git, regenerate locally)
 /scripts/live-check/artifacts/
