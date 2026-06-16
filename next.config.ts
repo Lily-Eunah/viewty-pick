@@ -5,3 +5,8 @@ const nextConfig: NextConfig = {
 };
 
 export default nextConfig;
+
+// Enables OpenNext's Cloudflare bindings (env, ISR cache, etc.) during
+// `next dev` so local dev matches the deployed Worker runtime.
+import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
+initOpenNextCloudflareForDev();

@@ -1,0 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "viewtypick",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2025-03-25",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "binding": "ASSETS",
+    "directory": ".open-next/assets"
+  },
+  "observability": {
+    "enabled": true
+  }
+  // Secrets are NOT stored here. The operator sets them in the Cloudflare
+  // dashboard (or via `wrangler secret put`):
+  //   NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY  (public, RLS read-only)
+  //   SUPABASE_SERVICE_ROLE_KEY  (server only: /go insert, /api/revalidate)
+  //   REVALIDATE_SECRET
+  //   SITE_INDEXABLE             (omit or "false" => noindex; "true" at launch)
+  // Crawler secrets (coupang/naver/google/discord) live in GitHub Actions only.
+}
