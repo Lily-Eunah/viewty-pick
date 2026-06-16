@@ -156,6 +156,7 @@ async function runTest() {
           shipping_note: normalized.shipping_note,
           matched_url: offer.matchedUrl ?? null,
           matched_mall_name: offer.matchedMallName ?? null,
+          image_url: offer.imageUrl ?? null,
         };
         successfulSnapshots.push(snapshot);
       }

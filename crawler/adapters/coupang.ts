@@ -102,6 +102,9 @@ export function parseCoupangItem(item: CoupangApiItem): PriceOffer {
     // deeplink API call is needed.
     matchedUrl: item.productUrl ?? null,
     matchedMallName: item.isRocket ? '쿠팡 로켓배송' : '쿠팡',
+    // productImage (ads-partners.coupang.com) — Partners-provided asset members may
+    // display; cached as a display fallback behind the operator's products.image_url.
+    imageUrl: item.productImage ?? null,
   };
 }
 

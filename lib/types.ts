@@ -70,6 +70,7 @@ export interface Listing {
   crawl_method: CrawlMethod;
   last_crawled_at: string | null; // ISO Timestamp
   latest_matched_url?: string | null; // cached Naver API matched offer link (redirect fallback)
+  latest_image_url?: string | null;   // cached crawler-sourced image (e.g. Coupang productImage) — display fallback behind products.image_url
   fail_count: number;
   is_active: boolean;
 }
@@ -124,6 +125,7 @@ export interface PriceSnapshot {
   shipping_note: string | null;
   matched_url: string | null;       // link of the matched offer (audit / change detection)
   matched_mall_name: string | null; // raw mallName of the matched offer
+  image_url: string | null;         // product image from the matched offer (e.g. Coupang productImage)
 }
 
 /**
@@ -146,6 +148,7 @@ export interface PublicListingPrice {
   in_stock: boolean;
   shipping_note: string | null;
   matched_mall_name: string | null;
+  image_url: string | null; // crawler-sourced product image (display fallback)
   crawled_at: string; // ISO Timestamp
 }
 

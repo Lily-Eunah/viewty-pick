@@ -30,6 +30,7 @@ export interface PriceOffer {
   shippingNote?: string | null;    // display label only: '무료배송', '로켓배송', '3,000원', etc.
   matchedUrl?: string | null;      // link of the matched offer (price + link from same offer)
   matchedMallName?: string | null; // raw mallName of the matched offer (audit / change detection)
+  imageUrl?: string | null;        // product image from the matched offer (e.g. Coupang productImage) — display fallback
   matchExcluded?: boolean;         // true → no official-mall match; exclude from comparison
   // Explicit fetch outcome. Absent ⇒ treated as 'ok' (priced). A successful
   // fetch with no qualified offer MUST set 'no_offer' so it does not increment
