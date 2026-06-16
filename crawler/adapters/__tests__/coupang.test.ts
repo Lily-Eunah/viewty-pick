@@ -15,6 +15,7 @@ import {
   extractCoupangProductId,
   isCoupangShortLink,
   buildSearchKeyword,
+  pickCoupangMatch,
   CoupangApiItem,
 } from '../coupang';
 
@@ -251,6 +252,27 @@ it('keyword drops brand parenthetical', () => {
 
 it('keyword handles null brand', () => {
   expect(buildSearchKeyword(null, '선크림 50ml')).toBe('선크림');
+});
+
+// ---------------------------------------------------------------------------
+// Fixture 10: anchored productId with multiple purchase options (single vs bulk)
+// ---------------------------------------------------------------------------
+console.log('\n--- [Fixture 10] pickCoupangMatch lowest option ---');
+it('picks the lowest-price row among same-productId options (single, not bulk)', () => {
+  const data: CoupangApiItem[] = [
+    item({ productId: 8688664449, productName: '일리윤 젠틀 딥 페이셜 클렌저', productPrice: 81840, price: undefined }),
+    item({ productId: 8688664449, productName: '일리윤 젠틀 딥 페이셜 클렌저', productPrice: 16600, price: undefined }),
+    item({ productId: 8688664449, productName: '일리윤 젠틀 딥 페이셜 클렌저', productPrice: 47800, price: undefined }),
+    item({ productId: 999, productName: '다른 상품', productPrice: 5000, price: undefined }),
+  ];
+  const m = pickCoupangMatch(data, '8688664449');
+  expect(m).not.toBeNull();
+  expect(m!.productPrice).toBe(16600);
+});
+
+it('returns null when no row matches the anchored productId', () => {
+  const data: CoupangApiItem[] = [item({ productId: 111 }), item({ productId: 222 })];
+  expect(pickCoupangMatch(data, '333')).toBeNull();
 });
 
 // ---------------------------------------------------------------------------

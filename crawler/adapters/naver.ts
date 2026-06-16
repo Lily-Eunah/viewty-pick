@@ -21,7 +21,7 @@ import { Listing, Product, RetailerAllowlist } from '../../lib/types';
 import { PriceOffer, RetailerAdapter } from './index';
 import { isSupabaseServerConfigured, supabaseServer } from '../../lib/supabase/server';
 import { loadMockDB } from '../../lib/supabase/mockDb';
-import { extractPackageFromTitle } from '../core/packageExtractor';
+import { extractPackageFromTitle, stripPromoGifts } from '../core/packageExtractor';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -50,6 +50,9 @@ export interface OfferMatchResult {
   parsedVolumeRaw: number | null; // ml parsed from matched title (forwarded to normalize)
   identityScore: number | null;
   reason: string;
+  // True when an anchored/matched SKU combines two DIFFERENT products (heterogeneous
+  // set) → per-unit price not computable → excluded for operator inspection.
+  needsInspection?: boolean;
 }
 
 // productType: individual mall offers vs price-comparison catalog representative.
@@ -109,6 +112,77 @@ export function productIdentityScore(title: string, name: string): number {
   return found / nameTokens.length;
 }
 
+// ---------------------------------------------------------------------------
+// Single-SKU vs set/bundle/multipack classification (fix/naver-sku-matching).
+//
+// WHY: matching used to take the highest-relevance official-mall offer passing a
+// 0.5 title-similarity gate. For premium/curated products that top offer is
+// frequently a 선물세트 / 기획 / 더블팩 / 2종세트 / 1+1·리필 bundle, NOT the curated
+// single SKU — so a set price (or a mis-derived per-unit price) was shown as if it
+// were the product. productId anchoring is impossible here (the curated
+// brand.naver.com / naver.me channel-product-number is a different namespace from
+// the Shopping API mall-product links — verified), so the only reliable lever is
+// to classify each offer and PREFER a comparable single, EXCLUDING sets/multipacks
+// from price comparison (trust-first: show no price rather than a wrong one).
+// ---------------------------------------------------------------------------
+const SET_KEYWORDS = /(선물\s*세트|기획\s*세트|세트\s*구성|더블\s*기획|더블팩|2종|3종|4종|콜렉션|컬렉션|패키지|한정|리필|세트|디바이스|기기|업소용|도매|벌크)/;
+const MULTIPACK_COUNT = /(\d+)\s*(?:개|팩|병|입|매)/; // \b不可: 한글은 \w가 아님
+
+// Product form/type nouns. Used to reject same-line cross-product matches: if the
+// curated name's form noun (e.g. 올인원/선스틱/로션) is ABSENT from the candidate
+// title and the title carries a DIFFERENT form noun (e.g. 크림), it is a different
+// SKU in the same line — exclude (trust-first). Longer/compound forms first so a
+// "선크림" isn't reduced to "크림".
+const FORM_TOKENS = [
+  '올인원', '선크림', '선스틱', '선세럼', '선쿠션', '선밤', '클렌징폼', '클렌징오일', '클렌징젤',
+  '클렌저', '클렌징', '에멀전', '쿠션', '크림', '로션', '세럼', '앰플', '에센스', '토너', '스킨',
+  '미스트', '오일', '젤', '폼', '밤', '패드', '마스크', '파우더', '스틱', '밤',
+];
+function formNounsIn(s: string): string[] {
+  const n = stripHtml(s || '').toLowerCase().replace(/\s+/g, '');
+  return FORM_TOKENS.filter((t) => n.includes(t));
+}
+/**
+ * True when the candidate is a DIFFERENT form/type within the same product line —
+ * the curated name's form noun(s) appear nowhere in the title while the title has
+ * its own form noun (e.g. curated "…포맨 올인원" vs candidate "…클리어 수딩 크림").
+ * Conservative: returns false when either side has no recognizable form noun.
+ */
+export function hasFormConflict(name: string, title: string): boolean {
+  const nf = formNounsIn(name);
+  const tf = formNounsIn(title);
+  if (nf.length === 0 || tf.length === 0) return false;
+  return !nf.some((t) => tf.includes(t));
+}
+// Parentheticals that are PURE non-unit freebies (no extra sellable unit) — safe
+// to ignore. A "(+...ml ...)" / "(+리필…)" / "(+세럼 7ml*2)" is NOT here: an added
+// item that carries its own product is treated as a bundle below.
+const PURE_GIFT_PAREN = /\([^)]*(?:쇼핑백|파우치|에코백|키트|사은품|증정품)[^)]*\)/g;
+
+export type OfferComposition = { kind: 'single' | 'set'; reason: string };
+
+/**
+ * Classify a Naver offer title as a comparable single unit or a set/multipack.
+ * A single 30ml with a pure freebie (쇼핑백/파우치) is still a single; but anything
+ * that combines an extra sellable item — a leftover "+" (1+1·리필·세럼+디바이스),
+ * a ×N multiplier, an N개/팩 count (N≥2), or a set keyword — is a non-single offer
+ * whose listed price is NOT the product's unit price, so it is excluded from
+ * comparison (trust-first: show no price rather than a set price).
+ */
+export function classifyOfferComposition(title: string): OfferComposition {
+  const t = stripHtml(title || '')
+    .replace(/SPF\s*\d+\+*/gi, ' ') // "SPF50+" must not leave a "+" behind
+    .replace(/PA\s*\++/gi, ' ')
+    .replace(PURE_GIFT_PAREN, ' ');
+  // A surviving "+" joins an extra unit (1+1, +리필, 세럼+디바이스, 토너+세럼) → bundle.
+  if (/\+/.test(t)) return { kind: 'set', reason: 'plus-combined extra unit (bundle/refill/set)' };
+  if (/[x×*]\s*\d+\b/i.test(t)) return { kind: 'set', reason: '×N multiplier' };
+  const cnt = t.match(MULTIPACK_COUNT);
+  if (cnt && parseInt(cnt[1], 10) >= 2) return { kind: 'set', reason: `${cnt[1]}-count multipack` };
+  if (SET_KEYWORDS.test(t)) return { kind: 'set', reason: 'set/bundle keyword' };
+  return { kind: 'single', reason: 'single unit' };
+}
+
 export function matchesOfficialMall(
   mallName: string,
   allowedStoreName: string | null,
@@ -156,18 +230,131 @@ export function pickOfficialOffer(
     return { matched: null, parsedVolumeRaw: null, identityScore: null, reason: 'no offer from the official mall (mallName did not match allowlist/brand)' };
   }
 
-  // Items arrive in relevance order; take the highest-ranked that also passes the
-  // product-identity (title token) gate.
-  for (const it of official) {
-    const score = productIdentityScore(it.title, input.name);
-    if (score >= IDENTITY_SCORE_THRESHOLD) {
-      const ext = extractPackageFromTitle(stripHtml(it.title));
-      const parsedVolumeRaw = ext.detected && ext.unitType === 'ml' && ext.unitAmount !== null ? ext.unitAmount : null;
-      return { matched: it, parsedVolumeRaw, identityScore: score, reason: `matched official mall "${it.mallName}" (identity ${score.toFixed(2)})` };
-    }
+  // Items arrive in relevance order. Gate on product-identity (title tokens),
+  // then classify single vs set/multipack. We compare SINGLE units only — a
+  // set/기획/더블/2종/1+1 offer is excluded from price comparison (its price is not
+  // the product's unit price). Among singles, prefer one whose parsed volume
+  // matches the curated DB volume; otherwise take the highest-ranked single.
+  const passing = official.filter((it) => productIdentityScore(it.title, input.name) >= IDENTITY_SCORE_THRESHOLD);
+  if (passing.length === 0) {
+    return { matched: null, parsedVolumeRaw: null, identityScore: null, reason: `official mall offer(s) found but title similarity < ${IDENTITY_SCORE_THRESHOLD}` };
   }
 
-  return { matched: null, parsedVolumeRaw: null, identityScore: null, reason: `official mall offer(s) found but title similarity < ${IDENTITY_SCORE_THRESHOLD}` };
+  const parsedVolOf = (it: NaverShoppingItem): number | null => {
+    const ext = extractPackageFromTitle(stripHtml(it.title));
+    return ext.detected && ext.unitType === 'ml' && ext.unitAmount !== null ? ext.unitAmount : null;
+  };
+
+  // A comparable single = classified single AND not a same-line different form
+  // (e.g. curated "…올인원" must not match "…수딩 크림").
+  const singles = passing.filter(
+    (it) => classifyOfferComposition(it.title).kind === 'single' && !hasFormConflict(input.name, it.title)
+  );
+  if (singles.length === 0) {
+    // Only sets/multipacks or different-form SKUs exist → no comparable single.
+    // Trust-first: exclude (link-only) rather than surface a wrong/set price.
+    const top = passing[0];
+    const why = hasFormConflict(input.name, top.title) ? 'different form/variant in same line' : classifyOfferComposition(top.title).reason;
+    return {
+      matched: null,
+      parsedVolumeRaw: null,
+      identityScore: null,
+      reason: `official mall offer(s) found but no comparable single SKU (${why}) — excluded from comparison`,
+    };
+  }
+
+  // Prefer a single whose volume matches the curated DB volume (when both known);
+  // else the highest-relevance single. Volume stays non-blocking otherwise (§1b).
+  const volumeMatch = input.volumeMl != null ? singles.find((it) => parsedVolOf(it) === input.volumeMl) : undefined;
+  const chosen = volumeMatch ?? singles[0];
+  const score = productIdentityScore(chosen.title, input.name);
+  return {
+    matched: chosen,
+    parsedVolumeRaw: parsedVolOf(chosen),
+    identityScore: score,
+    reason: `matched official mall "${chosen.mallName}" single SKU (identity ${score.toFixed(2)}${volumeMatch ? ', volume-matched' : ''})`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Tier-1: link-id anchoring to the operator-curated SKU.
+//
+// Experiment (docs/worklog/naver-id-anchor-experiment.md): the Shopping API's
+// item.productId never equals the curated channel-product-number, but the result
+// item's LINK resolves to /products/{N} in ~60% of listings. So we anchor on the
+// curated URL's N matched against each result's link — that result IS the exact
+// curated SKU, eliminating variant/cross-product/set mis-selection. When the
+// curated SKU is itself a set/multipack (operator linked a set page), we exclude
+// it (trust-first) and flag it for sheet-URL cleanup.
+// ---------------------------------------------------------------------------
+/** Channel-product number from a Naver URL/link (/products/{N} or channelProductNo=). */
+export function productNoFrom(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const p = url.match(/\/products\/(\d+)/);
+  if (p) return p[1];
+  const c = url.match(/channelProductNo=(\d+)/);
+  if (c) return c[1];
+  return null;
+}
+
+// Resolve the curated listing URL → channel-product number. brand.naver.com /
+// smartstore carry it directly; naver.me shortlinks need ONE redirect (cached;
+// globally capped to bound cost / block risk). Result items do NOT need resolution
+// (their link already contains /products/{N}).
+const curatedNoCache = new Map<string, string | null>();
+let redirectResolves = 0;
+const MAX_REDIRECT_RESOLVES = 80;
+export async function resolveCuratedProductNo(url: string): Promise<string | null> {
+  if (!url) return null;
+  const direct = productNoFrom(url);
+  if (direct) return direct;
+  if (curatedNoCache.has(url)) return curatedNoCache.get(url)!;
+  let n: string | null = null;
+  if (/naver\.me\//.test(url) && redirectResolves < MAX_REDIRECT_RESOLVES) {
+    redirectResolves++;
+    try {
+      const res = await fetch(url, { redirect: 'follow' });
+      n = productNoFrom(res.url);
+    } catch {
+      n = null;
+    }
+  }
+  curatedNoCache.set(url, n);
+  return n;
+}
+
+/**
+ * Tier-1 selection: find the result whose link is the curated SKU (productNo N).
+ * Returns null when no anchor number is given or none matches (→ caller falls back
+ * to tier-2 title matching). A single anchor is accepted as-is (exact SKU); a
+ * set/multipack anchor is excluded (matched=null, anchorWasSet=true).
+ */
+export function pickAnchoredOffer(items: NaverShoppingItem[], anchorProductNo: string | null): OfferMatchResult | null {
+  if (!anchorProductNo) return null;
+  const anchored = items.find((it) => productNoFrom(it.link) === anchorProductNo);
+  if (!anchored) return null;
+  const ext = extractPackageFromTitle(stripHtml(anchored.title));
+  // Heterogeneous 2-product set (e.g. 토너 + 세럼, both 본품) → per-unit not computable.
+  if (ext.heterogeneous) {
+    return {
+      matched: null,
+      parsedVolumeRaw: null,
+      identityScore: null,
+      reason: `id-anchored to curated SKU (productNo ${anchorProductNo}) but it is a heterogeneous 2-product set — needs inspection (no price)`,
+      needsInspection: true,
+    };
+  }
+  // Single OR homogeneous bundle (1+1 / N-pack / 본품+리필) — both priced; normalize
+  // derives the per-unit (effective) price from the title quantity. Gifts are not
+  // counted (packageExtractor strips them).
+  const parsedVolumeRaw = ext.detected && ext.unitType === 'ml' && ext.unitAmount !== null ? ext.unitAmount : null;
+  const qty = ext.unitCount && ext.unitCount > 1 ? ext.unitCount : 1;
+  return {
+    matched: anchored,
+    parsedVolumeRaw,
+    identityScore: 1,
+    reason: `id-anchored to curated SKU (productNo ${anchorProductNo}) @${anchored.mallName}${qty > 1 ? ` ×${qty} (per-unit)` : ''}`,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -185,6 +372,8 @@ function isPlaceholderKey(v: string | undefined): boolean {
 const naverSearchCache = new Map<string, NaverShoppingItem[]>();
 export function clearNaverSearchCache(): void {
   naverSearchCache.clear();
+  curatedNoCache.clear();
+  redirectResolves = 0;
 }
 
 async function searchNaverShopping(
@@ -194,7 +383,9 @@ async function searchNaverShopping(
 ): Promise<NaverShoppingItem[]> {
   const cached = naverSearchCache.get(query);
   if (cached) return cached;
-  const url = `https://openapi.naver.com/v1/search/shop.json?query=${encodeURIComponent(query)}&display=40`;
+  // display=100 (API max): more candidates → higher tier-1 anchor hit-rate
+  // (experiment used 100) and a fuller tier-2 official-mall set.
+  const url = `https://openapi.naver.com/v1/search/shop.json?query=${encodeURIComponent(query)}&display=100`;
   const res = await fetch(url, {
     headers: { 'X-Naver-Client-Id': clientId, 'X-Naver-Client-Secret': clientSecret },
   });
@@ -212,36 +403,168 @@ export interface NaverProductLike {
 }
 
 /**
- * Search the Shopping API for a product (broad → narrow queries, stop at first
- * match) and pick the offer from the given official mall (`allowedStoreName`).
- * Same matcher for a brand store and for OliveYoung — only the mall differs.
+ * Candidate search queries to maximize the chance the curated SKU (and thus its
+ * channel-product number N) appears in results. Broad → narrow:
+ *   1. brand + full name (precise)            2. brand + first name token
+ *   3. brand + form/category noun (세럼/크림/토너…)  — recovers typo'd names
+ *      (e.g. "유세린 하이아르론…" → "유세린 세럼") so the brand store's offer surfaces.
+ */
+export function buildAnchorQueries(brand: string | null, name: string): string[] {
+  const brandWord = brand ? brand.split(' ')[0] : '';
+  const nameWord = name ? name.split(' ')[0] : '';
+  const formNoun = formNounsIn(name)[0];
+  return Array.from(
+    new Set(
+      [cleanQuery(brand, name), `${brandWord} ${nameWord}`.trim(), formNoun ? `${brandWord} ${formNoun}`.trim() : '']
+        .filter((c) => c.length > 0)
+    )
+  );
+}
+
+/**
+ * Resolve a Naver price by ANCHORING to the operator-curated SKU only.
+ *
+ * Policy (operator decision): the price comes solely from the result whose link is
+ * the curated channel-product number N. There is NO fuzzy title/variant price
+ * fallback — a name-similar but different product's price (e.g. a 크림 for a 로션,
+ * or a different size) is worse than no price (trust-first). On anchor miss the
+ * caller surfaces the listing as link-only (no_offer, no fail_count).
+ *
+ * Multi-query recall (buildAnchorQueries) widens the search to find N. OliveYoung
+ * (oy.run, no curated N) short-circuits to link-only here; its price comes only
+ * from a manual_override (applied in run.ts).
+ *
+ * NOTE: pickOfficialOffer / hasFormConflict remain exported for the OY-strict
+ * matching ALTERNATIVE, but are intentionally NOT used in this price path.
  */
 export async function matchNaverOffer(
   product: NaverProductLike,
-  allowedStoreName: string | null,
+  allowedStoreName: string | null, // unused in anchor-only path; kept for the OY-strict alternative
+  clientId: string,
+  clientSecret: string,
+  anchorProductNo: string | null = null
+): Promise<OfferMatchResult> {
+  void allowedStoreName;
+  if (!anchorProductNo) {
+    return { matched: null, parsedVolumeRaw: null, identityScore: null, reason: 'no curated productId to anchor — link-only' };
+  }
+  const candidates = buildAnchorQueries(product.brand, product.name);
+  for (const query of candidates) {
+    const items = await searchNaverShopping(query, clientId, clientSecret);
+    const anchor = pickAnchoredOffer(items, anchorProductNo);
+    if (anchor) return anchor; // anchored single (price) OR anchored set (link-only + signal)
+  }
+  return {
+    matched: null,
+    parsedVolumeRaw: null,
+    identityScore: null,
+    reason: `anchor miss — curated productNo ${anchorProductNo} not in ${candidates.length} queries — link-only (no fuzzy price)`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// OliveYoung (Tier-2) — LOOSE match. OY's oy.run URL has no anchorable N, so we
+// take the OliveYoung sales-point offer on Naver (mallName='올리브영' — an exact,
+// trusted single seller). Strict variant tokens are NOT applied (OY titles carry
+// influencer-pick/gift promo noise that would drop valid products); we reject only
+// a clear form mismatch (크림 vs 올인원) and low similarity. Sets/bundles are
+// included with per-unit pricing; ambiguity/heterogeneous → inspection (manual).
+// ---------------------------------------------------------------------------
+const OY_MALL = '올리브영';
+const OY_MIN_SIMILARITY = 0.4; // below → no confident OY offer (Tier 4 link-only)
+const OY_AUTO_PRICE_SIMILARITY = 0.6; // HIGH band: only ≥ this AND a core token → auto-price
+
+// Marketing / packaging words that are NOT product-distinctive — stripped when
+// deriving the "core" tokens that must appear in an OY title to auto-price.
+const PROMO_WORDS = new Set([
+  '증정', '기획', '단독', '세일', '한정', '추가', '적립', '할인', '특가', 'new', '리뉴얼', '정품',
+  '본품', '대용량', '더블', '구성', '세트', '파데프리', '픽', 'pick', '쿨링', '진정',
+]);
+
+/**
+ * Distinctive product-name tokens: significant tokens minus form/category nouns
+ * (선크림/토너/세럼…) and promo words. e.g. "스테이 프레쉬 톤업 선크림 퍼플" → [스테이,
+ * 프레쉬, 톤업, 퍼플]. At least one must appear in an OY title to auto-price, so a
+ * same-brand DIFFERENT product (조선미녀 맑은쌀) is held rather than mis-priced.
+ */
+export function distinctiveTokens(name: string): string[] {
+  return significantTokens(name).filter((t) => !FORM_TOKENS.includes(t) && !PROMO_WORDS.has(t));
+}
+
+/**
+ * Confidence band for the OliveYoung sales-point offer (mallName='올리브영').
+ *   - auto-price (Tier 2): similarity ≥ HIGH AND a distinctive core token present.
+ *   - hold + inspection (Tier 3 candidate): plausible (sim ≥ MIN) but below the band,
+ *     missing a core token, ambiguous (top-2 too close), or heterogeneous.
+ *   - no confident offer (Tier 4 link-only): nothing ≥ MIN similarity.
+ * Stays loose (no strict variant tokens — promo/influencer noise tolerated); the
+ * band only gates AUTO-PRICE, never drops a product.
+ */
+export function pickOliveYoungOffer(items: NaverShoppingItem[], productName: string): OfferMatchResult {
+  const oy = items.filter((it) => isIndividualMallOffer(it) && normalizeMallName(it.mallName) === OY_MALL);
+  if (oy.length === 0) {
+    return { matched: null, parsedVolumeRaw: null, identityScore: null, reason: 'no 올리브영 offer on Naver (Tier 4 link-only)' };
+  }
+  // Score/judge on the GIFT-STRIPPED title so a freebie ("(+올인원크림 30ml)") cannot
+  // lend its token to a different product (e.g. a 토너 set masquerading as 올인원).
+  const scored = oy
+    .map((it) => {
+      const t = stripPromoGifts(stripHtml(it.title));
+      return { it, t, s: productIdentityScore(t, productName) };
+    })
+    .filter((x) => !hasFormConflict(productName, x.t))
+    .sort((a, b) => b.s - a.s);
+  if (scored.length === 0 || scored[0].s < OY_MIN_SIMILARITY) {
+    return { matched: null, parsedVolumeRaw: null, identityScore: scored[0]?.s ?? null, reason: `no confident 올리브영 offer (best ${(scored[0]?.s ?? 0).toFixed(2)} < ${OY_MIN_SIMILARITY}) — Tier 4 link-only` };
+  }
+  const top = scored[0];
+  // Ambiguous: two OY candidates almost equally similar but different prices.
+  if (scored.length > 1 && top.s - scored[1].s < 0.1 && top.it.lprice !== scored[1].it.lprice) {
+    return { matched: null, parsedVolumeRaw: null, identityScore: top.s, reason: `multiple close 올리브영 candidates (${top.it.lprice}/${scored[1].it.lprice}) — hold/inspection`, needsInspection: true };
+  }
+  const ext = extractPackageFromTitle(top.t);
+  if (ext.heterogeneous) {
+    return { matched: null, parsedVolumeRaw: null, identityScore: top.s, reason: '올리브영 offer is a heterogeneous set — hold/inspection', needsInspection: true };
+  }
+  // Core-token guard: a distinctive token of the curated name must be in the title.
+  const distinct = distinctiveTokens(productName);
+  const titleNorm = top.t.toLowerCase().replace(/\s+/g, '');
+  const coreTokenPresent = distinct.length === 0 || distinct.some((t) => titleNorm.includes(t));
+  if (top.s >= OY_AUTO_PRICE_SIMILARITY && coreTokenPresent) {
+    const parsedVolumeRaw = ext.detected && ext.unitType === 'ml' && ext.unitAmount !== null ? ext.unitAmount : null;
+    const qty = ext.unitCount && ext.unitCount > 1 ? ext.unitCount : 1;
+    return { matched: top.it, parsedVolumeRaw, identityScore: top.s, reason: `올리브영 match (sim ${top.s.toFixed(2)})${qty > 1 ? ` ×${qty} (per-unit)` : ''}` };
+  }
+  // Plausible but below the auto-price band → hold for manual_override.
+  return {
+    matched: null, parsedVolumeRaw: null, identityScore: top.s,
+    reason: `올리브영 below auto-price band (sim ${top.s.toFixed(2)}${top.s >= OY_AUTO_PRICE_SIMILARITY ? ', no core token' : ''}) — hold/inspection`,
+    needsInspection: true,
+  };
+}
+
+/** Search Naver and pick the OliveYoung sales-point offer (loose). */
+export async function matchOliveYoungOffer(
+  product: NaverProductLike,
   clientId: string,
   clientSecret: string
 ): Promise<OfferMatchResult> {
-  const brandWord = product.brand ? product.brand.split(' ')[0] : '';
-  const nameWord = product.name ? product.name.split(' ')[0] : '';
+  // Recall: brand+name queries PLUS a "+올리브영" query that pulls the OliveYoung
+  // sales-point's own listing into the result window (brand+name alone often ranks
+  // it out — verified: #34 / #76 singles only surface with this). The mallName
+  // filter in pickOliveYoungOffer still gates adoption, so title-stuffed resellers
+  // are excluded — the appended term only improves recall, not trust.
   const candidates = Array.from(
-    new Set([cleanQuery(product.brand, product.name), `${brandWord} ${nameWord}`].filter((c) => c.length > 0))
+    new Set([...buildAnchorQueries(product.brand, product.name), `${cleanQuery(product.brand, product.name)} 올리브영`])
   );
-
-  const input: OfferMatchInput = {
-    brand: product.brand,
-    name: product.name,
-    volumeMl: product.volume_ml ?? null,
-    allowedStoreName,
-  };
-
-  let result: OfferMatchResult = { matched: null, parsedVolumeRaw: null, identityScore: null, reason: 'no queries produced results' };
+  let inspection: OfferMatchResult | null = null;
   for (const query of candidates) {
     const items = await searchNaverShopping(query, clientId, clientSecret);
-    result = pickOfficialOffer(items, input);
-    if (result.matched) break;
+    const r = pickOliveYoungOffer(items, product.name);
+    if (r.matched) return r;
+    if (r.needsInspection && !inspection) inspection = r;
   }
-  return result;
+  return inspection ?? { matched: null, parsedVolumeRaw: null, identityScore: null, reason: 'no 올리브영 offer found (Tier 3/4)' };
 }
 
 // ---------------------------------------------------------------------------
@@ -304,8 +627,11 @@ export class NaverAdapter implements RetailerAdapter {
       };
     }
 
-    // Search the Shopping API and pick the brand official-store offer.
-    const result = await matchNaverOffer(product, allowedStoreName, clientId as string, clientSecret as string);
+    // Tier-1: resolve the curated channel-product number from the listing URL
+    // (naver.me shortlinks are redirect-resolved + cached). Tier-2 falls back to
+    // official-mall title matching when the anchor is absent from results.
+    const anchorProductNo = await resolveCuratedProductNo(listing.url);
+    const result = await matchNaverOffer(product, allowedStoreName, clientId as string, clientSecret as string, anchorProductNo);
 
     if (!result.matched) {
       // Exclude from comparison + flag for inspection. No reseller fallback.

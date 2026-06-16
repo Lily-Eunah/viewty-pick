@@ -157,6 +157,20 @@ export function isCoupangShortLink(url: string): boolean {
   return /(^|\/\/)link\.coupang\.com\//i.test(url) || /coupang\.com\/a\//i.test(url);
 }
 
+/**
+ * Pick the offer for an anchored Coupang productId. A single product page exposes
+ * several purchase options (1개 / 묶음 / 벌크) as separate search rows that SHARE the
+ * same productId — the earlier `.find()` grabbed the first, which is often a bulk
+ * option (e.g. 일리윤 클렌저 81,840원 instead of the 16,600원 single). Pick the
+ * LOWEST productPrice among the matches = the base single unit.
+ */
+export function pickCoupangMatch(items: CoupangApiItem[], productId: string): CoupangApiItem | null {
+  const matches = items.filter((pd) => String(pd.productId) === productId);
+  if (matches.length === 0) return null;
+  const priceOf = (pd: CoupangApiItem) => pd.productPrice ?? pd.price ?? Number.POSITIVE_INFINITY;
+  return matches.reduce((lo, pd) => (priceOf(pd) < priceOf(lo) ? pd : lo));
+}
+
 /** Build the search keyword (brand + name, volume stripped). */
 export function buildSearchKeyword(brand: string | null, name: string): string {
   const cleanBrand = brand ? brand.replace(/\s*\([^)]*\)/g, '').trim() : '';
@@ -281,8 +295,9 @@ export class CoupangAdapter implements RetailerAdapter {
     // HTTP error / timeout throws here → run.ts classifies 'failed' (§4.4 staircase).
     const productData = await searchCoupang(keyword, accessKey, secretKey);
 
-    // Exact anchor: pick the item whose productId equals the URL's productId.
-    const match = productData.find((pd) => String(pd.productId) === productId) ?? null;
+    // Exact anchor: among rows sharing the URL's productId, pick the lowest-price
+    // option (the base single, not a bundle/bulk purchase option).
+    const match = pickCoupangMatch(productData, productId);
 
     if (!match) {
       // Search SUCCEEDED but the anchored product is not among results → legitimate

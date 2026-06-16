@@ -14,11 +14,11 @@
  * has no OliveYoung offer the price is left absent so a manual_override can fill
  * it (applied later in run.ts); until then the listing is link-only.
  */
-import { Listing, Product, RetailerAllowlist } from '../../lib/types';
+import { Listing, Product } from '../../lib/types';
 import { PriceOffer, RetailerAdapter } from './index';
 import { isSupabaseServerConfigured, supabaseServer } from '../../lib/supabase/server';
 import { loadMockDB } from '../../lib/supabase/mockDb';
-import { matchNaverOffer, stripHtml } from './naver';
+import { matchOliveYoungOffer, stripHtml } from './naver';
 
 function isPlaceholderKey(v: string | undefined): boolean {
   return !v || v.includes('placeholder') || v.includes('example') || v.includes('dummy') || v.trim() === '';
@@ -91,42 +91,29 @@ export class OliveYoungAdapter implements RetailerAdapter {
       return this.getMockOffer(listing);
     }
 
-    // Load product + allowlist + oliveyoung seller id (Supabase or mock DB).
+    // Load product (Supabase or mock DB).
     let product: Product | null = null;
-    let allowlist: RetailerAllowlist[] = [];
-    let oliveyoungSellerId = 1;
     if (isSupabaseServerConfigured()) {
       const { data: pData } = await supabaseServer.from('products').select('*').eq('id', listing.product_id).single();
       if (pData) product = pData;
-      const { data: alData } = await supabaseServer.from('retailer_allowlist').select('*').eq('is_active', true);
-      if (alData) allowlist = alData;
-      const { data: sData } = await supabaseServer.from('sellers').select('id').eq('slug', 'oliveyoung').single();
-      if (sData) oliveyoungSellerId = sData.id;
     } else {
       const db = loadMockDB();
       product = db.products.find((p) => p.id === listing.product_id) || null;
-      allowlist = db.retailer_allowlist;
-      const seller = db.sellers.find((s) => s.slug === 'oliveyoung');
-      if (seller) oliveyoungSellerId = seller.id;
     }
     if (!product) throw new Error(`Product not found for ID: ${listing.product_id}`);
 
-    // OliveYoung mallName anchor for Naver matching ('올리브영').
-    const allowedStoreName =
-      allowlist.find(
-        (al) =>
-          al.is_active &&
-          al.seller_id === oliveyoungSellerId &&
-          (al.brand || '').toLowerCase() === (product!.brand || '').toLowerCase()
-      )?.allowed_store_name || '올리브영';
-
-    const result = await matchNaverOffer(product, allowedStoreName, clientId as string, clientSecret as string);
+    // Tier-2: loose OliveYoung match on Naver (mallName='올리브영'). No N anchor (oy.run);
+    // see matchOliveYoungOffer. Sets/bundles included with per-unit; ambiguity → Tier 3/4.
+    const result = await matchOliveYoungOffer(product, clientId as string, clientSecret as string);
 
     if (!result.matched) {
-      // No OliveYoung offer on Naver. Leave the price absent (inStock=true so a
-      // manual_override applied later in run.ts can supply it); otherwise the
-      // listing is link-only via the curator affiliate_url. No reseller fallback.
-      console.warn(`[OliveYoung Adapter] No Naver OliveYoung offer for product ${product.id} (${product.name}): ${result.reason}`);
+      // No confident OliveYoung offer (Tier 3 manual_override / Tier 4 link-only).
+      // inStock=true so a manual_override applied later in run.ts can supply a price.
+      if (result.needsInspection) {
+        console.warn(`[OliveYoung Adapter] AMBIGUOUS OliveYoung match for product ${product.id} (${product.name}) → inspection/manual: ${result.reason}`);
+      } else {
+        console.warn(`[OliveYoung Adapter] No Naver OliveYoung offer for product ${product.id} (${product.name}): ${result.reason}`);
+      }
       return {
         regularPrice: null,
         salePrice: null,

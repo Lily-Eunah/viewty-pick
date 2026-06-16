@@ -506,12 +506,16 @@ export async function crawlPipeline(): Promise<void> {
       // Update listing fail counts + cached matched-offer link (redirect fallback).
       // latest_matched_url is the Coupang search deeplink / Naver matched link; it
       // must be persisted or the /go redirect can never fall back to it.
+      const crawledAt = new Date().toISOString();
       for (const list of updatedListings) {
         await supabaseServer.from('listings').update({
           fail_count: list.fail_count,
           is_active: list.is_active,
           latest_matched_url: list.latest_matched_url ?? null,
           latest_image_url: list.latest_image_url ?? null,
+          // Freshness: record when this listing was last processed (was never
+          // written before → last_crawled_at stayed NULL for all rows).
+          last_crawled_at: crawledAt,
         }).eq('id', list.id);
       }
 
@@ -539,7 +543,9 @@ export async function crawlPipeline(): Promise<void> {
 
       // Log crawl run summary
       await supabaseServer.from('crawl_runs').insert({
-        started_at: startTime,
+        // started_at is TIMESTAMPTZ — must be an ISO string, not the epoch number
+        // (the raw number silently failed to record, leaving crawl_runs empty).
+        started_at: new Date(startTime).toISOString(),
         finished_at: new Date().toISOString(),
         status: 'completed',
         total_links: listings.length,
