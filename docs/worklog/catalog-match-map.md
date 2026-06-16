@@ -8,44 +8,45 @@
 ## 요약 분포
 | 분류 | 건수 |
 |---|---|
-| ✅ 가격 수집(앵커 단품/묶음·OY·쿠팡) | 78 |
-| 🔬 검수 필요(이종세트/모호 OY) | 3 |
+| ✅ 가격 수집(앵커 단품/묶음·OY·쿠팡) | 76 |
+| 🔬 검수 필요(이종세트/모호 OY) | 4 |
 | 🔎 데모/오큐레이션 의심(링크만) | 2 |
 | ⚠️ URL 데이터 오류(링크만) | 1 |
-| 🔗 링크만(앵커 미스/OY 미수집) | 20 |
+| 🔗 링크만(앵커 미스/OY 미수집) | 21 |
 
-## 정책: 세트 포함(개당가) + OY 4-tier + 앵커-only 적용 결과
+## OY 신뢰 밴드 적용 결과 (auto-price vs hold+검수)
 
-**커버리지 회복**: 가격 수집 OK **37 → 78** (이전 "세트 제외/OY 링크만" → 현 "세트 포함 개당가 + OY 느슨 매칭").
+**규칙**: `pickOliveYoungOffer` — mallName='올리브영' + form-conflict 제외 위에 **밴드**:
+auto-price(Tier2)는 **유사도 ≥ 0.6 AND 핵심 토큰(브랜드·카테고리·홍보어 제외 distinctive) 존재** 일 때만.
+미달(0.4–0.6 / 핵심토큰 부재 / top-2 근소경합 / 이종) → **hold+검수(needsInspection)**. <0.4 → Tier4 링크만. **드롭 없음**(느슨함 유지).
 
-**보장 확인**
-- 네이버 가격은 **N-앵커 단품 또는 동질묶음(개당가)** 만 (fuzzy 제목가 0). 앵커 미스 → 링크만.
-- **묶음 개당가 수집**: 몽디에스 쿠팡 ×2(33,000), 후시다딘 쿠팡 ×4(38,530), 메디큐브 naver 250ml×2, 인터미션 x2더블, 라하 OY 1+1, 넘버즈인 OY 더블기획 → 모두 수집(normalize가 effective 개당가 산출).
-- **증정은 미반영(라벨만)**: "(+7ml*2)", "+토너 20ml 증정", "(+세럼20ml+크림1ml)" 등 → 본품가만. (packageExtractor)
-- **이종세트/디바이스/N종 → 검수(INSPECT, 무가격)**: #82 아벤느, #86 바이오힐보(+슈링크홈디바이스), #92 블라이드(모호 OY).
+**효과 (밴드 전→후: 가격 OK 78→76)**
+- ✅ **#34 조선미녀**: 틀린 "맑은쌀 25,300" auto-price **차단** → 검수(근소경합 25,300/15,000). naver 앵커 15,300·쿠팡 14,400은 정상 유지.
+- ✅ **#86 바이오힐보 / #88 몰바니**: 근소경합·이종 → 검수(hold).
+- 정상 OY(스타라이크·아로셀·메디큐브·코스알엑스·에스트라·니들리 등)는 그대로 auto-price — 과도 hold 없음(밴드로 인한 hold = #34·#88 2건뿐, 둘 다 타당).
 
-**OY 4-tier**: mallName='올리브영'(정확) 느슨 매칭. Tier2(가격)·Tier3(manual_override)·Tier4(링크만). 스타라이크·아로셀·메디큐브·코스알엑스·에스트라·니들리 등 OY가 가격 회복.
-
-**⚠️ 느슨 OY의 잔여 오매칭(운영자가 수용한 리스크 — manual_override 권고)**
-- **#34 조선미녀**: OY가 *다른 단품* "맑은쌀 선크림 아쿠아프레쉬 50ml" 25,300 매칭(큐레이션=스테이프레쉬 톤업 퍼플). 같은 폼·세트표시 없음 → 변형토큰 없인 구분 불가(엄격토큰 OY 미적용 결정).
-- **#76 닥터지 OY**: "포 맨 ... 토너+올인원 증정 기획" 31,000(종 키워드 없어 이종 미감지). 큐레이션=올인원.
-- → 두 건은 **manual_override로 확정** 권고. (volume-gate도 50ml↔50ml라 미해결.)
+**⚠️ 남은 잔여 1건 (밴드로 미차단 — manual_override 권고)**
+- **#76 닥터지 OY**: "[증정 기획] 레드 블레미쉬 포 맨 멀티 수딩 토너 200ml + 올인원" 31,000 auto-price. 같은 라인 증정 세트라 핵심토큰(레드·블레미쉬) 존재 + 유사도 0.75 + 단일 볼륨 → 밴드가 단품과 구분 못 함. (토너+올인원 2-form 감지 룰은 로션+에멀전 동의어 정상품을 과도 hold시켜 미채택.) → **manual_override로 단품가 확정 권고.**
 
 ## 운영자 수정 리스트
 
-### 2. 검수 필요 — 이종 2제품 세트 / 모호한 OY 매칭 (검수 후 manual_override 또는 단품 URL) (3)
+### 2. 검수 필요 — 이종 2제품 세트 / 모호한 OY 매칭 (검수 후 manual_override 또는 단품 URL) (4)
+- **조선미녀 스테이 프레쉬 톤업 선크림 퍼플** [oliveyoung] — 이종 2제품 세트 또는 모호한 OY 매칭 — 검수 후 manual_override 또는 단품 URL
+  - 🔬 inspection — multiple close 올리브영 candidates (25300/15000) — hold/inspection
+  - 후보: 40 hits · official 0 (single 0) · closest "조선미녀 스테이프레쉬 톤업 선크림 50ml (퍼플/그린) SPF50+" @뷰티오브조선 : 조선미녀 id1.00
+  - url: https://oy.run/gsgwGOxKSzisni
 - **아벤느 히알루론 액티브 B3 안티에이징 세럼 ** [naver] — 이종 2제품 세트 또는 모호한 OY 매칭 — 검수 후 manual_override 또는 단품 URL
   - 🔬 inspection — id-anchored to curated SKU (productNo 10698667363) but it is a heterogeneous 2-product set — needs inspection (no price)
-  - 후보: 40 hits · official 2 (single 1) · closest "아벤느 아벤느 히알루론 액티브 B3 안티에이징 세럼 30ml" @G마켓 id1.00
+  - 후보: 40 hits · official 2 (single 1) · closest "아벤느 (스타배송) 아벤느 히알루론 액티브 B3 안티에이징 세럼 30" @옥션 id1.00
   - url: https://naver.me/G1pzkqHd
+- **몰바니 저자극 LHA 율피 젤 클렌저** [oliveyoung] — 이종 2제품 세트 또는 모호한 OY 매칭 — 검수 후 manual_override 또는 단품 URL
+  - 🔬 inspection — multiple close 올리브영 candidates (18900/28000) — hold/inspection
+  - 후보: 40 hits · official 1 (single 1) · closest "몰바니 저자극 LHA 율피 젤 클렌저 200ml+50ml" @시손느파세 id1.00
+  - url: https://oy.run/lyEJmF53INDFnK
 - **바이오힐보 엔에이디 프리즈셀 글로우 파워 세럼** [oliveyoung] — 이종 2제품 세트 또는 모호한 OY 매칭 — 검수 후 manual_override 또는 단품 URL
-  - 🔬 inspection — 올리브영 offer is a heterogeneous set — inspection/manual
+  - 🔬 inspection — multiple close 올리브영 candidates (157700/39000) — hold/inspection
   - 후보: 40 hits · official 2 (single 1) · closest "바이오힐보 엔에이디 프리즈셀 글로우 파워 세럼 30ml" @뷰티판도라 id1.00
   - url: https://oy.run/HHRGCszKOAUvRR
-- **블라이드 버블링 스플래쉬 마스크 인디언 그레이셜 머드** [oliveyoung] — 이종 2제품 세트 또는 모호한 OY 매칭 — 검수 후 manual_override 또는 단품 URL
-  - 🔬 inspection — 올리브영 offer(s) found but none confidently matched (best 0.33) — inspection/manual
-  - 후보: 5 hits · official 0 (single 0) · closest "머드팩투폼블라이드 버블링 스플래쉬 마스크 인디언 그레이셜 머드" @블라이드BLITHE id1.00
-  - url: https://oy.run/DDfzsAfybC0wY8
 
 ### 3. URL 데이터 오류 (1)
 - **넘버즈인 3번 도자기결 톤업베이지 선크림** [coupang] — 시트 URL을 제품 상세(/vp/products/{id})로 교체
@@ -80,7 +81,7 @@
 | 33 | 이니스프리 데일리 유브이 톤업 노세범 선크림 | oliveyoung | 🔗 링크만(앵커 미스/OY 미수집) | 🔗 link-only — no 올리브영 offer found (Tier 3/4) | 40 hits · official 0 (single 0) · closest "[파데프리_김아영PICK] 이니스프리 데일리 UV |
 | 34 | 조선미녀 스테이 프레쉬 톤업 선크림 퍼플 | coupang | ✅ 가격 수집(앵커 단품/묶음·OY·쿠팡) | ✅ 14,400원 — 조선미녀 스테이 프레쉬 톤업 선크림 퍼플 SPF50+ PA++++ | anchored pid 9544152755 |
 | 34 | 조선미녀 스테이 프레쉬 톤업 선크림 퍼플 | naver | ✅ 가격 수집(앵커 단품/묶음·OY·쿠팡) | ✅ 15,300원 @뷰티오브조선 : 조선미녀 — 조선미녀 스테이프레쉬 톤업 선크림 50ml (퍼플/그린) SPF50+ P [a | 40 hits · official 1 (single 1) · closest "조선미녀 스테이프레쉬 톤업 선크림 50ml (퍼플 |
-| 34 | 조선미녀 스테이 프레쉬 톤업 선크림 퍼플 | oliveyoung | ✅ 가격 수집(앵커 단품/묶음·OY·쿠팡) | ✅ 25,300원 @올리브영 — [쿨링진정/쌀알춘식이스트레스볼] 조선미녀 맑은쌀 선크림 아쿠아프레쉬 50 [OY] | 40 hits · official 0 (single 0) · closest "조선미녀 스테이프레쉬 톤업 선크림 50ml (퍼플 |
+| 34 | 조선미녀 스테이 프레쉬 톤업 선크림 퍼플 | oliveyoung | 🔬 검수 필요(이종세트/모호 OY) | 🔬 inspection — multiple close 올리브영 candidates (25300/15000) — hold/in | 40 hits · official 0 (single 0) · closest "조선미녀 스테이프레쉬 톤업 선크림 50ml (퍼플 |
 | 35 | 넘버즈인 3번 도자기결 톤업베이지 선크림 | coupang | ⚠️ URL 데이터 오류(링크만) | ⛔ data_error | share short-link (no productId) |
 | 35 | 넘버즈인 3번 도자기결 톤업베이지 선크림 | naver | 🔗 링크만(앵커 미스/OY 미수집) | 🔗 link-only — anchor miss — curated productNo 5788327291 not in 3 que | 40 hits · official 0 (single 0) · closest "[파데프리] 넘버즈인 3번 도자기결 톤업베이지 선 |
 | 35 | 넘버즈인 3번 도자기결 톤업베이지 선크림 | oliveyoung | ✅ 가격 수집(앵커 단품/묶음·OY·쿠팡) | ✅ 24,900원 @올리브영 — [파데프리] 넘버즈인 3번 도자기결 톤업베이지 선크림 50ml 더블기획  [OY] | 40 hits · official 1 (single 0) · closest "[파데프리] 넘버즈인 3번 도자기결 톤업베이지 선 |
@@ -122,8 +123,8 @@
 | 81 | 에스트라 에이시카 365 세럼 pH 4.5 | naver | ✅ 가격 수집(앵커 단품/묶음·OY·쿠팡) | ✅ 32,300원 @에스트라 — [싱글] 에스트라 에이시카365 흔적진정세럼 pH4.5 40ml x 1개 [anchor] | 40 hits · official 3 (single 0) · closest "[더블 세트] 에스트라 에이시카365 흔적진정세럼 |
 | 81 | 에스트라 에이시카 365 세럼 pH 4.5 | oliveyoung | ✅ 가격 수집(앵커 단품/묶음·OY·쿠팡) | ✅ 32,300원 @올리브영 — 에스트라 에이시카365 흔적진정세럼 pH4.5 40ml [OY] | 40 hits · official 2 (single 1) · closest "[더블 세트] 에스트라 에이시카365 흔적진정세럼 |
 | 82 | 아벤느 히알루론 액티브 B3 안티에이징 세럼  | coupang | ✅ 가격 수집(앵커 단품/묶음·OY·쿠팡) | ✅ 27,590원 — 아벤느 안티에이징 HAB3 탄력 액티브 세럼 | anchored pid 8306356651 |
-| 82 | 아벤느 히알루론 액티브 B3 안티에이징 세럼  | naver | 🔬 검수 필요(이종세트/모호 OY) | 🔬 inspection — id-anchored to curated SKU (productNo 10698667363) but | 40 hits · official 2 (single 1) · closest "아벤느 아벤느 히알루론 액티브 B3 안티에이징 세 |
-| 82 | 아벤느 히알루론 액티브 B3 안티에이징 세럼  | oliveyoung | ✅ 가격 수집(앵커 단품/묶음·OY·쿠팡) | ✅ 55,000원 @올리브영 — [모공앰플] 아벤느 HAB3 탄력 액티브 안티에이징 세럼 30ml (기획 [OY] | 40 hits · official 0 (single 0) · closest "아벤느 아벤느 히알루론 액티브 B3 안티에이징 세 |
+| 82 | 아벤느 히알루론 액티브 B3 안티에이징 세럼  | naver | 🔬 검수 필요(이종세트/모호 OY) | 🔬 inspection — id-anchored to curated SKU (productNo 10698667363) but | 40 hits · official 2 (single 1) · closest "아벤느 (스타배송) 아벤느 히알루론 액티브 B3  |
+| 82 | 아벤느 히알루론 액티브 B3 안티에이징 세럼  | oliveyoung | ✅ 가격 수집(앵커 단품/묶음·OY·쿠팡) | ✅ 55,000원 @올리브영 — [모공앰플] 아벤느 HAB3 탄력 액티브 안티에이징 세럼 30ml (기획 [OY] | 40 hits · official 0 (single 0) · closest "아벤느 (스타배송) 아벤느 히알루론 액티브 B3  |
 | 83 | 퍼셀 880억/mL 글루타치온 플렉서블 리포좀 | naver | 🔗 링크만(앵커 미스/OY 미수집) | 🔗 link-only — anchor miss — curated productNo 13000644987 not in 2 qu | 40 hits · official 2 (single 2) · closest "[대용량][투명미백] 880억/mL 글루타치온 플 |
 | 83 | 퍼셀 880억/mL 글루타치온 플렉서블 리포좀 | oliveyoung | ✅ 가격 수집(앵커 단품/묶음·OY·쿠팡) | ✅ 22,000원 @올리브영 — [잡티톤업] 퍼셀 880억/mL 글루타치온 플렉서블 리포좀 톤업앰플 20 [OY] | 40 hits · official 0 (single 0) · closest "[대용량][투명미백] 880억/mL 글루타치온 플 |
 | 84 | 랑콤 제니피끄 얼티미트 세럼 | coupang | 🔗 링크만(앵커 미스/OY 미수집) | 🔗 link-only — no_offer: Coupang: productId 8464853636 not in sea | anchored pid 8464853636 |
@@ -132,12 +133,12 @@
 | 85 | 유세린 하이아르론 에피셀린 세럼 | naver | ✅ 가격 수집(앵커 단품/묶음·OY·쿠팡) | ✅ 60,900원 @유세린공식스토어 — 유세린 하이알루론 에피셀린 세럼 30ml [anchor] | 40 hits · official 2 (single 0) · closest "유세린 하이알루론 에피셀린 세럼 30ml 더블팩" |
 | 85 | 유세린 하이아르론 에피셀린 세럼 | oliveyoung | ✅ 가격 수집(앵커 단품/묶음·OY·쿠팡) | ✅ 39,900원 @올리브영 — [1등 세럼] 유세린 하이알루론 에피셀린 세럼 30ml 기획 (+에피셀린 [OY] | 40 hits · official 1 (single 0) · closest "유세린 하이알루론 에피셀린 세럼 30ml 더블팩" |
 | 86 | 바이오힐보 엔에이디 프리즈셀 글로우 파워 세럼 | naver | 🔗 링크만(앵커 미스/OY 미수집) | 🔗 link-only — anchor miss — curated productNo 12443904908 not in 3 qu | 40 hits · official 1 (single 0) · closest "바이오힐보 엔에이디 프리즈셀 글로우 파워 세럼 3 |
-| 86 | 바이오힐보 엔에이디 프리즈셀 글로우 파워 세럼 | oliveyoung | 🔬 검수 필요(이종세트/모호 OY) | 🔬 inspection — 올리브영 offer is a heterogeneous set — inspection/manual | 40 hits · official 2 (single 1) · closest "바이오힐보 엔에이디 프리즈셀 글로우 파워 세럼 3 |
+| 86 | 바이오힐보 엔에이디 프리즈셀 글로우 파워 세럼 | oliveyoung | 🔬 검수 필요(이종세트/모호 OY) | 🔬 inspection — multiple close 올리브영 candidates (157700/39000) — hold/i | 40 hits · official 2 (single 1) · closest "바이오힐보 엔에이디 프리즈셀 글로우 파워 세럼 3 |
 | 87 | 라운드랩 자작나무 수분 클렌저 | coupang | ✅ 가격 수집(앵커 단품/묶음·OY·쿠팡) | ✅ 15,500원 — 라운드랩 자작나무 수분 클렌저 | anchored pid 9558253617 |
 | 87 | 라운드랩 자작나무 수분 클렌저 | naver | ✅ 가격 수집(앵커 단품/묶음·OY·쿠팡) | ✅ 28,900원 @라운드랩 — [슈퍼적립 10%] 라운드랩 자작나무 수분 클렌저 150ml 3개 세트  [anchor] | 40 hits · official 1 (single 0) · closest "[수분촉촉] 라운드랩 자작나무 수분 클렌저 150 |
 | 87 | 라운드랩 자작나무 수분 클렌저 | oliveyoung | ✅ 가격 수집(앵커 단품/묶음·OY·쿠팡) | ✅ 12,900원 @올리브영 — [수분촉촉] 라운드랩 자작나무 수분 클렌저 150ml 기획 (+20ml) [OY] | 40 hits · official 1 (single 0) · closest "[수분촉촉] 라운드랩 자작나무 수분 클렌저 150 |
 | 88 | 몰바니 저자극 LHA 율피 젤 클렌저 | naver | ✅ 가격 수집(앵커 단품/묶음·OY·쿠팡) | ✅ 28,000원 @몰바니 — 몰바니 율피 저자극 LHA 클렌징젤 200ml [anchor] | 40 hits · official 0 (single 0) · closest "몰바니 저자극 LHA 율피 젤 클렌저 200ml+ |
-| 88 | 몰바니 저자극 LHA 율피 젤 클렌저 | oliveyoung | ✅ 가격 수집(앵커 단품/묶음·OY·쿠팡) | ✅ 18,900원 @올리브영 — 몰바니 저자극 LHA 율피 젤 클렌저 200ml [OY] | 40 hits · official 1 (single 1) · closest "몰바니 저자극 LHA 율피 젤 클렌저 200ml+ |
+| 88 | 몰바니 저자극 LHA 율피 젤 클렌저 | oliveyoung | 🔬 검수 필요(이종세트/모호 OY) | 🔬 inspection — multiple close 올리브영 candidates (18900/28000) — hold/in | 40 hits · official 1 (single 1) · closest "몰바니 저자극 LHA 율피 젤 클렌저 200ml+ |
 | 89 | 니들리 마일드 효소 클렌징 파우더 | naver | ✅ 가격 수집(앵커 단품/묶음·OY·쿠팡) | ✅ 17,950원 @니들리 NEEDLY — 니들리 마일드 효소 클렌징 파우더 60g [anchor] | 40 hits · official 2 (single 2) · closest "니들리 마일드 효소 클렌징 파우더 60g" @니들 |
 | 89 | 니들리 마일드 효소 클렌징 파우더 | oliveyoung | ✅ 가격 수집(앵커 단품/묶음·OY·쿠팡) | ✅ 15,120원 @올리브영 — 니들리 마일드 효소 클렌징 파우더 60g [OY] | 40 hits · official 1 (single 1) · closest "니들리 마일드 효소 클렌징 파우더 60g" @니들 |
 | 90 | 브링그린 티트리 시카 딥 클렌징폼 | naver | ✅ 가격 수집(앵커 단품/묶음·OY·쿠팡) | ✅ 11,200원 @브링그린 — 브링그린 티트리 시카 딥 클렌징폼 120ml, 2개 [anchor] | 40 hits · official 2 (single 1) · closest "[고밀도효소거품] 브링그린 티트리 시카 딥클렌징폼 |
@@ -147,7 +148,7 @@
 | 91 | 일리윤 젠틀 딥 페이셜 클렌저 | oliveyoung | ✅ 가격 수집(앵커 단품/묶음·OY·쿠팡) | ✅ 16,800원 @올리브영 — [여행용 단독증정/저자극 촉촉] 일리윤 젠틀 딥 페이셜 클렌저 기획(25 [OY] | 40 hits · official 1 (single 0) · closest "일리윤 젠틀 딥 페이셜 클렌저" @아모레퍼시픽공식 |
 | 92 | 블라이드 버블링 스플래쉬 마스크 인디언 그레이셜 머드 | coupang | ✅ 가격 수집(앵커 단품/묶음·OY·쿠팡) | ✅ 21,000원 — 블라이드 얼음모공팩 인디언 머드팩투폼 클렌징폼 120ml, 클레이팩 모공 | anchored pid 8091623533 |
 | 92 | 블라이드 버블링 스플래쉬 마스크 인디언 그레이셜 머드 | naver | 🔗 링크만(앵커 미스/OY 미수집) | 🔗 link-only — anchor miss — curated productNo 4777507234 not in 3 que | 5 hits · official 1 (single 1) · closest "머드팩투폼블라이드 버블링 스플래쉬 마스크 인디언 그 |
-| 92 | 블라이드 버블링 스플래쉬 마스크 인디언 그레이셜 머드 | oliveyoung | 🔬 검수 필요(이종세트/모호 OY) | 🔬 inspection — 올리브영 offer(s) found but none confidently matched (best | 5 hits · official 0 (single 0) · closest "머드팩투폼블라이드 버블링 스플래쉬 마스크 인디언 그 |
+| 92 | 블라이드 버블링 스플래쉬 마스크 인디언 그레이셜 머드 | oliveyoung | 🔗 링크만(앵커 미스/OY 미수집) | 🔗 link-only — no 올리브영 offer found (Tier 3/4) | 5 hits · official 0 (single 0) · closest "머드팩투폼블라이드 버블링 스플래쉬 마스크 인디언 그 |
 | 93 | 랑콤 스킨 이돌 3 세럼 파인 커버 | coupang | 🔗 링크만(앵커 미스/OY 미수집) | 🔗 link-only — no_offer: Coupang: productId 9553155211 not in sea | anchored pid 9553155211 |
 | 93 | 랑콤 스킨 이돌 3 세럼 파인 커버 | oliveyoung | 🔗 링크만(앵커 미스/OY 미수집) | 🔗 link-only — no 올리브영 offer found (Tier 3/4) | 38 hits · official 0 (single 0) · closest "랑콤 스킨 이돌 3 세럼 파인커버 쿠션 P10 1 |
 | 94 | 아이소이 스킨케어 비건 쿠션 | coupang | ✅ 가격 수집(앵커 단품/묶음·OY·쿠팡) | ✅ 35,900원 — 아이소이 스킨케어 비건 쿠션 21호(본품+리필) | anchored pid 8594202854 |

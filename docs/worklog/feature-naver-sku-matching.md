@@ -96,6 +96,13 @@ Naver Shopping API 매칭(`pickOfficialOffer`)이 큐레이션한 **단품**이 
 - 맵 재실행: **가격 OK 37→78**(세트포함+OY 회복). INSPECT 3(아벤느·바이오힐보 디바이스·블라이드 모호). ⚠️ 느슨 OY 잔여 오매칭 2건(#34 조선미녀 다른단품·#76 닥터지 토너+올인원) → manual_override 권고. 상세 catalog-match-map.md.
 - 테스트: packageExtractor(1+1/리필/더블/증정/이종/N종/디바이스), pickAnchoredOffer(묶음 가격·이종 검수), normalize 회귀. test:all·typecheck·build·lint green. DB 무변경.
 
+## OY 신뢰 밴드 (auto-price vs hold, 2026-06-16)
+느슨 OY가 같은 브랜드 다른 제품/세트를 조용히 auto-price하던 것(#34 맑은쌀, #76 세트) 방지. `pickOliveYoungOffer`에 밴드:
+- **auto-price(Tier2)**: 유사도 ≥ 0.6 **AND** `distinctiveTokens`(브랜드·카테고리·PROMO_WORDS 제외) 중 하나 이상 OY 제목에 존재.
+- **hold+검수(needsInspection)**: 0.4–0.6 / 핵심토큰 부재 / top-2 근소경합(<0.1, 다른 가격) / 이종. <0.4 → Tier4 링크만. **드롭 없음**.
+- 결과: #34 조선미녀 틀린 25,300 차단(검수), #86·#88 hold. 가격 OK 78→76(과도 hold 없음, 둘 다 타당). 잔여 #76(증정 기획 동일라인 세트)는 밴드 미차단 → manual_override 권고(2-form 룰은 동의어 과도hold라 미채택).
+- 테스트: `distinctiveTokens`, OY 밴드(다른제품 hold·정상 auto-price·근소경합 hold). test:all·typecheck·build·lint green. DB 무변경.
+
 ## 남은 TODO
 - [ ] **(운영자, 전체 sync 전 선행) 시트 상품명 오타 교정**: #85 "하이아르론"→"하이알루론", #86 "엔에이디"→"NAD"(또는 검색 매칭되는 표기). 다른 제품에도 유사 오타 가능 → 전체 sync 시 false-exclusion 분포로 추가 발견.
 - [ ] **(게이트, 보류 중) 전체 재수집**: 시트 교정 후 `npm run crawler:sync`(전체). priced vs no_offer 분포 + false exclusion/inclusion 점검 보고.
