@@ -122,8 +122,35 @@ export function productIdentityScore(title: string, name: string): number {
 // to classify each offer and PREFER a comparable single, EXCLUDING sets/multipacks
 // from price comparison (trust-first: show no price rather than a wrong one).
 // ---------------------------------------------------------------------------
-const SET_KEYWORDS = /(선물\s*세트|기획\s*세트|세트\s*구성|더블\s*기획|더블팩|2종|3종|4종|콜렉션|컬렉션|패키지|한정|리필|세트|디바이스|기기)/;
+const SET_KEYWORDS = /(선물\s*세트|기획\s*세트|세트\s*구성|더블\s*기획|더블팩|2종|3종|4종|콜렉션|컬렉션|패키지|한정|리필|세트|디바이스|기기|업소용|도매|벌크)/;
 const MULTIPACK_COUNT = /(\d+)\s*(?:개|팩|병|입|매)/; // \b不可: 한글은 \w가 아님
+
+// Product form/type nouns. Used to reject same-line cross-product matches: if the
+// curated name's form noun (e.g. 올인원/선스틱/로션) is ABSENT from the candidate
+// title and the title carries a DIFFERENT form noun (e.g. 크림), it is a different
+// SKU in the same line — exclude (trust-first). Longer/compound forms first so a
+// "선크림" isn't reduced to "크림".
+const FORM_TOKENS = [
+  '올인원', '선크림', '선스틱', '선세럼', '선쿠션', '선밤', '클렌징폼', '클렌징오일', '클렌징젤',
+  '클렌저', '클렌징', '에멀전', '쿠션', '크림', '로션', '세럼', '앰플', '에센스', '토너', '스킨',
+  '미스트', '오일', '젤', '폼', '밤', '패드', '마스크', '파우더', '스틱', '밤',
+];
+function formNounsIn(s: string): string[] {
+  const n = stripHtml(s || '').toLowerCase().replace(/\s+/g, '');
+  return FORM_TOKENS.filter((t) => n.includes(t));
+}
+/**
+ * True when the candidate is a DIFFERENT form/type within the same product line —
+ * the curated name's form noun(s) appear nowhere in the title while the title has
+ * its own form noun (e.g. curated "…포맨 올인원" vs candidate "…클리어 수딩 크림").
+ * Conservative: returns false when either side has no recognizable form noun.
+ */
+export function hasFormConflict(name: string, title: string): boolean {
+  const nf = formNounsIn(name);
+  const tf = formNounsIn(title);
+  if (nf.length === 0 || tf.length === 0) return false;
+  return !nf.some((t) => tf.includes(t));
+}
 // Parentheticals that are PURE non-unit freebies (no extra sellable unit) — safe
 // to ignore. A "(+...ml ...)" / "(+리필…)" / "(+세럼 7ml*2)" is NOT here: an added
 // item that carries its own product is treated as a bundle below.
@@ -215,16 +242,21 @@ export function pickOfficialOffer(
     return ext.detected && ext.unitType === 'ml' && ext.unitAmount !== null ? ext.unitAmount : null;
   };
 
-  const singles = passing.filter((it) => classifyOfferComposition(it.title).kind === 'single');
+  // A comparable single = classified single AND not a same-line different form
+  // (e.g. curated "…올인원" must not match "…수딩 크림").
+  const singles = passing.filter(
+    (it) => classifyOfferComposition(it.title).kind === 'single' && !hasFormConflict(input.name, it.title)
+  );
   if (singles.length === 0) {
-    // Only set/bundle/multipack official offers exist → no comparable single SKU.
-    // Trust-first: exclude (link-only) rather than surface a set price as the unit price.
-    const why = classifyOfferComposition(passing[0].title).reason;
+    // Only sets/multipacks or different-form SKUs exist → no comparable single.
+    // Trust-first: exclude (link-only) rather than surface a wrong/set price.
+    const top = passing[0];
+    const why = hasFormConflict(input.name, top.title) ? 'different form/variant in same line' : classifyOfferComposition(top.title).reason;
     return {
       matched: null,
       parsedVolumeRaw: null,
       identityScore: null,
-      reason: `official mall offer(s) found but only set/bundle/multipack (${why}) — excluded from comparison (no comparable single SKU)`,
+      reason: `official mall offer(s) found but no comparable single SKU (${why}) — excluded from comparison`,
     };
   }
 

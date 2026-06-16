@@ -14,6 +14,7 @@ import {
   normalizeMallName,
   productIdentityScore,
   classifyOfferComposition,
+  hasFormConflict,
   NaverShoppingItem,
   OfferMatchInput,
 } from '../naver';
@@ -169,12 +170,32 @@ it('N개 multipack (N≥2) → set', () => {
   assert(classifyOfferComposition('라하 토너 265ml, 6개').kind === 'set', '6개 is a multipack');
 });
 
+console.log('\n--- hasFormConflict (same-line different SKU) ---');
+it('포맨 올인원 vs 클리어 수딩 크림 → conflict', () => {
+  assert(hasFormConflict('레드 블레미쉬 포 맨 진정 올인원', '닥터지 레드 블레미쉬 클리어 수딩 크림 70mL 진정') === true, 'different form (올인원 vs 크림) should conflict');
+});
+it('선스틱 vs 수딩 크림 → conflict', () => {
+  assert(hasFormConflict('레드 블레미쉬 수딩 업 선스틱', '닥터지 레드 블레미쉬 클리어 수딩 크림 70mL') === true, '선스틱 vs 크림 should conflict');
+});
+it('same form noun present (에멀전) → no conflict', () => {
+  assert(hasFormConflict('판테놀 베리어 에멀전', '코스노리 판테놀 베리어 로션 에멀전 150ml') === false, 'shared 에멀전 → no conflict');
+});
+it('toner matches toner → no conflict', () => {
+  assert(hasFormConflict('녹두 라하 토너', '비플레인 녹두 라하 토너 265ml, 1개') === false, 'toner→toner no conflict');
+});
+
 console.log('\n--- pickOfficialOffer: single preference + set exclusion ---');
+it('excludes same-line different-form SKU (올인원 vs 크림) → matched=null', () => {
+  const wrongForm = item({ title: '닥터지 레드 블레미쉬 클리어 수딩 크림 70mL 진정 수분', mallName: '고운세상 닥터지', lprice: '27600' });
+  const r = pickOfficialOffer([wrongForm], { brand: '닥터지', name: '레드 블레미쉬 포 맨 진정 올인원', volumeMl: 150, allowedStoreName: null });
+  assert(r.matched === null, 'different-form SKU must be excluded');
+  assert(/single SKU/.test(r.reason), `reason should note no comparable single: ${r.reason}`);
+});
 it('excludes set-only official offers (no comparable single → matched=null)', () => {
   const set = item({ title: '제니피끄 세럼 50ml 선물 세트', mallName: '랑콤', lprice: '170000' });
   const r = pickOfficialOffer([set], { brand: '랑콤', name: '제니피끄 얼티미트 세럼', volumeMl: 50, allowedStoreName: '랑콤' });
   assert(r.matched === null, 'set-only must be excluded');
-  assert(/set\/bundle\/multipack/.test(r.reason), `reason should explain set exclusion: ${r.reason}`);
+  assert(/no comparable single SKU/.test(r.reason), `reason should explain set exclusion: ${r.reason}`);
 });
 it('picks the single over a higher-ranked set from the same official mall', () => {
   const set = item({ title: '유세린 에피셀린 세럼 30ml 더블팩', mallName: '유세린공식스토어', lprice: '73900', productId: 'A' });
