@@ -111,6 +111,14 @@ Naver Shopping API 매칭(`pickOfficialOffer`)이 큐레이션한 **단품**이 
 - 맵 재실행: **#34 조선미녀 정답 14,400 자동 매칭**(was wrong 25,300), **#76 닥터지 wrong 31,000 제거→held**, #78 온그리디언츠 recall 이득. OK 76→77, 정상 단품 손실 0.
 - 테스트: gift-strip 선채점(토너+올인원크림 증정→form conflict→held). test:all·typecheck·build·lint green. DB 무변경.
 
+## 전체 재수집 (프로덕션 Supabase 쓰기, 2026-06-16)
+백업: `backups/2026-06-16T14-45-41-677Z`. 브랜치 `fix/naver-sku-matching`에서 실행(필수).
+- **시트 재import**: 45 products / 138 listings, orphan 3 products·6 listings 비활성, dup-URL 0. ⚠️ 2 errors = **badge 시트가 유세린/바이오힐보 신규명(하이알루론·NAD) 미반영** → 배지 2건 skip(가격 무관, 운영자 배지행 수정 필요). ⚠️ 넘버즈인 쿠팡 URL 여전히 short-link(미수정) → data_error 유지. 제품명 정정으로 신규 행 #286(유세린 하이알루론)·#287(바이오힐보 NAD) 생성(구 #85/#86 비활성).
+- **제한 sanity(6종) → 클린**: 유세린 60,900(naver)·OY 39,900 / 조선미녀 **14,400(정답, was wrong 25,300)** / 라하 13,800·16,800·OY 1+1 eff 12,000 / 토리든 19,930 / 닥터지 16,990(쿠팡 단품; OY 토너 held) / 바이오힐보 held. **틀린 가격 0.**
+- **전체 sync**: crawl_run #4 completed(total 138 / ok 77 / warn 14 / fail 34 — fail 다수는 zigzag/ably 무어댑터). **priced 40/45 products, no-price 5 / priced listing 63.** `last_crawled_at` 138/138·`crawl_runs` 기록됨(ISO fix 동작).
+- **wrong-price 스캔(>90k) 클린**: #95 아르마니 113,050만 = 앵커된 큐레이션 "리필위크 세트"(시트 URL이 세트 → 단품 원하면 URL 교체). 교차상품/fuzzy 오류 0.
+- ⚠️ **웹 미반영**: run.ts revalidate가 stub + `REVALIDATE_SECRET` 미설정 → 풀sync의 revalidate는 no-op. viewtypick.com 갱신엔 `cf:deploy`(또는 ISR 윈도우) 필요 — **deploy는 운영자 결정 대기**(브랜치 vs main 배포 유의: 매처 변경은 crawler 전용이라 웹 렌더 무영향, main 배포만으로도 데이터 반영 가능).
+
 ## 남은 TODO
 - [ ] **(운영자, 전체 sync 전 선행) 시트 상품명 오타 교정**: #85 "하이아르론"→"하이알루론", #86 "엔에이디"→"NAD"(또는 검색 매칭되는 표기). 다른 제품에도 유사 오타 가능 → 전체 sync 시 false-exclusion 분포로 추가 발견.
 - [ ] **(게이트, 보류 중) 전체 재수집**: 시트 교정 후 `npm run crawler:sync`(전체). priced vs no_offer 분포 + false exclusion/inclusion 점검 보고.
