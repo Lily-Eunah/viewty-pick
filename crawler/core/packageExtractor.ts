@@ -11,10 +11,26 @@ export type PackageExtractionResult = {
 };
 
 /**
+ * Strip free-gift / sample / promo-only clauses so they are NOT mistaken for the
+ * main product's quantity or volume. e.g. a "30ml 기획 (+에피셀린 세럼 7ml*2)" offer
+ * is ONE 30ml unit plus free samples — the "(+...7ml*2)" must not become count=2.
+ * Removes parenthetical groups that contain a gift marker (+/증정/사은품/샘플/미니/
+ * 쇼핑백/덤/마스크) and trailing "+ 증정/사은품/샘플 …" tails. Leaves a bare additive
+ * like "50ml+50ml" (a real bundle) untouched.
+ */
+export function stripPromoGifts(title: string): string {
+  return (title || '')
+    .replace(/\([^)]*(?:\+|증정|사은품|샘플|미니|쇼핑백|덤|마스크)[^)]*\)/g, ' ')
+    .replace(/\s*\+\s*(?:증정|사은품|샘플)[^,/]*/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
  * Clean the title to avoid false positives from years, model numbers, barcodes, SPF, PA values.
  */
 function cleanTitleText(title: string): string {
-  return title
+  return stripPromoGifts(title)
     .replace(/SPF\s*\d+/gi, '')
     .replace(/PA\s*\++/gi, '')
     .replace(/\b20\d{2}년?/g, '') // remove years like 2026, 2026년

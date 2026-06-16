@@ -120,6 +120,30 @@ const testCases: TestCase[] = [
       totalAmount: 10,
       confidence: "high"
     }
+  },
+  {
+    // Free-sample gift must NOT be counted as quantity: this is ONE 30ml unit.
+    title: "유세린 하이알루론 에피셀린 세럼 30ml 기획 (+에피셀린 세럼 7ml*2)",
+    expected: {
+      detected: true,
+      unitType: "ml",
+      unitAmount: 30,
+      unitCount: 1,
+      totalAmount: 30,
+      confidence: "high"
+    }
+  },
+  {
+    // Gift in parentheses stripped → single 200g, not a 2-pack.
+    title: "토리든 다이브인 포맨 올인원 200g (+미니 20g 증정)",
+    expected: {
+      detected: true,
+      unitType: "g",
+      unitAmount: 200,
+      unitCount: 1,
+      totalAmount: 200,
+      confidence: "high"
+    }
   }
 ];
 
