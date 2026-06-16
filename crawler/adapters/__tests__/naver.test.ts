@@ -234,11 +234,16 @@ it('anchored SINGLE → matched (exact curated SKU, identity 1)', () => {
   assert(r !== null && r.matched !== null && r.matched.lprice === '18900', 'should anchor the curated single');
   assert(r!.identityScore === 1, 'anchor identity is exact');
 });
-it('anchored SET → excluded (anchorWasSet) + sheet-URL signal', () => {
-  const curatedSet = item({ title: '메디큐브 PDRN 핑크 시카 수딩 토너 250ml X 2개', link: 'https://smartstore.naver.com/x/products/11488401506', lprice: '57400' });
-  const r = pickAnchoredOffer([curatedSet], '11488401506');
-  assert(r !== null && r.matched === null, 'set anchor must be excluded');
-  assert(r!.anchorWasSet === true, 'anchorWasSet flag set for sheet-URL cleanup');
+it('anchored HOMOGENEOUS bundle (×2) → priced (per-unit derived downstream)', () => {
+  const bundle = item({ title: '메디큐브 PDRN 핑크 시카 수딩 토너 250ml X 2개', link: 'https://smartstore.naver.com/x/products/11488401506', lprice: '57400' });
+  const r = pickAnchoredOffer([bundle], '11488401506');
+  assert(r !== null && r.matched !== null, 'homogeneous bundle is included (priced), not excluded');
+  assert(/×2/.test(r!.reason), `reason should note the bundle qty: ${r!.reason}`);
+});
+it('anchored HETEROGENEOUS 2-product set → needsInspection (no price)', () => {
+  const het = item({ title: '랑콤 제니피끄 세럼 21ml + 토너 100ml', link: 'https://brand.naver.com/lancome/products/10791745136', lprice: '282200' });
+  const r = pickAnchoredOffer([het], '10791745136');
+  assert(r !== null && r.matched === null && r.needsInspection === true, 'heterogeneous set → inspection, no price');
 });
 it('anchor number not in results → null (caller → link-only)', () => {
   const r = pickAnchoredOffer([item({ link: 'https://smartstore.naver.com/x/products/111' })], '999');

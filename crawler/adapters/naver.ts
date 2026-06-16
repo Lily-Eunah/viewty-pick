@@ -50,9 +50,9 @@ export interface OfferMatchResult {
   parsedVolumeRaw: number | null; // ml parsed from matched title (forwarded to normalize)
   identityScore: number | null;
   reason: string;
-  // True when tier-1 anchored to the EXACT curated SKU but it is a set/multipack
-  // (the operator's naver URL points to a set) → excluded + a sheet-URL-cleanup signal.
-  anchorWasSet?: boolean;
+  // True when an anchored/matched SKU combines two DIFFERENT products (heterogeneous
+  // set) → per-unit price not computable → excluded for operator inspection.
+  needsInspection?: boolean;
 }
 
 // productType: individual mall offers vs price-comparison catalog representative.
@@ -334,16 +334,26 @@ export function pickAnchoredOffer(items: NaverShoppingItem[], anchorProductNo: s
   const anchored = items.find((it) => productNoFrom(it.link) === anchorProductNo);
   if (!anchored) return null;
   const ext = extractPackageFromTitle(stripHtml(anchored.title));
-  const parsedVolumeRaw = ext.detected && ext.unitType === 'ml' && ext.unitAmount !== null ? ext.unitAmount : null;
-  if (classifyOfferComposition(anchored.title).kind === 'single') {
-    return { matched: anchored, parsedVolumeRaw, identityScore: 1, reason: `id-anchored to curated SKU (productNo ${anchorProductNo}) @${anchored.mallName}` };
+  // Heterogeneous 2-product set (e.g. 토너 + 세럼, both 본품) → per-unit not computable.
+  if (ext.heterogeneous) {
+    return {
+      matched: null,
+      parsedVolumeRaw: null,
+      identityScore: null,
+      reason: `id-anchored to curated SKU (productNo ${anchorProductNo}) but it is a heterogeneous 2-product set — needs inspection (no price)`,
+      needsInspection: true,
+    };
   }
+  // Single OR homogeneous bundle (1+1 / N-pack / 본품+리필) — both priced; normalize
+  // derives the per-unit (effective) price from the title quantity. Gifts are not
+  // counted (packageExtractor strips them).
+  const parsedVolumeRaw = ext.detected && ext.unitType === 'ml' && ext.unitAmount !== null ? ext.unitAmount : null;
+  const qty = ext.unitCount && ext.unitCount > 1 ? ext.unitCount : 1;
   return {
-    matched: null,
-    parsedVolumeRaw: null,
-    identityScore: null,
-    reason: `id-anchored to curated SKU (productNo ${anchorProductNo}) but it is a set/multipack (${classifyOfferComposition(anchored.title).reason}) — curated URL points to a set; excluded`,
-    anchorWasSet: true,
+    matched: anchored,
+    parsedVolumeRaw,
+    identityScore: 1,
+    reason: `id-anchored to curated SKU (productNo ${anchorProductNo}) @${anchored.mallName}${qty > 1 ? ` ×${qty} (per-unit)` : ''}`,
   };
 }
 
@@ -450,6 +460,63 @@ export async function matchNaverOffer(
     identityScore: null,
     reason: `anchor miss — curated productNo ${anchorProductNo} not in ${candidates.length} queries — link-only (no fuzzy price)`,
   };
+}
+
+// ---------------------------------------------------------------------------
+// OliveYoung (Tier-2) — LOOSE match. OY's oy.run URL has no anchorable N, so we
+// take the OliveYoung sales-point offer on Naver (mallName='올리브영' — an exact,
+// trusted single seller). Strict variant tokens are NOT applied (OY titles carry
+// influencer-pick/gift promo noise that would drop valid products); we reject only
+// a clear form mismatch (크림 vs 올인원) and low similarity. Sets/bundles are
+// included with per-unit pricing; ambiguity/heterogeneous → inspection (manual).
+// ---------------------------------------------------------------------------
+const OY_MALL = '올리브영';
+const OY_SIMILARITY_THRESHOLD = 0.4; // looser than the brand-store 0.5
+
+export function pickOliveYoungOffer(items: NaverShoppingItem[], productName: string): OfferMatchResult {
+  const oy = items.filter((it) => isIndividualMallOffer(it) && normalizeMallName(it.mallName) === OY_MALL);
+  if (oy.length === 0) {
+    return { matched: null, parsedVolumeRaw: null, identityScore: null, reason: 'no 올리브영 offer on Naver (Tier 3/4: manual/link-only)' };
+  }
+  const scored = oy
+    .map((it) => ({ it, s: productIdentityScore(it.title, productName) }))
+    .filter((x) => !hasFormConflict(productName, x.it.title))
+    .sort((a, b) => b.s - a.s);
+  if (scored.length === 0 || scored[0].s < OY_SIMILARITY_THRESHOLD) {
+    return {
+      matched: null, parsedVolumeRaw: null, identityScore: scored[0]?.s ?? null,
+      reason: `올리브영 offer(s) found but none confidently matched (best ${(scored[0]?.s ?? 0).toFixed(2)}) — inspection/manual`,
+      needsInspection: true,
+    };
+  }
+  const top = scored[0].it;
+  const ext = extractPackageFromTitle(stripHtml(top.title));
+  if (ext.heterogeneous) {
+    return { matched: null, parsedVolumeRaw: null, identityScore: scored[0].s, reason: '올리브영 offer is a heterogeneous set — inspection/manual', needsInspection: true };
+  }
+  const parsedVolumeRaw = ext.detected && ext.unitType === 'ml' && ext.unitAmount !== null ? ext.unitAmount : null;
+  const qty = ext.unitCount && ext.unitCount > 1 ? ext.unitCount : 1;
+  return {
+    matched: top, parsedVolumeRaw, identityScore: scored[0].s,
+    reason: `올리브영 match (sim ${scored[0].s.toFixed(2)})${qty > 1 ? ` ×${qty} (per-unit)` : ''}`,
+  };
+}
+
+/** Search Naver and pick the OliveYoung sales-point offer (loose). */
+export async function matchOliveYoungOffer(
+  product: NaverProductLike,
+  clientId: string,
+  clientSecret: string
+): Promise<OfferMatchResult> {
+  const candidates = buildAnchorQueries(product.brand, product.name);
+  let inspection: OfferMatchResult | null = null;
+  for (const query of candidates) {
+    const items = await searchNaverShopping(query, clientId, clientSecret);
+    const r = pickOliveYoungOffer(items, product.name);
+    if (r.matched) return r;
+    if (r.needsInspection && !inspection) inspection = r;
+  }
+  return inspection ?? { matched: null, parsedVolumeRaw: null, identityScore: null, reason: 'no 올리브영 offer found (Tier 3/4)' };
 }
 
 // ---------------------------------------------------------------------------
