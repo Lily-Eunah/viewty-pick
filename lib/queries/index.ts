@@ -112,52 +112,78 @@ function mapToUIProduct(
   // Display image precedence: operator → Coupang → placeholder (see resolveDisplayImage).
   const displayImage = resolveDisplayImage(prod.image_url, prod.id, dbListingPrices, dbSellers);
 
-  // Build stores pricing list
+  // Build stores: a priced row when the listing has a displayable price, else a
+  // link-only row (tier-4: still show the seller with a "보기" link, no price).
   const prodListings = dbListings.filter((l) => l.product_id === prod.id && l.is_active);
-  const stores: UIStorePrice[] = prodListings.map((listing): UIStorePrice | null => {
+  const stores: UIStorePrice[] = prodListings.map((listing): UIStorePrice => {
     const seller = dbSellers.find((s) => s.id === listing.seller_id);
-
-    // Latest displayable price for this listing comes from the public view
-    // (already collapsed to one row per listing, safe columns only).
     const lp = dbListingPrices.find((p) => p.listing_id === listing.id);
-    if (!lp) return null;
-    // The view exposes in_stock but does not filter on it; drop out-of-stock.
-    if (lp.in_stock === false) return null;
-
-    const price = lp.base_unit_price || lp.sale_price || 0;
-    const unitPrice = lp.unit_price !== null ? Number(lp.unit_price) : price / (prod.volume_ml || 50);
-
-    return {
+    const baseStore = {
       name: listing.store_name || seller?.name || '기타',
       sellerSlug: seller?.slug || 'unknown',
-      price: price,
-      url: `/go/${listing.id}`, // redirection endpoint (affiliate_url → latest_matched_url)
-      isBest: false, // dynamically set below
+      url: `/go/${listing.id}`, // redirect endpoint (affiliate_url → latest_matched_url)
+      isBest: false,
       isRocket: listing.is_rocket,
       isOfficial: listing.is_official_store,
+    };
+
+    // Link-only: no displayable snapshot or out-of-stock → seller shown w/o a price.
+    if (!lp || lp.in_stock === false) {
+      return { ...baseStore, price: 0, hasPrice: false };
+    }
+
+    const price = lp.base_unit_price || lp.sale_price || 0;
+    const eff = lp.effective_unit_price !== null ? lp.effective_unit_price : price;
+    // Infer pack quantity from base vs per-unit (multipack: base = eff × N).
+    const quantity = eff > 0 && price > eff ? Math.max(1, Math.round(price / eff)) : 1;
+    return {
+      ...baseStore,
+      price,
+      hasPrice: price > 0,
       promoType: lp.promo_type,
       promoText: lp.promo_text,
-      effectiveUnitPrice: lp.effective_unit_price !== null ? lp.effective_unit_price : price,
-      unitPrice: unitPrice,
+      effectiveUnitPrice: eff,
+      // Only show ml-unit price when the view deemed it reliable (NULL otherwise).
+      unitPrice: lp.unit_price !== null ? Number(lp.unit_price) : null,
+      quantity: quantity > 1 ? quantity : undefined,
+      composition: compositionLabel(lp.promo_type, lp.promo_text, quantity),
     };
-  }).filter((s): s is UIStorePrice => s !== null);
+  });
 
-  // Sort stores: cheapest base price first
-  stores.sort((a, b) => a.price - b.price);
+  // Per-unit (개당) comparison: rank priced stores by effective unit price so a
+  // cheaper-per-unit multipack rises; link-only rows sort to the back.
+  const perUnit = (s: UIStorePrice) => s.effectiveUnitPrice ?? s.price;
+  stores.sort((a, b) => {
+    if (a.hasPrice !== b.hasPrice) return a.hasPrice ? -1 : 1;
+    if (!a.hasPrice) return 0;
+    return perUnit(a) - perUnit(b);
+  });
+  const firstPriced = stores.find((s) => s.hasPrice);
+  if (firstPriced) firstPriced.isBest = true;
 
-  // Assign isBest to the cheapest displayable store
-  if (stores.length > 0) {
-    stores.forEach((s, idx) => {
-      s.isBest = idx === 0;
-    });
-  }
+  const priced = stores.filter((s) => s.hasPrice);
+  const hasAnyPrice = priced.length > 0;
+  const lowestPrice = hasAnyPrice ? Math.min(...priced.map(perUnit)) : 0; // per-unit lowest
+  const lowestBasePrice = hasAnyPrice ? Math.min(...priced.map((s) => s.price)) : 0;
+  const bestIsMultipack = !!(firstPriced && (firstPriced.quantity ?? 1) > 1);
 
-  const lowestPrice = stores[0] ? stores[0].price : 0;
-  const previousPrice = lowestPrice > 0 ? Math.round(lowestPrice * 1.25) : 0; // Mock historic price
-  const priceDropAmount = lowestPrice > 0 ? Math.max(previousPrice - lowestPrice, 0) : 0;
-  const priceDropRate = lowestPrice > 0 && previousPrice > 0 ? Math.round((priceDropAmount / previousPrice) * 100) : 0;
+  // 공식몰 대비: official brand-store per-unit baseline vs the lowest non-official per-unit.
+  const officialStore = priced.find((s) => s.isOfficial);
+  const officialPrice = officialStore ? perUnit(officialStore) : null;
+  const nonOfficial = priced.filter((s) => !s.isOfficial).map(perUnit);
+  const otherLowest = nonOfficial.length > 0 ? Math.min(...nonOfficial) : null;
+  const discountVsOfficial =
+    officialPrice && officialPrice > 0 && otherLowest !== null && otherLowest < officialPrice
+      ? Math.round(((officialPrice - otherLowest) / officialPrice) * 100)
+      : null;
 
-  // Reason items from badge details or fallback template
+  // Freshness: newest crawled_at among this product's displayable rows.
+  const prodLps = dbListingPrices.filter((p) => p.product_id === prod.id && p.crawled_at);
+  const lastUpdated = prodLps.length > 0
+    ? prodLps.reduce((a, b) => (a.crawled_at > b.crawled_at ? a : b)).crawled_at
+    : null;
+
+  // Reason items from badge details or fallback template.
   const reasonItems = pBadges.map((pb) => pb.detail).filter((d): d is string => !!d);
   if (reasonItems.length === 0) {
     reasonItems.push(
@@ -179,16 +205,28 @@ function mapToUIProduct(
     skinTypes: prod.skin_types,
     tags: prod.features ? prod.features.split(',').map((s) => s.trim()) : [],
     badges: badgeNames.length > 0 ? badgeNames : ['디렉터파이 추천'],
-    lowestPrice: lowestPrice,
-    previousPrice,
-    priceDropAmount,
-    priceDropRate,
+    lowestPrice,
+    lowestBasePrice,
+    bestIsMultipack,
+    hasAnyPrice,
+    officialPrice,
+    discountVsOfficial,
+    lastUpdated,
     source,
     reasonItems,
     stores,
     viewtyScore: Number(prod.viewty_score) || 80,
     features: prod.features ? prod.features.split(',').map((s) => s.trim()) : [],
   };
+}
+
+/** 구성 label from promo info — what was actually scraped, never invented. */
+export function compositionLabel(promoType: string, promoText: string | null, quantity: number): string | null {
+  const t = promoText || '';
+  if (promoType === 'buy_x_get_y') return t.match(/\d+\s*\+\s*\d+/)?.[0] ?? '1+1';
+  if (promoType === 'gift' || /증정/.test(t)) return '증정';
+  if (quantity > 1) return `${quantity}개`;
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -277,7 +315,7 @@ export async function getCategoryBySlug(slug: string): Promise<Category | null> 
 export async function getProducts(filters?: {
   category?: string;
   skinType?: string;
-  sortBy?: 'recommend' | 'price_asc' | 'price_desc' | 'price_drop' | 'popularity';
+  sortBy?: 'recommend' | 'price_asc' | 'price_desc' | 'discount' | 'popularity';
 }): Promise<UIProduct[]> {
   const { dbProducts, dbListings, dbPrices, dbCategories, dbProductBadges, dbBadges, dbListingPrices, dbSellers } =
     await fetchAllData();
@@ -298,14 +336,16 @@ export async function getProducts(filters?: {
 
   // Apply sorting
   const sortBy = filters?.sortBy || 'recommend';
+  // Missing/0 price sorts to the BACK in price sorts (it is not "cheapest").
+  const askPrice = (p: UIProduct) => (p.lowestPrice > 0 ? p.lowestPrice : Number.POSITIVE_INFINITY);
   if (sortBy === 'recommend' || sortBy === 'popularity') {
     uiProducts.sort((a, b) => b.viewtyScore - a.viewtyScore);
   } else if (sortBy === 'price_asc') {
-    uiProducts.sort((a, b) => a.lowestPrice - b.lowestPrice);
+    uiProducts.sort((a, b) => askPrice(a) - askPrice(b));
   } else if (sortBy === 'price_desc') {
-    uiProducts.sort((a, b) => b.lowestPrice - a.lowestPrice);
-  } else if (sortBy === 'price_drop') {
-    uiProducts.sort((a, b) => (b.priceDropAmount || 0) - (a.priceDropAmount || 0));
+    uiProducts.sort((a, b) => (b.lowestPrice || 0) - (a.lowestPrice || 0));
+  } else if (sortBy === 'discount') {
+    uiProducts.sort((a, b) => (b.discountVsOfficial || 0) - (a.discountVsOfficial || 0));
   }
 
   return uiProducts;
@@ -331,13 +371,14 @@ export async function getRecommendedProducts(limit = 10): Promise<UIProduct[]> {
 }
 
 /**
- * Get products that have the best price drops today.
+ * 공식몰 대비 최저가 픽: products where a verified seller beats the official
+ * brand-store per-unit price, ranked by the discount %.
  */
-export async function getTodayBestPriceProducts(limit = 6): Promise<UIProduct[]> {
+export async function getOfficialPickProducts(limit = 6): Promise<UIProduct[]> {
   const products = await getProducts();
   return products
-    .filter((p) => (p.priceDropAmount || 0) > 0)
-    .sort((a, b) => (b.priceDropAmount || 0) - (a.priceDropAmount || 0))
+    .filter((p) => (p.discountVsOfficial || 0) > 0)
+    .sort((a, b) => (b.discountVsOfficial || 0) - (a.discountVsOfficial || 0))
     .slice(0, limit);
 }
 
@@ -350,10 +391,10 @@ export async function getHomePageData() {
   return {
     allProducts,
     recommended: [...allProducts].sort((a, b) => b.viewtyScore - a.viewtyScore).slice(0, 8),
-    drops: allProducts
-      .filter((p) => (p.priceDropAmount || 0) > 0)
-      .sort((a, b) => (b.priceDropAmount || 0) - (a.priceDropAmount || 0))
-      .slice(0, 5),
+    officialPicks: allProducts
+      .filter((p) => (p.discountVsOfficial || 0) > 0)
+      .sort((a, b) => (b.discountVsOfficial || 0) - (a.discountVsOfficial || 0))
+      .slice(0, 6),
   };
 }
 

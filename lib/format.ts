@@ -19,22 +19,14 @@ export function perMl(unitPrice: number | null | undefined): string {
 }
 
 /**
- * Formats price drop amount.
- * Example: 2100 -> '어제보다 2,100원 저렴' or '▼ 2,100원'
+ * Last-updated label in KST for the price freshness note.
+ * Example: '2026-06-17T05:49:59Z' -> '2026.06.17 14:49 KST'
  */
-export function priceDrop(amount: number | null | undefined, simple = false): string {
-  if (amount === null || amount === undefined || amount <= 0 || isNaN(amount)) return '';
-  if (simple) {
-    return `▼ ${amount.toLocaleString('ko-KR')}원`;
-  }
-  return `어제보다 ${amount.toLocaleString('ko-KR')}원 저렴`;
-}
-
-/**
- * Formats price drop rate.
- * Example: 18 -> '18%'
- */
-export function priceDropRate(rate: number | null | undefined): string {
-  if (rate === null || rate === undefined || rate <= 0 || isNaN(rate)) return '';
-  return `${Math.round(rate)}%`;
+export function updatedAt(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const k = new Date(d.getTime() + 9 * 3600 * 1000); // shift to KST, read as UTC parts
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${k.getUTCFullYear()}.${p(k.getUTCMonth() + 1)}.${p(k.getUTCDate())} ${p(k.getUTCHours())}:${p(k.getUTCMinutes())} KST`;
 }
