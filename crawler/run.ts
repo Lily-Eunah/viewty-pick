@@ -9,6 +9,27 @@ import { isSupabaseServerConfigured, supabaseServer } from '../lib/supabase/serv
 import { loadMockDB, saveMockDB } from '../lib/supabase/mockDb';
 import { Listing, Product, PriceSnapshot, CurrentPrice, ManualOverride, RetailerAllowlist, Badge, ProductBadge, ScoreConfig } from '../lib/types';
 
+export interface CrawlTarget {
+  mockMode: boolean;     // --test / CRAWLER_MODE=mock → adapters AND persistence are mocked
+  useSupabase: boolean;  // persist to Supabase (false in mock mode → local mock DB)
+  projectRef: string;    // Supabase project ref for the startup banner
+  refused: boolean;      // true → a non-CI, non-allowed run would write to prod → abort
+}
+
+/**
+ * Resolve where this crawl run reads/writes, with the production-write guard.
+ * Pure (env in, decision out) so it is unit-testable. Mock mode NEVER touches
+ * Supabase; a real Supabase write needs CI=true or CRAWLER_ALLOW_PROD_WRITE=true.
+ */
+export function resolveCrawlTarget(env: Record<string, string | undefined>, supabaseConfigured: boolean): CrawlTarget {
+  const mockMode = env.VIEWTYPICK_MOCK_MODE === 'true' || env.CRAWLER_MODE === 'mock';
+  const useSupabase = supabaseConfigured && !mockMode;
+  const projectRef = (env.NEXT_PUBLIC_SUPABASE_URL || '').match(/https?:\/\/([^.]+)\./)?.[1] ?? 'none';
+  const inCi = !!env.CI && env.CI !== 'false' && env.CI !== '0';
+  const refused = useSupabase && !inCi && env.CRAWLER_ALLOW_PROD_WRITE !== 'true';
+  return { mockMode, useSupabase, projectRef, refused };
+}
+
 export async function crawlPipeline(): Promise<void> {
   // Set test/mock environment override if --test flag is passed
   if (typeof process !== 'undefined' && process.argv && process.argv.includes('--test')) {
@@ -30,7 +51,6 @@ export async function crawlPipeline(): Promise<void> {
     return hit ? hit.slice(name.length + 3) : undefined;
   };
   const onlyKeys = getArg('only')?.split(',').map((s) => s.trim()).filter(Boolean) ?? null;
-  const skipImport = argv.includes('--skip-import');
   const maxCoupangRaw = getArg('max-coupang');
   const maxCoupang = maxCoupangRaw ? parseInt(maxCoupangRaw, 10) : Infinity;
   const notifyEnabled = !argv.includes('--no-notify');
@@ -38,8 +58,27 @@ export async function crawlPipeline(): Promise<void> {
   const coupangConfigured = !isPlaceholder(process.env.COUPANG_ACCESS_KEY) && !isPlaceholder(process.env.COUPANG_SECRET_KEY);
   let coupangCount = 0;
 
+  // ── Persistence target & production-write guard ─────────────────────────────
+  // --test mocks the ADAPTERS; it MUST also mock the WRITE path, otherwise a local
+  // run with a real .env overwrites production. In mock mode both the sheet import
+  // and the snapshot/current_price persistence go to the LOCAL mock DB — never
+  // Supabase. A real Supabase write from an interactive local run additionally
+  // requires CRAWLER_ALLOW_PROD_WRITE=true; CI/cron set CI=true to bypass.
+  const { mockMode, useSupabase, projectRef, refused } = resolveCrawlTarget(process.env, !!isSupabaseServerConfigured());
+  const skipImport = argv.includes('--skip-import') || mockMode; // mock never imports to prod
+
   const startTime = Date.now();
   console.log('[Pipeline] Starting daily price sync pipeline...');
+  console.log(`[Pipeline] mode=${mockMode ? 'TEST/MOCK' : 'LIVE'} · persistence=${useSupabase ? `Supabase[${projectRef}]` : 'local mock DB'}`);
+
+  // Refuse an accidental production write from a non-CI, non-allowed local run.
+  if (refused) {
+    console.error(`[Pipeline] REFUSED — this run would WRITE to PRODUCTION Supabase [${projectRef}].`);
+    console.error('  Set CRAWLER_ALLOW_PROD_WRITE=true to confirm an intentional production write.');
+    console.error('  (CI sets CI=true to bypass; --test / mock mode writes to the local mock DB instead.)');
+    return;
+  }
+
   if (onlyKeys) console.log(`[Pipeline] LIMITED MODE — only products: ${onlyKeys.join(', ')}`);
   if (skipImport) console.log('[Pipeline] --skip-import set: skipping sheet import');
   if (maxCoupangRaw) console.log(`[Pipeline] --max-coupang=${maxCoupang}`);
@@ -64,8 +103,6 @@ export async function crawlPipeline(): Promise<void> {
     }
   }
 
-  const useSupabase = isSupabaseServerConfigured();
-  
   // Data containers for processing
   let products: Product[] = [];
   let listings: Listing[] = [];
