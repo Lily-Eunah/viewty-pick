@@ -250,15 +250,20 @@ export interface ScoreConfig {
 export interface UIStorePrice {
   name: string;      // e.g. '쿠팡', '올리브영'
   sellerSlug: string; // e.g. 'coupang', 'oliveyoung'
-  price: number;
+  price: number;     // base (single-buy) price; 0 when link-only (hasPrice=false)
   url: string;       // Redirection endpoint `/go/[listingId]` or affiliate URL
   isBest?: boolean;
   isRocket?: boolean;
   isOfficial?: boolean;
   promoType?: PromoType;
   promoText?: string | null;
-  effectiveUnitPrice?: number | null;
-  unitPrice?: number | null; // per ml price
+  effectiveUnitPrice?: number | null; // per-unit (개당) price; = price for singles
+  unitPrice?: number | null; // per ml price — only when reliable
+  // Web-layer additions (optional so the legacy static mock still compiles;
+  // mapToUIProduct always sets them. Absent hasPrice ⇒ treated as priced).
+  hasPrice?: boolean;          // false → link-only seller row ("○○에서 보기", no price)
+  quantity?: number | null;   // pack count N (>1 for 1+1 / N-packs); undefined for single
+  composition?: string | null; // 구성 label derived from promo (e.g. '1+1', '6개', '증정')
 }
 
 export interface UIProduct {
@@ -273,10 +278,17 @@ export interface UIProduct {
   skinTypes: string[];
   tags: string[];
   badges: string[];
-  lowestPrice: number;
+  lowestPrice: number;       // lowest per-unit (effective) among priced stores; 0 when none
+  lowestBasePrice?: number;  // lowest single-buy (1개 기준) base price; 0 when none
+  bestIsMultipack?: boolean; // the per-unit-cheapest store is a multipack (headline shows 개당)
+  hasAnyPrice?: boolean;     // false → every seller is link-only (no price)
+  officialPrice?: number | null;       // official brand-store per-unit baseline
+  discountVsOfficial?: number | null;  // % the lowest non-official per-unit beats the official price (positive only)
+  lastUpdated?: string | null;         // freshest priced store crawled_at (ISO)
+  /** @deprecated mock price-history fields — never populated/displayed (kept only for the legacy static mock). */
   previousPrice?: number;
-  priceDropAmount?: number;
-  priceDropRate?: number;
+  /** @deprecated */ priceDropAmount?: number;
+  /** @deprecated */ priceDropRate?: number;
   source: 'directorpi' | 'hwahae' | 'oliveyoung';
   reasonItems: string[];
   stores: UIStorePrice[];

@@ -3,7 +3,6 @@ import Link from 'next/link';
 import ProductImage from '../common/ProductImage';
 import Badge from '../common/Badge';
 import PriceText from '../common/PriceText';
-import { priceDrop, priceDropRate } from '../../lib/format';
 import { UIProduct } from '../../lib/types';
 
 interface ProductListCardProps {
@@ -51,9 +50,9 @@ export default function ProductListCard({ product, rank }: ProductListCardProps)
                 {b}
               </Badge>
             ))}
-            {product.priceDropRate && product.priceDropRate > 10 ? (
+            {product.discountVsOfficial && product.discountVsOfficial > 0 ? (
               <Badge type="accent" className="py-0.5">
-                {priceDropRate(product.priceDropRate)}↓
+                공식몰 대비 {product.discountVsOfficial}%↓
               </Badge>
             ) : null}
           </div>
@@ -75,16 +74,20 @@ export default function ProductListCard({ product, rank }: ProductListCardProps)
         {/* Pricing & Comparison Tagline */}
         <div className="flex justify-between items-end mt-1.5 pt-1.5 border-t border-divider">
           <div className="flex flex-col">
-            <span className="text-[9px] text-text-secondary font-black leading-none">최저가</span>
-            <PriceText price={product.lowestPrice} size="sm" className="mt-0.5" />
+            <span className="text-[9px] text-text-secondary font-black leading-none">
+              {product.hasAnyPrice === false ? '가격 확인 필요' : product.bestIsMultipack ? '개당 최저' : '최저가'}
+            </span>
+            {product.hasAnyPrice === false ? (
+              <span className="text-[13px] font-black text-sub mt-0.5">판매처에서 보기</span>
+            ) : (
+              <div className="flex items-baseline gap-1 mt-0.5">
+                <PriceText price={product.lowestPrice} size="sm" />
+                {product.bestIsMultipack && <span className="text-[9px] text-sub font-bold">/개</span>}
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col items-end">
-            {product.priceDropAmount && product.priceDropAmount > 0 ? (
-              <span className="text-[10px] font-black text-discount bg-accent-soft px-2 py-0.5 rounded-full leading-none mb-0.5">
-                {priceDrop(product.priceDropAmount, true)}
-              </span>
-            ) : null}
             <span className="text-[10px] text-text-secondary font-black tracking-tight max-w-[150px] truncate leading-none">
               {storeNames} 비교
             </span>

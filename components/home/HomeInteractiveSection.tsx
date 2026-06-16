@@ -12,10 +12,10 @@ import { UIProduct } from '../../lib/types';
 interface Props {
   allProducts: UIProduct[];
   recommended: UIProduct[];
-  drops: UIProduct[];
+  officialPicks: UIProduct[];
 }
 
-export default function HomeInteractiveSection({ allProducts, recommended, drops }: Props) {
+export default function HomeInteractiveSection({ allProducts, recommended, officialPicks }: Props) {
   const [selectedSkin, setSelectedSkin] = useState<string | null>(null);
 
   const filteredProducts = useMemo(() => {
@@ -95,7 +95,7 @@ export default function HomeInteractiveSection({ allProducts, recommended, drops
           <h3 className="px-4 text-[15px] font-black text-title tracking-tight flex items-center gap-1.5">
             <span>🔥 디렉터파이 추천 TOP</span>
             <span className="text-xs bg-accent-light text-[#7A5B00] px-2 py-0.5 rounded-full font-extrabold leading-none">
-              실시간 랭킹
+              매일 갱신
             </span>
           </h3>
           <ProductCarousel products={recommended} />
@@ -120,7 +120,7 @@ export default function HomeInteractiveSection({ allProducts, recommended, drops
           </div>
         </section>
       ) : (
-        <TodayDealSection products={drops} loading={false} />
+        <TodayDealSection products={officialPicks} loading={false} />
       )}
     </>
   );

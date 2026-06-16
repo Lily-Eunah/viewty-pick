@@ -9,6 +9,9 @@ interface StorePriceCardProps {
 
 export default function StorePriceCard({ store, rank }: StorePriceCardProps) {
   const isCheapest = store.isBest;
+  const linkOnly = store.hasPrice === false;
+  const qty = store.quantity ?? 1;
+  const isMultipack = qty > 1 && store.effectiveUnitPrice != null;
 
   return (
     <div className="flex items-center justify-between py-3.5 px-4 bg-surface hover:bg-surface-soft transition-colors duration-150">
@@ -52,24 +55,32 @@ export default function StorePriceCard({ store, rank }: StorePriceCardProps) {
       <div className="flex items-center gap-4">
         {/* Price info */}
         <div className="flex flex-col items-end">
-          <span className={`text-[14px] font-black ${isCheapest ? 'text-primary font-black' : 'text-text-primary'}`}>
-            {won(store.price)}
-          </span>
-          {store.promoText && (
-            <span className="text-[10px] text-discount font-bold leading-none mt-0.5">
-              {store.promoText}
-            </span>
+          {linkOnly ? (
+            <span className="text-[12px] font-bold text-sub">가격 확인</span>
+          ) : (
+            <>
+              <span className={`text-[14px] font-black ${isCheapest ? 'text-primary' : 'text-text-primary'}`}>
+                {won(store.price)}
+              </span>
+              {isMultipack ? (
+                <span className="text-[10px] text-text-secondary font-bold leading-none mt-0.5">
+                  개당 {won(store.effectiveUnitPrice!)} · {qty}개
+                </span>
+              ) : store.composition ? (
+                <span className="text-[10px] text-discount font-bold leading-none mt-0.5">{store.composition}</span>
+              ) : null}
+            </>
           )}
         </div>
 
-        {/* Purchase CTA */}
+        {/* Purchase / view CTA */}
         <a
           href={store.url}
           target="_blank"
           rel="sponsored nofollow"
           className="px-3.5 py-1.5 rounded-lg text-[12px] font-black border border-accent text-primary bg-surface hover:bg-accent-soft transition-all duration-150 active:scale-95 flex items-center gap-0.5 select-none"
         >
-          <span>구매하기</span>
+          <span>{linkOnly ? `${store.name}에서 보기` : '구매하기'}</span>
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-2.5 h-2.5">
             <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
           </svg>

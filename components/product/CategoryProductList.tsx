@@ -13,7 +13,7 @@ const SKIN_TYPES = ['민감성', '지성', '건성', '수부지'] as const;
 const SORT_OPTIONS = [
   { key: 'recommend', label: '추천순' },
   { key: 'price_asc', label: '최저가순' },
-  { key: 'price_drop', label: '가격하락순' },
+  { key: 'discount', label: '공식몰대비순' },
 ] as const;
 
 type SortKey = typeof SORT_OPTIONS[number]['key'];
@@ -28,12 +28,13 @@ export default function CategoryProductList({ initialProducts }: Props) {
       : initialProducts;
 
     const copy = [...result];
+    const askPrice = (p: UIProduct) => (p.lowestPrice > 0 ? p.lowestPrice : Number.POSITIVE_INFINITY);
     if (sortBy === 'recommend') {
       copy.sort((a, b) => b.viewtyScore - a.viewtyScore);
     } else if (sortBy === 'price_asc') {
-      copy.sort((a, b) => a.lowestPrice - b.lowestPrice);
-    } else if (sortBy === 'price_drop') {
-      copy.sort((a, b) => (b.priceDropAmount || 0) - (a.priceDropAmount || 0));
+      copy.sort((a, b) => askPrice(a) - askPrice(b)); // missing price → back
+    } else if (sortBy === 'discount') {
+      copy.sort((a, b) => (b.discountVsOfficial || 0) - (a.discountVsOfficial || 0));
     }
     return copy;
   }, [initialProducts, selectedSkin, sortBy]);

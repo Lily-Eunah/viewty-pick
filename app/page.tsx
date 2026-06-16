@@ -5,16 +5,16 @@ import HomeInteractiveSection from '../components/home/HomeInteractiveSection';
 import { getHomePageData } from '../lib/queries';
 
 export default async function Home() {
-  const { allProducts, recommended, drops } = await getHomePageData();
+  const { allProducts, recommended, officialPicks } = await getHomePageData();
 
   return (
     <AppShell activeTab="home">
       <Header />
-      
+
       <HomeInteractiveSection
         allProducts={allProducts}
         recommended={recommended}
-        drops={drops}
+        officialPicks={officialPicks}
       />
 
       {/* Bottom Legal disclaimer (DESIGN.md §12.3) */}
