@@ -3,10 +3,11 @@
 import React, { useState, useMemo } from 'react';
 import Chip from '../common/Chip';
 import ProductListCard from './ProductListCard';
-import { UIProduct } from '../../lib/types';
+import { UIProduct, Category } from '../../lib/types';
 
 interface Props {
   initialProducts: UIProduct[];
+  minors?: Category[]; // 소분류 sub-filter chips (present on 대분류 pages)
 }
 
 const SKIN_TYPES = ['민감성', '지성', '건성', '수부지'] as const;
@@ -18,14 +19,15 @@ const SORT_OPTIONS = [
 
 type SortKey = typeof SORT_OPTIONS[number]['key'];
 
-export default function CategoryProductList({ initialProducts }: Props) {
+export default function CategoryProductList({ initialProducts, minors }: Props) {
   const [selectedSkin, setSelectedSkin] = useState<string | null>(null);
+  const [selectedMinor, setSelectedMinor] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<SortKey>('recommend');
 
   const products = useMemo(() => {
-    const result = selectedSkin
-      ? initialProducts.filter((p) => p.skinTypes.includes(selectedSkin))
-      : initialProducts;
+    let result = initialProducts;
+    if (selectedMinor) result = result.filter((p) => p.category === selectedMinor);
+    if (selectedSkin) result = result.filter((p) => p.skinTypes.includes(selectedSkin));
 
     const copy = [...result];
     const askPrice = (p: UIProduct) => (p.lowestPrice > 0 ? p.lowestPrice : Number.POSITIVE_INFINITY);
@@ -37,12 +39,25 @@ export default function CategoryProductList({ initialProducts }: Props) {
       copy.sort((a, b) => (b.discountVsOfficial || 0) - (a.discountVsOfficial || 0));
     }
     return copy;
-  }, [initialProducts, selectedSkin, sortBy]);
+  }, [initialProducts, selectedSkin, selectedMinor, sortBy]);
 
   return (
     <>
       {/* Filter chips — sticky */}
       <section className="bg-bg py-2.5 flex flex-col gap-2 border-b border-line sticky top-14 z-30 shadow-[0_2px_4px_rgba(0,0,0,0.01)]">
+        {minors && minors.length > 0 && (
+          <div className="w-full overflow-x-auto no-scrollbar flex gap-2 px-4 pb-2 border-b border-[#F8F6EE]">
+            <Chip label="전체" selected={selectedMinor === null} onClick={() => setSelectedMinor(null)} />
+            {minors.map((m) => (
+              <Chip
+                key={m.slug}
+                label={m.name}
+                selected={selectedMinor === m.slug}
+                onClick={() => setSelectedMinor(selectedMinor === m.slug ? null : m.slug)}
+              />
+            ))}
+          </div>
+        )}
         <div className="w-full overflow-x-auto no-scrollbar flex gap-2 px-4">
           {SKIN_TYPES.map((skin) => (
             <Chip

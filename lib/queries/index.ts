@@ -92,7 +92,11 @@ function mapToUIProduct(
   dbSellers: { id: number; slug: string; name: string }[]
 ): UIProduct {
   const category = dbCategories.find((c) => c.id === prod.category_id);
-  
+  // Parent major (대분류) of this product's minor category — for major-page aggregation.
+  const majorCategory = category?.parent_id != null
+    ? dbCategories.find((c) => c.id === category.parent_id)?.slug
+    : category?.level === 'major' ? category.slug : undefined;
+
   // Find badges
   const pBadges = dbProductBadges.filter((pb) => pb.product_id === prod.id);
   const badgeNames = pBadges
@@ -199,6 +203,7 @@ function mapToUIProduct(
     brand: prod.brand || '기타 브랜드',
     name: prod.name,
     category: category?.slug || 'etc',
+    majorCategory,
     image: displayImage,
     volume: `${prod.volume_ml}ml`,
     description: prod.features || '검증된 큐레이션 추천 뷰티 제품',
@@ -325,9 +330,10 @@ export async function getProducts(filters?: {
     mapToUIProduct(p, dbListings, dbPrices, dbCategories, dbProductBadges, dbBadges, dbListingPrices, dbSellers)
   );
 
-  // Apply filters
+  // Apply filters — category matches a minor (소분류) slug OR a major (대분류) slug
+  // (a major page aggregates all of its minors' products).
   if (filters?.category) {
-    uiProducts = uiProducts.filter((p) => p.category === filters.category);
+    uiProducts = uiProducts.filter((p) => p.category === filters.category || p.majorCategory === filters.category);
   }
 
   if (filters?.skinType) {
@@ -399,11 +405,16 @@ export async function getHomePageData() {
 }
 
 export async function getCategoryPageData(categorySlug: string) {
-  const [category, products] = await Promise.all([
+  const [category, products, allCats] = await Promise.all([
     getCategoryBySlug(categorySlug),
     getProducts({ category: categorySlug, sortBy: 'recommend' }),
+    getCategories(),
   ]);
-  return { category, products };
+  // On a major (대분류) page, expose its minors for sub-filter chips.
+  const minors = category && category.level === 'major'
+    ? allCats.filter((c) => c.parent_id === category.id).sort((a, b) => a.sort_order - b.sort_order)
+    : [];
+  return { category, products, minors };
 }
 
 const SKIN_NAME_MAP: Record<string, string> = {

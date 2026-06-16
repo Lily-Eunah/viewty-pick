@@ -16,7 +16,7 @@ function getCategoryTagline(slug: string, categoryName: string): string {
 
 export default async function CategoryPage({ params }: PageProps) {
   const { category: categorySlug } = await params;
-  const { category, products } = await getCategoryPageData(categorySlug);
+  const { category, products, minors } = await getCategoryPageData(categorySlug);
 
   return (
     <AppShell activeTab="category">
@@ -37,7 +37,7 @@ export default async function CategoryPage({ params }: PageProps) {
         </p>
       </section>
 
-      <CategoryProductList initialProducts={products} />
+      <CategoryProductList initialProducts={products} minors={minors} />
     </AppShell>
   );
 }

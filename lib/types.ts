@@ -1,8 +1,13 @@
+export type CategoryLevel = 'major' | 'minor';
+
 export interface Category {
   id: number;
   slug: string;
   name: string;
   sort_order: number;
+  // 2-tier: major (대분류) has parent_id=null; minor (소분류) points at its major.
+  parent_id?: number | null;
+  level?: CategoryLevel;
 }
 
 export type CollectMethod = 'api' | 'crawl';
@@ -271,7 +276,8 @@ export interface UIProduct {
   slug: string;
   brand: string;
   name: string;
-  category: string;
+  category: string;       // minor (소분류) slug
+  majorCategory?: string; // parent major (대분류) slug — for major-page aggregation
   image: string;
   volume: string;
   description: string;
