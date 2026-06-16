@@ -50,6 +50,9 @@ export interface OfferMatchResult {
   parsedVolumeRaw: number | null; // ml parsed from matched title (forwarded to normalize)
   identityScore: number | null;
   reason: string;
+  // True when tier-1 anchored to the EXACT curated SKU but it is a set/multipack
+  // (the operator's naver URL points to a set) → excluded + a sheet-URL-cleanup signal.
+  anchorWasSet?: boolean;
 }
 
 // productType: individual mall offers vs price-comparison catalog representative.
@@ -274,6 +277,77 @@ export function pickOfficialOffer(
 }
 
 // ---------------------------------------------------------------------------
+// Tier-1: link-id anchoring to the operator-curated SKU.
+//
+// Experiment (docs/worklog/naver-id-anchor-experiment.md): the Shopping API's
+// item.productId never equals the curated channel-product-number, but the result
+// item's LINK resolves to /products/{N} in ~60% of listings. So we anchor on the
+// curated URL's N matched against each result's link — that result IS the exact
+// curated SKU, eliminating variant/cross-product/set mis-selection. When the
+// curated SKU is itself a set/multipack (operator linked a set page), we exclude
+// it (trust-first) and flag it for sheet-URL cleanup.
+// ---------------------------------------------------------------------------
+/** Channel-product number from a Naver URL/link (/products/{N} or channelProductNo=). */
+export function productNoFrom(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const p = url.match(/\/products\/(\d+)/);
+  if (p) return p[1];
+  const c = url.match(/channelProductNo=(\d+)/);
+  if (c) return c[1];
+  return null;
+}
+
+// Resolve the curated listing URL → channel-product number. brand.naver.com /
+// smartstore carry it directly; naver.me shortlinks need ONE redirect (cached;
+// globally capped to bound cost / block risk). Result items do NOT need resolution
+// (their link already contains /products/{N}).
+const curatedNoCache = new Map<string, string | null>();
+let redirectResolves = 0;
+const MAX_REDIRECT_RESOLVES = 80;
+export async function resolveCuratedProductNo(url: string): Promise<string | null> {
+  if (!url) return null;
+  const direct = productNoFrom(url);
+  if (direct) return direct;
+  if (curatedNoCache.has(url)) return curatedNoCache.get(url)!;
+  let n: string | null = null;
+  if (/naver\.me\//.test(url) && redirectResolves < MAX_REDIRECT_RESOLVES) {
+    redirectResolves++;
+    try {
+      const res = await fetch(url, { redirect: 'follow' });
+      n = productNoFrom(res.url);
+    } catch {
+      n = null;
+    }
+  }
+  curatedNoCache.set(url, n);
+  return n;
+}
+
+/**
+ * Tier-1 selection: find the result whose link is the curated SKU (productNo N).
+ * Returns null when no anchor number is given or none matches (→ caller falls back
+ * to tier-2 title matching). A single anchor is accepted as-is (exact SKU); a
+ * set/multipack anchor is excluded (matched=null, anchorWasSet=true).
+ */
+export function pickAnchoredOffer(items: NaverShoppingItem[], anchorProductNo: string | null): OfferMatchResult | null {
+  if (!anchorProductNo) return null;
+  const anchored = items.find((it) => productNoFrom(it.link) === anchorProductNo);
+  if (!anchored) return null;
+  const ext = extractPackageFromTitle(stripHtml(anchored.title));
+  const parsedVolumeRaw = ext.detected && ext.unitType === 'ml' && ext.unitAmount !== null ? ext.unitAmount : null;
+  if (classifyOfferComposition(anchored.title).kind === 'single') {
+    return { matched: anchored, parsedVolumeRaw, identityScore: 1, reason: `id-anchored to curated SKU (productNo ${anchorProductNo}) @${anchored.mallName}` };
+  }
+  return {
+    matched: null,
+    parsedVolumeRaw: null,
+    identityScore: null,
+    reason: `id-anchored to curated SKU (productNo ${anchorProductNo}) but it is a set/multipack (${classifyOfferComposition(anchored.title).reason}) — curated URL points to a set; excluded`,
+    anchorWasSet: true,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Shared search + match (reused by NaverAdapter and OliveYoungAdapter)
 // ---------------------------------------------------------------------------
 function isPlaceholderKey(v: string | undefined): boolean {
@@ -288,6 +362,8 @@ function isPlaceholderKey(v: string | undefined): boolean {
 const naverSearchCache = new Map<string, NaverShoppingItem[]>();
 export function clearNaverSearchCache(): void {
   naverSearchCache.clear();
+  curatedNoCache.clear();
+  redirectResolves = 0;
 }
 
 async function searchNaverShopping(
@@ -297,7 +373,9 @@ async function searchNaverShopping(
 ): Promise<NaverShoppingItem[]> {
   const cached = naverSearchCache.get(query);
   if (cached) return cached;
-  const url = `https://openapi.naver.com/v1/search/shop.json?query=${encodeURIComponent(query)}&display=40`;
+  // display=100 (API max): more candidates → higher tier-1 anchor hit-rate
+  // (experiment used 100) and a fuller tier-2 official-mall set.
+  const url = `https://openapi.naver.com/v1/search/shop.json?query=${encodeURIComponent(query)}&display=100`;
   const res = await fetch(url, {
     headers: { 'X-Naver-Client-Id': clientId, 'X-Naver-Client-Secret': clientSecret },
   });
@@ -323,7 +401,8 @@ export async function matchNaverOffer(
   product: NaverProductLike,
   allowedStoreName: string | null,
   clientId: string,
-  clientSecret: string
+  clientSecret: string,
+  anchorProductNo: string | null = null
 ): Promise<OfferMatchResult> {
   const brandWord = product.brand ? product.brand.split(' ')[0] : '';
   const nameWord = product.name ? product.name.split(' ')[0] : '';
@@ -338,13 +417,16 @@ export async function matchNaverOffer(
     allowedStoreName,
   };
 
-  let result: OfferMatchResult = { matched: null, parsedVolumeRaw: null, identityScore: null, reason: 'no queries produced results' };
+  // Two-tier: tier-1 link-id anchor (exact curated SKU) wins across any query;
+  // otherwise fall back to tier-2 official-mall + single/variant title matching.
+  let tier2: OfferMatchResult = { matched: null, parsedVolumeRaw: null, identityScore: null, reason: 'no queries produced results' };
   for (const query of candidates) {
     const items = await searchNaverShopping(query, clientId, clientSecret);
-    result = pickOfficialOffer(items, input);
-    if (result.matched) break;
+    const anchor = pickAnchoredOffer(items, anchorProductNo);
+    if (anchor) return anchor; // anchored single (matched) OR anchored set (excluded) — authoritative
+    if (!tier2.matched) tier2 = pickOfficialOffer(items, input);
   }
-  return result;
+  return tier2;
 }
 
 // ---------------------------------------------------------------------------
@@ -407,8 +489,11 @@ export class NaverAdapter implements RetailerAdapter {
       };
     }
 
-    // Search the Shopping API and pick the brand official-store offer.
-    const result = await matchNaverOffer(product, allowedStoreName, clientId as string, clientSecret as string);
+    // Tier-1: resolve the curated channel-product number from the listing URL
+    // (naver.me shortlinks are redirect-resolved + cached). Tier-2 falls back to
+    // official-mall title matching when the anchor is absent from results.
+    const anchorProductNo = await resolveCuratedProductNo(listing.url);
+    const result = await matchNaverOffer(product, allowedStoreName, clientId as string, clientSecret as string, anchorProductNo);
 
     if (!result.matched) {
       // Exclude from comparison + flag for inspection. No reseller fallback.

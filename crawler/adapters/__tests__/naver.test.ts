@@ -15,6 +15,8 @@ import {
   productIdentityScore,
   classifyOfferComposition,
   hasFormConflict,
+  productNoFrom,
+  pickAnchoredOffer,
   NaverShoppingItem,
   OfferMatchInput,
 } from '../naver';
@@ -208,6 +210,38 @@ it('prefers the volume-matching single among multiple singles', () => {
   const rightVol = item({ title: '랑콤 제니피끄 세럼 50ml', mallName: '랑콤', lprice: '149590', productId: 'B' });
   const r = pickOfficialOffer([wrongVol, rightVol], { brand: '랑콤', name: '랑콤 제니피끄 세럼', volumeMl: 50, allowedStoreName: '랑콤' });
   assert(r.matched !== null && r.matched.lprice === '149590', `should pick the 50ml single, got ${r.matched?.lprice}`);
+});
+
+console.log('\n--- tier-1: productNoFrom / pickAnchoredOffer ---');
+it('productNoFrom extracts /products/{N}', () => {
+  assert(productNoFrom('https://brand.naver.com/lancome/products/10791745136?x=1') === '10791745136', 'brandstore N');
+  assert(productNoFrom('https://smartstore.naver.com/main/products/123?a=b') === '123', 'smartstore N');
+});
+it('productNoFrom extracts channelProductNo=', () => {
+  assert(productNoFrom('https://brandconnect.naver.com/affiliates/9?channelProductNo=11355567271') === '11355567271', 'channelProductNo');
+});
+it('productNoFrom null when absent', () => {
+  assert(productNoFrom('https://naver.me/abc') === null, 'shortlink has no N');
+});
+it('pickAnchoredOffer returns null without an anchor number', () => {
+  assert(pickAnchoredOffer([item({})], null) === null, 'no anchor → null (caller uses tier-2)');
+});
+it('anchored SINGLE → matched (exact curated SKU, identity 1)', () => {
+  const curated = item({ title: '에스네이처 아쿠아 오아시스 토너 300ml', link: 'https://smartstore.naver.com/x/products/5882268909', lprice: '18900' });
+  const other = item({ title: '다른 상품', link: 'https://smartstore.naver.com/y/products/999' });
+  const r = pickAnchoredOffer([other, curated], '5882268909');
+  assert(r !== null && r.matched !== null && r.matched.lprice === '18900', 'should anchor the curated single');
+  assert(r!.identityScore === 1, 'anchor identity is exact');
+});
+it('anchored SET → excluded (anchorWasSet) + sheet-URL signal', () => {
+  const curatedSet = item({ title: '메디큐브 PDRN 핑크 시카 수딩 토너 250ml X 2개', link: 'https://smartstore.naver.com/x/products/11488401506', lprice: '57400' });
+  const r = pickAnchoredOffer([curatedSet], '11488401506');
+  assert(r !== null && r.matched === null, 'set anchor must be excluded');
+  assert(r!.anchorWasSet === true, 'anchorWasSet flag set for sheet-URL cleanup');
+});
+it('anchor number not in results → null (fall through to tier-2)', () => {
+  const r = pickAnchoredOffer([item({ link: 'https://smartstore.naver.com/x/products/111' })], '999');
+  assert(r === null, 'no matching link → null');
 });
 
 // ---------------------------------------------------------------------------
