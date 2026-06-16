@@ -122,7 +122,7 @@ export function productIdentityScore(title: string, name: string): number {
 // to classify each offer and PREFER a comparable single, EXCLUDING sets/multipacks
 // from price comparison (trust-first: show no price rather than a wrong one).
 // ---------------------------------------------------------------------------
-const SET_KEYWORDS = /(선물\s*세트|기획\s*세트|세트\s*구성|더블\s*기획|더블팩|2종|3종|4종|콜렉션|컬렉션|패키지|한정|리필|세트)/;
+const SET_KEYWORDS = /(선물\s*세트|기획\s*세트|세트\s*구성|더블\s*기획|더블팩|2종|3종|4종|콜렉션|컬렉션|패키지|한정|리필|세트|디바이스|기기)/;
 const MULTIPACK_COUNT = /(\d+)\s*(?:개|팩|병|입|매)/; // \b不可: 한글은 \w가 아님
 // Parentheticals that are PURE non-unit freebies (no extra sellable unit) — safe
 // to ignore. A "(+...ml ...)" / "(+리필…)" / "(+세럼 7ml*2)" is NOT here: an added

@@ -149,6 +149,9 @@ it('기획 with extra sample unit (+7ml*2) → set (excluded, trust-first)', () 
 it('serum + device set (heterogeneous, no volume on 2nd item) → set', () => {
   assert(classifyOfferComposition('바이오힐보 NAD 세럼 30ml + 슈링크 홈 부스터 샷 기획').kind === 'set', '세럼+디바이스 is a set');
 });
+it('device bundle in a bracket tag (no +) → set', () => {
+  assert(classifyOfferComposition('[슈링크홈디바이스] 바이오힐보 NAD프리즈셀 글로우 파워 세럼 30ml 기획').kind === 'set', 'device bundle is a set');
+});
 it('선물 세트 → set', () => {
   assert(classifyOfferComposition('[6월] 제니피끄 세럼 50ml 선물 세트 (+쇼핑백)').kind === 'set', '선물 세트 is a set');
 });
