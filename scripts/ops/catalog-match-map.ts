@@ -21,6 +21,7 @@ import * as path from 'path';
 import { supabaseServer, isSupabaseServerConfigured } from '../../lib/supabase/server';
 import {
   matchNaverOffer,
+  matchOliveYoungOffer,
   classifyOfferComposition,
   matchesOfficialMall,
   isIndividualMallOffer,
@@ -31,6 +32,7 @@ import {
   NaverShoppingItem,
 } from '../../crawler/adapters/naver';
 import { CoupangAdapter, extractCoupangProductId, isCoupangShortLink } from '../../crawler/adapters/coupang';
+import { extractPackageFromTitle } from '../../crawler/core/packageExtractor';
 import { Product, Listing, RetailerAllowlist } from '../../lib/types';
 
 const NAVER_ID = process.env.NAVER_CLIENT_ID || '';
@@ -43,8 +45,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 type Category =
   | 'OK_SINGLE'
   | 'NAME_MISMATCH'
-  | 'URL_MULTIPACK'
-  | 'ANCHOR_SET'
+  | 'INSPECT'
   | 'DEMO_SUSPECT'
   | 'DATA_ERROR'
   | 'LINK_ONLY';
@@ -97,7 +98,10 @@ async function diagnoseNaverLike(
   // Tier-1 anchor uses the curated naver URL's channel-product number (naver only;
   // OY's oy.run URL has none → tier-2). Authoritative result from the real matcher.
   const anchorNo = seller === 'naver' ? await resolveCuratedProductNo(listing.url) : null;
-  const result = await matchNaverOffer(product, allowedStoreName, NAVER_ID, NAVER_SECRET, anchorNo);
+  const result =
+    seller === 'oliveyoung'
+      ? await matchOliveYoungOffer(product, NAVER_ID, NAVER_SECRET) // loose 올리브영 match
+      : await matchNaverOffer(product, allowedStoreName, NAVER_ID, NAVER_SECRET, anchorNo); // anchor-only
   await sleep(120);
 
   // Candidate view (same query) for the "was a single available?" diagnosis.
@@ -120,23 +124,23 @@ async function diagnoseNaverLike(
   let suggestion = '';
   let matchResult: string;
 
-  const anchored = /id-anchored/.test(result.reason);
+  const tag = /id-anchored/.test(result.reason) ? ' [anchor]' : /올리브영 match/.test(result.reason) ? ' [OY]' : '';
   if (result.matched) {
     const m = result.matched;
-    matchResult = `✅ ${fmt(m.lprice)}원 @${m.mallName} — ${stripHtml(m.title).slice(0, 40)}${anchored ? ' [anchor]' : ''}`;
+    matchResult = `✅ ${fmt(m.lprice)}원 @${m.mallName} — ${stripHtml(m.title).slice(0, 40)}${tag}`;
     category = 'OK_SINGLE';
-  } else if (result.anchorWasSet) {
-    // Tier-1 anchored the EXACT curated SKU but it is a set → curated naver URL
-    // points to a set page; excluded (trust-first) and flagged for sheet cleanup.
-    matchResult = `⚠️ anchor=set — ${result.reason}`;
-    category = 'ANCHOR_SET';
-    suggestion = '시트 naver URL이 세트 페이지 — 단품 상품 URL로 교체';
+  } else if (result.needsInspection) {
+    // Anchored/matched SKU is a heterogeneous set or an ambiguous OY match → no
+    // auto-price; operator inspects / sets a manual_override.
+    matchResult = `🔬 inspection — ${result.reason}`;
+    category = 'INSPECT';
+    suggestion = '이종 2제품 세트 또는 모호한 OY 매칭 — 검수 후 manual_override 또는 단품 URL';
   } else {
-    // Anchor miss → link-only (no fuzzy price). Sub-diagnose the WHY for the operator.
+    // No price → link-only. Sub-diagnose the WHY for the operator.
     matchResult = `🔗 link-only — ${result.reason}`;
     if (seller === 'oliveyoung') {
       category = 'LINK_ONLY';
-      suggestion = 'OY는 oy.run이라 N 앵커 불가 → 링크만; 중요 제품은 manual_override로 가격 지정';
+      suggestion = '네이버에 올리브영 오퍼 없음 → 링크만(Tier 4); 중요 제품은 manual_override(Tier 3)';
     } else if (items.length === 0) {
       category = 'DEMO_SUSPECT';
       suggestion = '검색 0건 — 브랜드스토어 미인덱스/단종 의심, 카탈로그 정리 검토';
@@ -189,20 +193,21 @@ async function diagnoseCoupang(product: Product, listing: Listing): Promise<Row>
     };
   }
   const title = offer.sourceText || '';
-  const comp = classifyOfferComposition(title);
+  const ext = extractPackageFromTitle(stripHtml(title));
   if (offer.outcome === 'ok' && offer.salePrice != null) {
-    if (comp.kind === 'set') {
+    if (ext.heterogeneous) {
       return {
         productId: product.id, brand: product.brand || '', name: product.name, seller: 'coupang', url,
         candidateSummary: `anchored pid ${pid}`,
-        matchResult: `⚠️ ${fmt(offer.salePrice)}원 — ${stripHtml(title).slice(0, 40)} (${comp.reason})`,
-        category: 'URL_MULTIPACK', suggestion: '시트 쿠팡 URL을 단품 상품으로 교체(현재 URL=팩/세트)',
+        matchResult: `🔬 inspection — ${stripHtml(title).slice(0, 44)} (heterogeneous)`,
+        category: 'INSPECT', suggestion: '이종 2제품 세트 — 검수/단품 URL 교체',
       };
     }
+    const qty = ext.unitCount && ext.unitCount > 1 ? ext.unitCount : 1;
     return {
       productId: product.id, brand: product.brand || '', name: product.name, seller: 'coupang', url,
       candidateSummary: `anchored pid ${pid}`,
-      matchResult: `✅ ${fmt(offer.salePrice)}원 — ${stripHtml(title).slice(0, 40)}`,
+      matchResult: `✅ ${fmt(offer.salePrice)}원${qty > 1 ? ` (×${qty} 개당가)` : ''} — ${stripHtml(title).slice(0, 40)}`,
       category: 'OK_SINGLE', suggestion: '',
     };
   }
@@ -215,13 +220,12 @@ async function diagnoseCoupang(product: Product, listing: Listing): Promise<Row>
 }
 
 const CAT_LABEL: Record<Category, string> = {
-  OK_SINGLE: '✅ OK 단품(앵커, 가격)',
+  OK_SINGLE: '✅ 가격 수집(앵커 단품/묶음·OY·쿠팡)',
   NAME_MISMATCH: '⚠️ 이름 오타/불일치(링크만)',
-  URL_MULTIPACK: '⚠️ 큐레이션 URL=다중팩/세트 쿠팡(링크만)',
-  ANCHOR_SET: '⚠️ 큐레이션 naver URL=세트 앵커(링크만)',
+  INSPECT: '🔬 검수 필요(이종세트/모호 OY)',
   DEMO_SUSPECT: '🔎 데모/오큐레이션 의심(링크만)',
   DATA_ERROR: '⚠️ URL 데이터 오류(링크만)',
-  LINK_ONLY: '🔗 링크만(앵커 미스/OY-무앵커)',
+  LINK_ONLY: '🔗 링크만(앵커 미스/OY 미수집)',
 };
 
 async function main() {
@@ -303,11 +307,10 @@ async function main() {
   out.push('## 운영자 수정 리스트');
   out.push('');
   fixList('1. 시트 제품명 오타/불일치 (앵커 회복용 — 링크만 상태)', 'NAME_MISMATCH');
-  fixList('2. 큐레이션 URL = 다중팩/세트 — 쿠팡 (단품 URL 교체)', 'URL_MULTIPACK');
-  fixList('2b. 큐레이션 naver URL = 세트 (앵커가 세트로 떨어짐 — 단품 URL 교체)', 'ANCHOR_SET');
+  fixList('2. 검수 필요 — 이종 2제품 세트 / 모호한 OY 매칭 (검수 후 manual_override 또는 단품 URL)', 'INSPECT');
   fixList('3. URL 데이터 오류', 'DATA_ERROR');
   fixList('4. 데모/오큐레이션 정리 후보', 'DEMO_SUSPECT');
-  // LINK_ONLY(앵커 미스/OY-무앵커)는 다수·구조적이라 개별 나열 대신 per-listing 표 참조.
+  // LINK_ONLY(앵커 미스/OY 미수집)는 다수·구조적이라 개별 나열 대신 per-listing 표 참조.
 
   // ----- full per-listing table -----
   out.push('## per-listing 전체 표');

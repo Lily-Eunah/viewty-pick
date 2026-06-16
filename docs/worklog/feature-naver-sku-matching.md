@@ -88,6 +88,14 @@ Naver Shopping API 매칭(`pickOfficialOffer`)이 큐레이션한 **단품**이 
 - 테스트: `buildAnchorQueries`(폼명사 recall), `pickAnchoredOffer`(단품/세트/미스). test:all·typecheck·build·lint green. DB 무변경.
 - **후속(웹)**: 링크만 행 증가 → tier-4 link-only UI 필요(가격 없는 네이버/OY를 "보기" 링크로). 별도 웹 PR.
 
+## 정책 확정: 세트 포함(개당가) + OY 4-tier (2026-06-16, 운영자 결정)
+"세트 제외" 폐기 → **앵커된 SKU는 단품/동질묶음 모두 가격 수집, 개당가(effective)로**. 증정은 미반영(라벨만). 이종 2제품 세트만 검수.
+- `packageExtractor`: 동질묶음 수량 파싱 강화 — 1+1/2+1(N+N), 본품+리필(→2), 더블기획/팩/구성(→2), ×N, N개입. **증정/여행용/미니/샘플 클로즈 미반영**("세럼30ml + 토너20ml 증정"→30ml 1개; "(+세럼20ml+크림1ml)"→본품만). **이종 플래그**: ≥2 distinct volume / N종 / 디바이스·기기 → `heterogeneous`(무가격 검수). "(더블/대용량)"은 모호 → 단품 보수처리.
+- `pickAnchoredOffer`: 앵커=항상 가격(단품/묶음); `heterogeneous`만 `needsInspection`(무가격).
+- **OY 4-tier**: `pickOliveYoungOffer` — mallName='올리브영'(정확) 느슨 매칭(엄격 변형토큰 미적용, 폼충돌·저유사도·이종만 배제), 묶음 개당가 포함, 모호→검수. `matchOliveYoungOffer`로 OY 어댑터 배선(matchNaverOffer 대체). Tier1 hidden(affiliate_url 無)·T2 가격·T3 manual_override·T4 링크만.
+- 맵 재실행: **가격 OK 37→78**(세트포함+OY 회복). INSPECT 3(아벤느·바이오힐보 디바이스·블라이드 모호). ⚠️ 느슨 OY 잔여 오매칭 2건(#34 조선미녀 다른단품·#76 닥터지 토너+올인원) → manual_override 권고. 상세 catalog-match-map.md.
+- 테스트: packageExtractor(1+1/리필/더블/증정/이종/N종/디바이스), pickAnchoredOffer(묶음 가격·이종 검수), normalize 회귀. test:all·typecheck·build·lint green. DB 무변경.
+
 ## 남은 TODO
 - [ ] **(운영자, 전체 sync 전 선행) 시트 상품명 오타 교정**: #85 "하이아르론"→"하이알루론", #86 "엔에이디"→"NAD"(또는 검색 매칭되는 표기). 다른 제품에도 유사 오타 가능 → 전체 sync 시 false-exclusion 분포로 추가 발견.
 - [ ] **(게이트, 보류 중) 전체 재수집**: 시트 교정 후 `npm run crawler:sync`(전체). priced vs no_offer 분포 + false exclusion/inclusion 점검 보고.
