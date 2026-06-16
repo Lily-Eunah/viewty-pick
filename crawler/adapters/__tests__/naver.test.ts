@@ -18,6 +18,8 @@ import {
   productNoFrom,
   pickAnchoredOffer,
   buildAnchorQueries,
+  pickOliveYoungOffer,
+  distinctiveTokens,
   NaverShoppingItem,
   OfferMatchInput,
 } from '../naver';
@@ -259,6 +261,29 @@ it('buildAnchorQueries includes the precise brand+name query', () => {
   const qs = buildAnchorQueries('토리든', '다이브인 포맨 저분자 히알루론산 올인원');
   assert(qs.some((q) => q.includes('다이브인')), 'precise query present');
   assert(qs.includes('토리든 올인원'), `form-noun recall present, got ${JSON.stringify(qs)}`);
+});
+
+console.log('\n--- pickOliveYoungOffer confidence band ---');
+const oyItem = (o: Partial<NaverShoppingItem>) => item({ mallName: '올리브영', productType: '2', ...o });
+it('distinctiveTokens drops form/category + promo words', () => {
+  const d = distinctiveTokens('스테이 프레쉬 톤업 선크림 퍼플');
+  assert(d.includes('스테이') && d.includes('퍼플') && !d.includes('선크림'), `got ${JSON.stringify(d)}`);
+});
+it('OY same-brand DIFFERENT product (below band) → hold, not auto-priced', () => {
+  const wrong = oyItem({ title: '조선미녀 맑은쌀 선크림 아쿠아프레쉬 50ml', lprice: '25300', link: 'https://smartstore.naver.com/x/products/341' });
+  const r = pickOliveYoungOffer([wrong], '조선미녀 스테이 프레쉬 톤업 선크림 퍼플');
+  assert(r.matched === null, 'different product must not auto-price (#34 맑은쌀)');
+});
+it('OY correct product (high sim + core token) → auto-priced', () => {
+  const right = oyItem({ title: '조선미녀 스테이프레쉬 톤업 선크림 퍼플 50ml', lprice: '15300', link: 'https://smartstore.naver.com/x/products/342' });
+  const r = pickOliveYoungOffer([right], '조선미녀 스테이 프레쉬 톤업 선크림 퍼플');
+  assert(r.matched !== null && r.matched.lprice === '15300', `correct OY single should auto-price, got ${r.matched?.lprice}`);
+});
+it('OY two close candidates, different prices → hold (ambiguous)', () => {
+  const a = oyItem({ title: '토리든 다이브인 포맨 올인원 200ml', lprice: '19700', link: 'https://smartstore.naver.com/x/products/741' });
+  const b = oyItem({ title: '토리든 다이브인 포맨 올인원 200ml 리뉴얼', lprice: '22000', link: 'https://smartstore.naver.com/x/products/742' });
+  const r = pickOliveYoungOffer([a, b], '토리든 다이브인 포맨 올인원');
+  assert(r.matched === null && r.needsInspection === true, 'close competing OY candidates → hold');
 });
 
 // ---------------------------------------------------------------------------

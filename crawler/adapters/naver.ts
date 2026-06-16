@@ -471,34 +471,70 @@ export async function matchNaverOffer(
 // included with per-unit pricing; ambiguity/heterogeneous → inspection (manual).
 // ---------------------------------------------------------------------------
 const OY_MALL = '올리브영';
-const OY_SIMILARITY_THRESHOLD = 0.4; // looser than the brand-store 0.5
+const OY_MIN_SIMILARITY = 0.4; // below → no confident OY offer (Tier 4 link-only)
+const OY_AUTO_PRICE_SIMILARITY = 0.6; // HIGH band: only ≥ this AND a core token → auto-price
 
+// Marketing / packaging words that are NOT product-distinctive — stripped when
+// deriving the "core" tokens that must appear in an OY title to auto-price.
+const PROMO_WORDS = new Set([
+  '증정', '기획', '단독', '세일', '한정', '추가', '적립', '할인', '특가', 'new', '리뉴얼', '정품',
+  '본품', '대용량', '더블', '구성', '세트', '파데프리', '픽', 'pick', '쿨링', '진정',
+]);
+
+/**
+ * Distinctive product-name tokens: significant tokens minus form/category nouns
+ * (선크림/토너/세럼…) and promo words. e.g. "스테이 프레쉬 톤업 선크림 퍼플" → [스테이,
+ * 프레쉬, 톤업, 퍼플]. At least one must appear in an OY title to auto-price, so a
+ * same-brand DIFFERENT product (조선미녀 맑은쌀) is held rather than mis-priced.
+ */
+export function distinctiveTokens(name: string): string[] {
+  return significantTokens(name).filter((t) => !FORM_TOKENS.includes(t) && !PROMO_WORDS.has(t));
+}
+
+/**
+ * Confidence band for the OliveYoung sales-point offer (mallName='올리브영').
+ *   - auto-price (Tier 2): similarity ≥ HIGH AND a distinctive core token present.
+ *   - hold + inspection (Tier 3 candidate): plausible (sim ≥ MIN) but below the band,
+ *     missing a core token, ambiguous (top-2 too close), or heterogeneous.
+ *   - no confident offer (Tier 4 link-only): nothing ≥ MIN similarity.
+ * Stays loose (no strict variant tokens — promo/influencer noise tolerated); the
+ * band only gates AUTO-PRICE, never drops a product.
+ */
 export function pickOliveYoungOffer(items: NaverShoppingItem[], productName: string): OfferMatchResult {
   const oy = items.filter((it) => isIndividualMallOffer(it) && normalizeMallName(it.mallName) === OY_MALL);
   if (oy.length === 0) {
-    return { matched: null, parsedVolumeRaw: null, identityScore: null, reason: 'no 올리브영 offer on Naver (Tier 3/4: manual/link-only)' };
+    return { matched: null, parsedVolumeRaw: null, identityScore: null, reason: 'no 올리브영 offer on Naver (Tier 4 link-only)' };
   }
   const scored = oy
     .map((it) => ({ it, s: productIdentityScore(it.title, productName) }))
     .filter((x) => !hasFormConflict(productName, x.it.title))
     .sort((a, b) => b.s - a.s);
-  if (scored.length === 0 || scored[0].s < OY_SIMILARITY_THRESHOLD) {
-    return {
-      matched: null, parsedVolumeRaw: null, identityScore: scored[0]?.s ?? null,
-      reason: `올리브영 offer(s) found but none confidently matched (best ${(scored[0]?.s ?? 0).toFixed(2)}) — inspection/manual`,
-      needsInspection: true,
-    };
+  if (scored.length === 0 || scored[0].s < OY_MIN_SIMILARITY) {
+    return { matched: null, parsedVolumeRaw: null, identityScore: scored[0]?.s ?? null, reason: `no confident 올리브영 offer (best ${(scored[0]?.s ?? 0).toFixed(2)} < ${OY_MIN_SIMILARITY}) — Tier 4 link-only` };
   }
-  const top = scored[0].it;
-  const ext = extractPackageFromTitle(stripHtml(top.title));
+  const top = scored[0];
+  // Ambiguous: two OY candidates almost equally similar but different prices.
+  if (scored.length > 1 && top.s - scored[1].s < 0.1 && top.it.lprice !== scored[1].it.lprice) {
+    return { matched: null, parsedVolumeRaw: null, identityScore: top.s, reason: `multiple close 올리브영 candidates (${top.it.lprice}/${scored[1].it.lprice}) — hold/inspection`, needsInspection: true };
+  }
+  const ext = extractPackageFromTitle(stripHtml(top.it.title));
   if (ext.heterogeneous) {
-    return { matched: null, parsedVolumeRaw: null, identityScore: scored[0].s, reason: '올리브영 offer is a heterogeneous set — inspection/manual', needsInspection: true };
+    return { matched: null, parsedVolumeRaw: null, identityScore: top.s, reason: '올리브영 offer is a heterogeneous set — hold/inspection', needsInspection: true };
   }
-  const parsedVolumeRaw = ext.detected && ext.unitType === 'ml' && ext.unitAmount !== null ? ext.unitAmount : null;
-  const qty = ext.unitCount && ext.unitCount > 1 ? ext.unitCount : 1;
+  // Core-token guard: a distinctive token of the curated name must be in the title.
+  const distinct = distinctiveTokens(productName);
+  const titleNorm = stripHtml(top.it.title).toLowerCase().replace(/\s+/g, '');
+  const coreTokenPresent = distinct.length === 0 || distinct.some((t) => titleNorm.includes(t));
+  if (top.s >= OY_AUTO_PRICE_SIMILARITY && coreTokenPresent) {
+    const parsedVolumeRaw = ext.detected && ext.unitType === 'ml' && ext.unitAmount !== null ? ext.unitAmount : null;
+    const qty = ext.unitCount && ext.unitCount > 1 ? ext.unitCount : 1;
+    return { matched: top.it, parsedVolumeRaw, identityScore: top.s, reason: `올리브영 match (sim ${top.s.toFixed(2)})${qty > 1 ? ` ×${qty} (per-unit)` : ''}` };
+  }
+  // Plausible but below the auto-price band → hold for manual_override.
   return {
-    matched: top, parsedVolumeRaw, identityScore: scored[0].s,
-    reason: `올리브영 match (sim ${scored[0].s.toFixed(2)})${qty > 1 ? ` ×${qty} (per-unit)` : ''}`,
+    matched: null, parsedVolumeRaw: null, identityScore: top.s,
+    reason: `올리브영 below auto-price band (sim ${top.s.toFixed(2)}${top.s >= OY_AUTO_PRICE_SIMILARITY ? ', no core token' : ''}) — hold/inspection`,
+    needsInspection: true,
   };
 }
 
