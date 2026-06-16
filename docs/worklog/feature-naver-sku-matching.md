@@ -103,6 +103,14 @@ Naver Shopping API 매칭(`pickOfficialOffer`)이 큐레이션한 **단품**이 
 - 결과: #34 조선미녀 틀린 25,300 차단(검수), #86·#88 hold. 가격 OK 78→76(과도 hold 없음, 둘 다 타당). 잔여 #76(증정 기획 동일라인 세트)는 밴드 미차단 → manual_override 권고(2-form 룰은 동의어 과도hold라 미채택).
 - 테스트: `distinctiveTokens`, OY 밴드(다른제품 hold·정상 auto-price·근소경합 hold). test:all·typecheck·build·lint green. DB 무변경.
 
+## OY recall(+올리브영) + gift-strip 선채점 (2026-06-16)
+두 진단으로 검증된 OY 정확도 fix:
+- **1a**: `matchOliveYoungOffer` 쿼리에 `brand+name+올리브영` 추가(mallName 필터 유지). 올리브영 자기 단품 recall.
+- **1b**: `pickOliveYoungOffer` 점수·`hasFormConflict`를 `stripPromoGifts(title)` 기준으로 → 증정("(+올인원크림)")이 다른 제품 위장 차단.
+- **1c(카테고리 폼충돌) 미채택**: #76 OY 단품이 오일컷 변형(진정≠) → held가 안전 + 혼합토큰 모호/정상클렌저 과잉배제 위험. wrong 가격은 1a+1b로 0.
+- 맵 재실행: **#34 조선미녀 정답 14,400 자동 매칭**(was wrong 25,300), **#76 닥터지 wrong 31,000 제거→held**, #78 온그리디언츠 recall 이득. OK 76→77, 정상 단품 손실 0.
+- 테스트: gift-strip 선채점(토너+올인원크림 증정→form conflict→held). test:all·typecheck·build·lint green. DB 무변경.
+
 ## 남은 TODO
 - [ ] **(운영자, 전체 sync 전 선행) 시트 상품명 오타 교정**: #85 "하이아르론"→"하이알루론", #86 "엔에이디"→"NAD"(또는 검색 매칭되는 표기). 다른 제품에도 유사 오타 가능 → 전체 sync 시 false-exclusion 분포로 추가 발견.
 - [ ] **(게이트, 보류 중) 전체 재수집**: 시트 교정 후 `npm run crawler:sync`(전체). priced vs no_offer 분포 + false exclusion/inclusion 점검 보고.
