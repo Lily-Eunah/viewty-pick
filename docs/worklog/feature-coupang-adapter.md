@@ -129,11 +129,25 @@ scheme-less. After the URL-hygiene fix the dry-run was clean; the real import ra
 - HMAC, `/v1/products/search` path, and the 50/min rate were all confirmed against
   the real API.
 
-## NOTE — accidental mock write to live DB
+## NOTE — accidental mock write to live DB (cleaned)
 While exercising the wiring, `npm run crawler:test` was run; because Supabase env
 is configured in this environment, `--test` mocks only the **adapters/notify**,
-not the **DB destination** — so a batch of mock-priced snapshots / scores /
-current_prices was written to the live Supabase. This is largely self-healing
-(the next real `crawler:sync` writes newer snapshots and the public view shows the
-latest), but it leaves mock history rows + one mock `crawl_runs` entry. Avoid
-`crawler:test` against a live-Supabase env; the unit tests cover the logic.
+not the **DB destination** — so a batch of mock-priced snapshots/scores was written
+to the live Supabase (186 mock snapshots on 2026-06-15; 90 listings had a mock `ok`
+row as their latest → showing in the public view). **Cleaned** by a full real
+all-seller `crawler:sync` (`--skip-import --no-notify`): every active listing's
+latest snapshot is now real, `current_prices` recomputed, and the public view
+(latest-`ok`-only) shows real prices with warning/no_offer excluded. Mock rows
+remain only as older history (not surfaced).
+
+## Follow-ups (not in this PR)
+- **`crawler:test` live-write guard**: `--test` should refuse to write to a
+  production Supabase — reject a prod `NEXT_PUBLIC_SUPABASE_URL` (or force the mock
+  DB / a dedicated test project) when mock mode is on, so a mock run can never
+  pollute live data again.
+- **DESIGN.md rate-limit correction**: §122/§457/§570 state the Coupang search API
+  is "10 calls/hour"; the official doc is **50 calls/min**. Update DESIGN.md and
+  drop the "~4h full sync / distributed schedule" framing.
+- **Global `affiliate_url = url` copy**: import still copies `url` into
+  `affiliate_url` for non-Coupang sellers (a plain URL, not an affiliate link).
+  Revisit whether import should populate `affiliate_url` at all.
