@@ -139,7 +139,9 @@ export function resolveListingOutcome(
   if (outcome === 'failed') {
     return handleConsecutiveFailures(listing);
   }
-  // 'ok' | 'no_offer' — a successful fetch resets the failure streak.
+  // 'ok' | 'no_offer' | 'data_error' — a successful (or skipped) fetch with no
+  // technical failure resets the streak and never deactivates the listing.
+  // data_error is an operator-facing sheet-data problem, not a fetch failure.
   return {
     fail_count: 0,
     is_active: listing.is_active,

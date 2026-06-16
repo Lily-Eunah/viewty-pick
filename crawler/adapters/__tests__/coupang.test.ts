@@ -10,7 +10,13 @@
  *  5. URL에서 productId 추출
  *  6. parsedVolumeRaw 추출 (ml in productName)
  */
-import { parseCoupangItem, extractCoupangProductId, CoupangApiItem } from '../coupang';
+import {
+  parseCoupangItem,
+  extractCoupangProductId,
+  isCoupangShortLink,
+  buildSearchKeyword,
+  CoupangApiItem,
+} from '../coupang';
 
 // ---------------------------------------------------------------------------
 // Test runner
@@ -170,6 +176,71 @@ it('extracts 200ml from productName', () => {
 it('parsedVolumeRaw=null when no volume in title', () => {
   const offer = parseCoupangItem(item({ productName: '선크림 SPF50+' }));
   expect(offer.parsedVolumeRaw).toBeNull();
+});
+
+// ---------------------------------------------------------------------------
+// Fixture 7: search API shape — productPrice / isFreeShipping / productUrl
+// ---------------------------------------------------------------------------
+console.log('\n--- [Fixture 7] search API shape ---');
+it('salePrice reads productPrice (search API field)', () => {
+  const offer = parseCoupangItem(item({ price: undefined, productPrice: 22500 }));
+  expect(offer.salePrice).toBe(22500);
+});
+
+it('productPrice takes precedence over legacy price', () => {
+  const offer = parseCoupangItem(item({ price: 18900, productPrice: 22500 }));
+  expect(offer.salePrice).toBe(22500);
+});
+
+it('isFreeShipping → shippingNote=무료배송 (non-rocket)', () => {
+  const offer = parseCoupangItem(item({ isRocket: false, isFreeShipping: true }));
+  expect(offer.shippingNote).toBe('무료배송');
+});
+
+it('isRocket beats isFreeShipping for shippingNote', () => {
+  const offer = parseCoupangItem(item({ isRocket: true, isFreeShipping: true }));
+  expect(offer.shippingNote).toBe('로켓배송');
+});
+
+it('productUrl deeplink → matchedUrl (cached as buy link)', () => {
+  const offer = parseCoupangItem(item({ productUrl: 'https://link.coupang.com/a/abcdef' }));
+  expect(offer.matchedUrl).toBe('https://link.coupang.com/a/abcdef');
+});
+
+// ---------------------------------------------------------------------------
+// Fixture 8: short-link / data-error gate (productId not extractable)
+// ---------------------------------------------------------------------------
+console.log('\n--- [Fixture 8] short-link / data-error gate ---');
+it('short-link link.coupang.com/a/… has no productId', () => {
+  expect(extractCoupangProductId('https://link.coupang.com/a/abcDEF')).toBeNull();
+});
+
+it('isCoupangShortLink detects link.coupang.com share links', () => {
+  expect(isCoupangShortLink('https://link.coupang.com/a/abcDEF')).toBe(true);
+});
+
+it('isCoupangShortLink false for a product-detail URL', () => {
+  expect(isCoupangShortLink('https://www.coupang.com/vp/products/7654321')).toBe(false);
+});
+
+it('product-detail URL still yields its productId', () => {
+  expect(extractCoupangProductId('https://www.coupang.com/vp/products/7654321?itemId=1')).toBe('7654321');
+});
+
+// ---------------------------------------------------------------------------
+// Fixture 9: search keyword builder (brand + name, volume stripped)
+// ---------------------------------------------------------------------------
+console.log('\n--- [Fixture 9] search keyword ---');
+it('keyword = brand + name with ml stripped', () => {
+  expect(buildSearchKeyword('라운드랩', '독도 토너 200ml')).toBe('라운드랩 독도 토너');
+});
+
+it('keyword drops brand parenthetical', () => {
+  expect(buildSearchKeyword('아누아 (ANUA)', '어성초 토너 250 mL')).toBe('아누아 어성초 토너');
+});
+
+it('keyword handles null brand', () => {
+  expect(buildSearchKeyword(null, '선크림 50ml')).toBe('선크림');
 });
 
 // ---------------------------------------------------------------------------

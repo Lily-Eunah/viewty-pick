@@ -52,9 +52,14 @@ export async function sendDailySummary(stats: {
   // Listings that had a real price last run and now have no offer (price dropped
   // to link-only). Operator-facing info line, not a per-item alert.
   disappearedOffers?: string[];
+  // Listing-level data problems that blocked a fetch (e.g. a Coupang share
+  // short-link with no productId). Not failures — the operator must fix the
+  // sheet URL. Surfaced here for action.
+  dataErrors?: string[];
 }): Promise<boolean> {
   const noOffer = stats.noOfferCount ?? 0;
   const disappeared = stats.disappearedOffers ?? [];
+  const dataErrors = stats.dataErrors ?? [];
 
   let message = `📊 **[ViewtyPick Crawl Run Summary]**
 - **시작/종료 상태**: 완료 (Success)
@@ -70,6 +75,12 @@ export async function sendDailySummary(stats: {
     const shown = disappeared.slice(0, 10);
     const more = disappeared.length > shown.length ? ` 외 ${disappeared.length - shown.length}건` : '';
     message += `\nℹ️ **오퍼 사라짐 (가격→link-only, 확인 권장)**: ${disappeared.length}건${more}\n${shown.map((d) => `  • ${d}`).join('\n')}`;
+  }
+
+  if (dataErrors.length > 0) {
+    const shown = dataErrors.slice(0, 10);
+    const more = dataErrors.length > shown.length ? ` 외 ${dataErrors.length - shown.length}건` : '';
+    message += `\n⚠️ **데이터 오류 (시트 URL 수정 필요, fail_count 미반영)**: ${dataErrors.length}건${more}\n${shown.map((d) => `  • ${d}`).join('\n')}`;
   }
 
   return sendDiscordMessage(message);

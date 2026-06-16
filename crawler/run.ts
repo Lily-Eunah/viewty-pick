@@ -157,6 +157,11 @@ export async function crawlPipeline(): Promise<void> {
   // listings that had a real price last run and now legitimately have no offer.
   let noOfferCount = 0;
   const disappearedOffers: string[] = [];
+  // DATA_ERROR bookkeeping — operator-facing data problems (e.g. a Coupang
+  // share short-link with no productId). Not failures: fail_count stays 0 and
+  // the listing stays active (link-only); surfaced in the daily summary so the
+  // operator fixes the sheet URL.
+  const dataErrors: string[] = [];
 
   // Step 4: Crawl Prices Listing by Listing
   console.log(`[Pipeline] Beginning crawl of ${listings.length} active listings...`);
@@ -206,15 +211,21 @@ export async function crawlPipeline(): Promise<void> {
       // priced data (healthcheck 'failed') advance the §4.4 failure staircase.
       const outcome: FetchOutcome = offer.outcome ?? (offer.matchExcluded ? 'no_offer' : 'ok');
 
-      if (outcome === 'no_offer') {
-        // OK_NO_OFFER: reset the failure streak, keep the listing active.
-        const res = resolveListingOutcome(listing, 'no_offer');
+      if (outcome === 'no_offer' || outcome === 'data_error') {
+        // Both are successful (or skipped) fetches with no qualified offer: reset
+        // the failure streak and keep the listing active (link-only). data_error
+        // additionally records an operator-facing data problem.
+        const res = resolveListingOutcome(listing, outcome);
         const listIdx = updatedListings.findIndex((l) => l.id === listing.id);
         if (listIdx >= 0) {
           updatedListings[listIdx].fail_count = res.fail_count;
           updatedListings[listIdx].is_active = res.is_active;
         }
-        noOfferCount++;
+        if (outcome === 'data_error') {
+          dataErrors.push(`${product.name} @ ${seller.name} (${listing.link_key}): ${offer.sourceText ?? 'data error'}`);
+        } else {
+          noOfferCount++;
+        }
 
         // Trust-first: if this listing had a real price last run, drop it (no
         // stale carry-over) and surface the transition as a daily-summary INFO
@@ -488,11 +499,14 @@ export async function crawlPipeline(): Promise<void> {
     try {
       console.log('[Pipeline] Persisting snapshots and current prices to Supabase...');
       
-      // Update listing fail counts
+      // Update listing fail counts + cached matched-offer link (redirect fallback).
+      // latest_matched_url is the Coupang search deeplink / Naver matched link; it
+      // must be persisted or the /go redirect can never fall back to it.
       for (const list of updatedListings) {
         await supabaseServer.from('listings').update({
           fail_count: list.fail_count,
           is_active: list.is_active,
+          latest_matched_url: list.latest_matched_url ?? null,
         }).eq('id', list.id);
       }
 
@@ -544,7 +558,9 @@ export async function crawlPipeline(): Promise<void> {
     // Merge updates
     db.listings = db.listings.map((orig) => {
       const updated = updatedListings.find((l) => l.id === orig.id);
-      return updated ? { ...orig, fail_count: updated.fail_count, is_active: updated.is_active } : orig;
+      return updated
+        ? { ...orig, fail_count: updated.fail_count, is_active: updated.is_active, latest_matched_url: updated.latest_matched_url ?? orig.latest_matched_url ?? null }
+        : orig;
     });
 
     db.products = db.products.map((orig) => {
@@ -590,6 +606,7 @@ export async function crawlPipeline(): Promise<void> {
       durationSeconds: duration,
       noOfferCount,
       disappearedOffers,
+      dataErrors,
     });
   }
 
