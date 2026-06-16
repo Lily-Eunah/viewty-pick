@@ -207,6 +207,16 @@ it('productUrl deeplink → matchedUrl (cached as buy link)', () => {
   expect(offer.matchedUrl).toBe('https://link.coupang.com/a/abcdef');
 });
 
+it('productImage → imageUrl (display fallback)', () => {
+  const offer = parseCoupangItem(item({ productImage: 'https://ads-partners.coupang.com/image1/abc' }));
+  expect(offer.imageUrl).toBe('https://ads-partners.coupang.com/image1/abc');
+});
+
+it('imageUrl null when productImage absent', () => {
+  const offer = parseCoupangItem(item({}));
+  expect(offer.imageUrl ?? null).toBeNull();
+});
+
 // ---------------------------------------------------------------------------
 // Fixture 8: short-link / data-error gate (productId not extractable)
 // ---------------------------------------------------------------------------
