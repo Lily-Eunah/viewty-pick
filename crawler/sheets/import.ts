@@ -229,11 +229,11 @@ export async function runSheetImport(): Promise<ImportStats> {
         const p = v.simpleBadgeRowSchema.safeParse(row);
         if (!p.success) { stats.errorCount++; stats.errors.push(`Badge: ${p.error.message}`); continue; }
 
-        const productKey = nameToKey.get(p.data.product_name.trim());
+        const productKey = v.resolveProductKey(p.data, nameToKey);
         const productId  = dbProducts?.find((pr) => pr.product_key === productKey)?.id;
         if (!productId) {
           stats.errorCount++;
-          stats.errors.push(`Badge skipped: product "${p.data.product_name}" not found`);
+          stats.errors.push(`Badge skipped: ${p.data.product_key ? `product_key "${p.data.product_key}"` : `product "${p.data.product_name}"`} not found`);
           continue;
         }
 
@@ -278,7 +278,7 @@ export async function runSheetImport(): Promise<ImportStats> {
       for (const row of rawOverrides) {
         const p = v.simpleOverrideRowSchema.safeParse(row);
         if (!p.success) { stats.errorCount++; continue; }
-        const productKey = nameToKey.get(p.data.product_name.trim());
+        const productKey = v.resolveProductKey(p.data, nameToKey);
         const productId  = dbProducts?.find((pr) => pr.product_key === productKey)?.id;
         const sellerId   = dbSellers?.find((s) => s.slug === p.data.seller)?.id;
         if (!productId || !sellerId) continue;
@@ -407,9 +407,9 @@ export async function runSheetImport(): Promise<ImportStats> {
     for (const row of rawBadges) {
       const p = v.simpleBadgeRowSchema.safeParse(row);
       if (!p.success) { stats.errorCount++; continue; }
-      const productKey = nameToKey.get(p.data.product_name.trim());
+      const productKey = v.resolveProductKey(p.data, nameToKey);
       const product    = db.products.find((pr) => pr.product_key === productKey);
-      if (!product) { stats.errorCount++; stats.errors.push(`Badge skipped: "${p.data.product_name}" not found`); continue; }
+      if (!product) { stats.errorCount++; stats.errors.push(`Badge skipped: ${p.data.product_key || p.data.product_name} not found`); continue; }
 
       let badge = db.badges.find((b) => b.slug === p.data.badge_type);
       if (!badge) {
@@ -440,7 +440,7 @@ export async function runSheetImport(): Promise<ImportStats> {
     for (const row of rawOverrides) {
       const p = v.simpleOverrideRowSchema.safeParse(row);
       if (!p.success) continue;
-      const productKey = nameToKey.get(p.data.product_name.trim());
+      const productKey = v.resolveProductKey(p.data, nameToKey);
       const product    = db.products.find((pr) => pr.product_key === productKey);
       const seller     = db.sellers.find((s) => s.slug === p.data.seller);
       if (!product || !seller) continue;

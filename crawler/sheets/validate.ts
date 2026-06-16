@@ -29,8 +29,12 @@ export const simpleProductRowSchema = z.object({
 });
 
 // ─── product_links (wide — one row per product, one column per seller) ────────
+// product_key (stable) is the primary join; product_name is a formula-synced
+// display column kept only as a backward-compat fallback. Matching by key means a
+// product rename never breaks links/badges (the recurring badge-skip cause).
 export const productLinksWideRowSchema = z.object({
-  product_name: z.string().min(1),
+  product_key:  z.string().optional(),
+  product_name: z.string().default(''),
   oliveyoung:   z.string().default(''),
   coupang:      z.string().default(''),
   naver:        z.string().default(''),
@@ -40,7 +44,8 @@ export const productLinksWideRowSchema = z.object({
 
 // ─── badges ──────────────────────────────────────────────────────────────────
 export const simpleBadgeRowSchema = z.object({
-  product_name: z.string().min(1),
+  product_key:  z.string().optional(),
+  product_name: z.string().default(''),
   badge_type:   z.string().min(1),
   detail:       z.string().optional().nullable(),
   source_title: z.string().optional().nullable(),
@@ -57,7 +62,8 @@ export const simpleAllowlistRowSchema = z.object({
 
 // ─── manual_overrides ────────────────────────────────────────────────────────
 export const simpleOverrideRowSchema = z.object({
-  product_name:  z.string().min(1),
+  product_key:   z.string().optional(),
+  product_name:  z.string().default(''),
   seller:        z.enum(['oliveyoung', 'coupang', 'naver', 'zigzag', 'ably']),
   override_type: z.enum(['price', 'promo_type', 'promo_text', 'unit_price', 'in_stock']),
   value:         z.string().min(1),
@@ -104,6 +110,21 @@ export function buildNameToKey(rawProducts: Record<string, string>[]): Map<strin
   return nameToKey;
 }
 
+/**
+ * Resolve a row's product_key: prefer the explicit, stable product_key column;
+ * fall back to looking up the (formula-synced) product_name. Key-first matching is
+ * what makes a product rename non-breaking for links / badges / overrides.
+ */
+export function resolveProductKey(
+  row: { product_key?: string; product_name?: string },
+  nameToKey: Map<string, string>,
+): string | undefined {
+  const key = row.product_key?.trim();
+  if (key) return key;
+  const name = row.product_name?.trim();
+  return name ? nameToKey.get(name) : undefined;
+}
+
 export interface FlatListing { link_key: string; product_key: string; seller: Seller; url: string }
 
 /**
@@ -137,7 +158,7 @@ export function expandListings(
   for (const row of rawLinks) {
     const r = productLinksWideRowSchema.safeParse(row);
     if (!r.success) continue;
-    const productKey = nameToKey.get(r.data.product_name.trim());
+    const productKey = resolveProductKey(r.data, nameToKey);
     if (!productKey) continue;
     for (const seller of SELLERS) {
       const url = normalizeListingUrl(r.data[seller]);
