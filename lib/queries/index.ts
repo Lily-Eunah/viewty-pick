@@ -50,10 +50,32 @@ export function snapshotsToPublicPrices(
       in_stock: s.in_stock,
       shipping_note: s.shipping_note,
       matched_mall_name: s.matched_mall_name,
+      image_url: s.image_url ?? null,
       crawled_at: s.crawled_at,
     });
   }
   return out;
+}
+
+/**
+ * Display image precedence (sheet = source of truth):
+ *   operator products.image_url → crawler-sourced Coupang productImage → placeholder ('').
+ * products.image_url is NEVER overwritten by the crawler — this is a read-time
+ * fallback only. The Coupang image comes from the public view's image_url for the
+ * product's active Coupang listing.
+ */
+export function resolveDisplayImage(
+  operatorImageUrl: string | null | undefined,
+  productId: number,
+  listingPrices: PublicListingPrice[],
+  sellers: { id: number; slug: string }[]
+): string {
+  if (operatorImageUrl) return operatorImageUrl;
+  const coupangSellerId = sellers.find((s) => s.slug === 'coupang')?.id;
+  const coupangImage = listingPrices.find(
+    (lp) => lp.product_id === productId && lp.seller_id === coupangSellerId && lp.image_url
+  )?.image_url;
+  return coupangImage || '';
 }
 
 /**
@@ -86,6 +108,9 @@ function mapToUIProduct(
     : badgeSlugs.includes('hwahae_rank')
     ? 'hwahae'
     : 'oliveyoung';
+
+  // Display image precedence: operator → Coupang → placeholder (see resolveDisplayImage).
+  const displayImage = resolveDisplayImage(prod.image_url, prod.id, dbListingPrices, dbSellers);
 
   // Build stores pricing list
   const prodListings = dbListings.filter((l) => l.product_id === prod.id && l.is_active);
@@ -148,7 +173,7 @@ function mapToUIProduct(
     brand: prod.brand || '기타 브랜드',
     name: prod.name,
     category: category?.slug || 'etc',
-    image: prod.image_url || '',
+    image: displayImage,
     volume: `${prod.volume_ml}ml`,
     description: prod.features || '검증된 큐레이션 추천 뷰티 제품',
     skinTypes: prod.skin_types,
