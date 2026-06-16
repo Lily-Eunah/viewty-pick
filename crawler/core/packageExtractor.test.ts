@@ -144,6 +144,27 @@ const testCases: TestCase[] = [
       totalAmount: 200,
       confidence: "high"
     }
+  },
+  {
+    // Refill (1+1 of same product) → 2 × main volume. The "(+265ml 리필팩)" is an
+    // added unit, NOT a freebie, so it is kept and counted.
+    title: "비플레인 라하 토너 265ml 기획 (+265ml 리필팩)",
+    expected: { detected: true, unitType: "ml", unitAmount: 265, unitCount: 2, totalAmount: 530, confidence: "high" }
+  },
+  {
+    // "1+1" count promo with volume → 2 units.
+    title: "닥터지 레드 블레미쉬 세럼 30ml 1+1",
+    expected: { detected: true, unitType: "ml", unitAmount: 30, unitCount: 2, totalAmount: 60, confidence: "high" }
+  },
+  {
+    // Non-paren gift tail "+ 토너 20ml 증정" stripped → single 30ml (NOT 50ml/2).
+    title: "유세린 에피셀린 세럼 30ml + 토너 20ml 증정",
+    expected: { detected: true, unitType: "ml", unitAmount: 30, unitCount: 1, totalAmount: 30, confidence: "high" }
+  },
+  {
+    // "더블기획" = homogeneous ×2.
+    title: "넘버즈인 3번 도자기결 톤업베이지 선크림 50ml 더블기획",
+    expected: { detected: true, unitType: "ml", unitAmount: 50, unitCount: 2, totalAmount: 100, confidence: "high" }
   }
 ];
 
@@ -195,6 +216,27 @@ for (const [idx, tc] of testCases.entries()) {
   } else {
     console.log(`[Test Case ${idx + 1}] PASS: "${tc.title}"`);
   }
+}
+
+// Heterogeneous set (two different main products) → flagged, not priced as single.
+{
+  const het = extractPackageFromTitle('큐레이션 토너 100ml + 세럼 30ml');
+  const single = extractPackageFromTitle('비플레인 라하 토너 265ml');
+  if (het.heterogeneous !== true) { console.error(`  Fail: heterogeneous flag (got ${het.heterogeneous})`); failed = true; }
+  else console.log('  Pass: heterogeneous set flagged (100ml + 30ml)');
+  if (single.heterogeneous) { console.error('  Fail: single wrongly flagged heterogeneous'); failed = true; }
+  else console.log('  Pass: single not flagged heterogeneous');
+
+  const twoJong = extractPackageFromTitle('닥터지 레드 블레미쉬 포 맨 토너 진정올인원 2종 기획');
+  const device = extractPackageFromTitle('바이오힐보 NAD 세럼 30ml 슈링크 홈 디바이스 기획');
+  const dblBig = extractPackageFromTitle('브링그린 티트리 시카 딥클렌징폼 200ml 기획 (더블/대용량)');
+  if (twoJong.heterogeneous !== true) { console.error('  Fail: "2종" not flagged heterogeneous'); failed = true; }
+  else console.log('  Pass: "2종" flagged heterogeneous');
+  if (device.heterogeneous !== true) { console.error('  Fail: device bundle not flagged heterogeneous'); failed = true; }
+  else console.log('  Pass: device bundle flagged heterogeneous');
+  // "(더블/대용량)" is ambiguous → must NOT be counted as ×2 (treat as single).
+  if (dblBig.unitCount === 2) { console.error('  Fail: "(더블/대용량)" wrongly counted as ×2'); failed = true; }
+  else console.log('  Pass: "(더블/대용량)" not over-counted');
 }
 
 console.log('\n=== Running Normalizer Integration Tests ===');

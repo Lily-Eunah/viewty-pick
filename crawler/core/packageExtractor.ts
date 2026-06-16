@@ -8,20 +8,30 @@ export type PackageExtractionResult = {
   confidence: "high" | "medium" | "low";
   evidence: string | null;
   method: "regex" | "llm" | "manual";
+  // true when the title combines two DIFFERENT main products (e.g. 토너 100ml + 세럼
+  // 30ml, both 본품) — a per-unit price is not computable → caller excludes + flags.
+  heterogeneous?: boolean;
 };
 
 /**
- * Strip free-gift / sample / promo-only clauses so they are NOT mistaken for the
- * main product's quantity or volume. e.g. a "30ml 기획 (+에피셀린 세럼 7ml*2)" offer
- * is ONE 30ml unit plus free samples — the "(+...7ml*2)" must not become count=2.
- * Removes parenthetical groups that contain a gift marker (+/증정/사은품/샘플/미니/
- * 쇼핑백/덤/마스크) and trailing "+ 증정/사은품/샘플 …" tails. Leaves a bare additive
- * like "50ml+50ml" (a real bundle) untouched.
+ * Strip free-gift / sample / promo-only clauses so they are NOT counted as the
+ * main product's quantity or volume. A "(+에피셀린 세럼 7ml*2)" / "+ 토너 20ml 증정"
+ * is a freebie → removed. A "본품+리필" / "(+265ml 리필팩)" is an ADDED UNIT of the
+ * same product (1+1) → KEPT (counted as quantity downstream). A bare same-volume
+ * additive like "50ml+50ml" is also kept.
  */
 export function stripPromoGifts(title: string): string {
   return (title || '')
-    .replace(/\([^)]*(?:\+|증정|사은품|샘플|미니|쇼핑백|덤|마스크)[^)]*\)/g, ' ')
-    .replace(/\s*\+\s*(?:증정|사은품|샘플)[^,/]*/g, ' ')
+    // Parenthetical: a freebie unless it carries a refill/본품 (= an added unit).
+    .replace(/\(([^)]*)\)/g, (m: string, inner: string) => {
+      if (/리필|본품/.test(inner)) return m; // added unit (1+1) — keep for counting
+      if (/\+|증정|사은품|샘플|미니|트래블|여행용|파우치|키트|쇼핑백|덤|마스크/.test(inner)) return ' ';
+      return m;
+    })
+    // Non-paren gift tail: "+ … 증정/사은품/샘플/기프트" (gift word before next +/end).
+    .replace(/\+[^+()]*?(?:증정|사은품|샘플|기프트)[^+()]*/g, ' ')
+    // Named freebie after +: "+ 여행용/미니/트래블/파우치/키트 …".
+    .replace(/\+\s*(?:여행용|미니|트래블|파우치|키트|쇼핑백)[^+()]*/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -73,11 +83,68 @@ export function extractPackageFromTitle(title: string): PackageExtractionResult 
         unitAmount: isIdentical ? amt1 : null,
         unitCount: 2,
         totalAmount: total,
+        // identical → a 1+1 homogeneous bundle; differing volumes → two different
+        // products combined (heterogeneous set), per-unit not computable.
         promoType: isIdentical ? "bundle" : "set",
         confidence: "high",
         evidence: addMatch[0],
         method: "regex",
+        heterogeneous: !isIdentical,
       };
+    }
+  }
+
+  // 1b. Refill / 본품+리필 (1+1 of the same product): one main unit + one refill.
+  //     e.g. "라하 토너 265ml 기획 (+265ml 리필팩)" / "…본품+리필" → 2 × the main volume.
+  if (/리필|본품\s*\+/.test(cleanTitle)) {
+    const volM = cleanTitle.match(/(\d+(?:\.\d+)?)\s*(ml|g)\b/i);
+    if (volM) {
+      const amt = parseFloat(volM[1]);
+      const type = volM[2].toLowerCase() as "ml" | "g";
+      if (amt >= 1 && amt <= 1000) {
+        return {
+          detected: true, unitType: type, unitAmount: amt, unitCount: 2, totalAmount: amt * 2,
+          promoType: "bundle", confidence: "high", evidence: '리필(1+1)', method: "regex",
+        };
+      }
+    }
+  }
+
+  // 1c. N+N count promo with no unit on the operands: "1+1", "2+1" → x+y units.
+  const plusRegex = /(?:^|[^0-9])([1-9])\s*\+\s*([1-9])(?![0-9])/;
+  const plusMatch = cleanTitle.match(plusRegex);
+  if (plusMatch) {
+    const x = parseInt(plusMatch[1], 10);
+    const y = parseInt(plusMatch[2], 10);
+    const count = x + y;
+    const volM = cleanTitle.match(/(\d+(?:\.\d+)?)\s*(ml|g)\b/i);
+    const amt = volM ? parseFloat(volM[1]) : null;
+    const type = (volM ? volM[2].toLowerCase() : 'count') as "ml" | "g" | "count";
+    if (count >= 2 && count <= 20) {
+      return {
+        detected: true,
+        unitType: amt !== null ? (type as "ml" | "g") : "count",
+        unitAmount: amt,
+        unitCount: count,
+        totalAmount: amt !== null ? amt * count : count,
+        promoType: "plus_one", confidence: "high", evidence: plusMatch[0].trim(), method: "regex",
+      };
+    }
+  }
+
+  // 1d. "더블기획/더블팩/더블구성" = homogeneous ×2 of the same product. Excludes the
+  //     ambiguous "(더블/대용량)" (often just a larger single, not a 2-pack).
+  if (/더블\s*(?:기획|팩|구성)/.test(cleanTitle) && !/대용량/.test(cleanTitle)) {
+    const volM = cleanTitle.match(/(\d+(?:\.\d+)?)\s*(ml|g)\b/i);
+    if (volM) {
+      const amt = parseFloat(volM[1]);
+      const type = volM[2].toLowerCase() as "ml" | "g";
+      if (amt >= 1 && amt <= 1000) {
+        return {
+          detected: true, unitType: type, unitAmount: amt, unitCount: 2, totalAmount: amt * 2,
+          promoType: "bundle", confidence: "high", evidence: '더블(×2)', method: "regex",
+        };
+      }
     }
   }
 
@@ -188,6 +255,21 @@ export function extractPackageFromTitle(title: string): PackageExtractionResult 
         method: "regex",
       };
     }
+  }
+
+  // 5b. Heterogeneous set: combines two DIFFERENT products → per-unit not computable
+  //     → flag so the caller excludes + flags for inspection. Signals:
+  //       - ≥2 DISTINCT main volumes (gift-stripped, non-additive): 토너100ml + 세럼30ml
+  //       - "N종" (2종/3종 = N different items)
+  //       - a device/기기 bundle (세럼 + 슈링크 홈 디바이스)
+  const allVols = [...cleanTitle.matchAll(/(\d+(?:\.\d+)?)\s*(?:ml|g)\b/gi)].map((m) => parseFloat(m[1]));
+  const heteroSignal = new Set(allVols).size >= 2 || /\d+\s*종/.test(cleanTitle) || /디바이스|기기/.test(cleanTitle);
+  if (heteroSignal) {
+    return {
+      detected: true, unitType: "unknown", unitAmount: null, unitCount: null, totalAmount: null,
+      promoType: "set", confidence: "low", evidence: 'heterogeneous (multi-volume / N종 / device)', method: "regex",
+      heterogeneous: true,
+    };
   }
 
   // 6. Single volume/weight: e.g. "60ml"
