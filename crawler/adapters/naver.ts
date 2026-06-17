@@ -437,23 +437,31 @@ export function buildAnchorQueries(brand: string | null, name: string): string[]
 //   Tier-2  official Naver brand-store offer matched by mallName  → 공식가
 //   Tier-3  가격비교 catalog lprice (no official store)            → 전판매처 최저가
 //   Tier-4  none of the above                                    → link-only
-// Every fallback price is NON-ANCHORED → always surfaced as warning (inspection):
-// the match is by fuzzy title identity, not the exact curated SKU. Identity is
-// STRICT (sim ≥ 0.6 on gift-stripped title + a distinctive core token + no form
-// conflict + volume agreement) to avoid pricing a different product/size.
+// Fallback adoption is NON-ANCHORED (fuzzy title identity, not the curated SKU), so
+// identity is STRICT (sim ≥ 0.6 on gift-stripped title + a distinctive core token +
+// no form conflict + volume agreement). Whether it is surfaced as warning depends on
+// price/link coherence (see fallbackPolicy + fetchOffer): an official-store price on
+// a non-affiliate listing also gets its buy link updated to that store → coherent →
+// no warning; an official-store price under a kept affiliate link, or any catalog
+// lprice, is warning (inspection).
 // ---------------------------------------------------------------------------
 
-// A Naver-HOSTED official store (smartstore/brand), not an external reseller mall.
-const NAVER_STORE_LINK_RE = /(?:smartstore|brand)\.naver\.com\/[^/]+\/products\//i;
+// A Naver-HOSTED individual store (smartstore/main, brand.naver, window-products),
+// NOT the 가격비교 catalog or an external reseller mall.
+const NAVER_STORE_LINK_RE =
+  /(?:(?:m\.)?smartstore\.naver\.com\/[^/]+\/products\/|brand\.naver\.com\/[^/]+\/products\/|shopping\.naver\.com\/window)/i;
 export function isNaverHostedStore(link?: string | null): boolean {
   return !!link && NAVER_STORE_LINK_RE.test(link);
 }
 
 /**
- * True when the offer is the brand's OWN official Naver store (smartstore/brand
- * host). Allowlist mallName is authoritative; else mallName must contain the brand
- * AND look official (공식/직영/본사 or the store name is essentially the brand alone),
- * so a reseller that merely name-drops the brand is not adopted.
+ * Official-mall gate (operator-confirmed, strict): an individual Naver-hosted store
+ * whose mallName CONTAINS the product brand name (a NECESSARY condition — a mall
+ * that does not carry the brand in its name is a reseller/other mall and is
+ * excluded). retailer_allowlist mallName, when present, is authoritative. The
+ * remaining confidence (single-product, right size) comes from the strict identity
+ * gate applied by the pickers, plus the always-warning/operator-review of every
+ * non-anchored adoption.
  */
 export function isOfficialBrandStoreOffer(
   item: NaverShoppingItem,
@@ -461,7 +469,7 @@ export function isOfficialBrandStoreOffer(
   brand: string | null
 ): boolean {
   if (!isIndividualMallOffer(item)) return false; // not a catalog representative
-  if (!isNaverHostedStore(item.link)) return false; // smartstore/brand host only
+  if (!isNaverHostedStore(item.link)) return false; // smartstore/brand/window host only
   const nm = normalizeMallName(item.mallName);
   if (!nm || nm === '네이버') return false;
   if (allowedStoreName) {
@@ -469,9 +477,31 @@ export function isOfficialBrandStoreOffer(
     return na.length > 0 && (nm.includes(na) || na.includes(nm));
   }
   if (!brand) return false;
+  // mallName must contain the brand (necessary condition).
   const nb = normalizeMallName(brand.replace(/\s*\([^)]*\)/g, '').split(' ')[0]);
-  if (nb.length < 2 || !nm.includes(nb)) return false;
-  return /(공식|직영|본사)/.test(nm) || nm === nb;
+  return nb.length >= 2 && nm.includes(nb);
+}
+
+/** Affiliate (monetized) Naver link = a naver.me short link ONLY (operator rule). */
+export function isNaverAffiliate(url?: string | null): boolean {
+  return !!url && /naver\.me\//i.test(url);
+}
+
+/**
+ * Link/warning policy for a NON-ANCHORED fallback adoption (operator 3-case rules):
+ *   - catalog (가격비교 lprice): keep the operator link, always warning (temp,
+ *     리셀러 가능·공식 아님 → operator manual price preferred).            [A3 / B3]
+ *   - official store + affiliate listing (naver.me): keep the affiliate buy link
+ *     (do NOT update), warning (price-owner ≠ link-owner; record affiliate). [A2]
+ *   - official store + non-affiliate listing: adopt the official price AND update
+ *     the buy link to that official store → price/link same owner → NO warning. [B2]
+ */
+export function fallbackPolicy(
+  tier: 'official-store' | 'catalog',
+  isAffiliate: boolean
+): { updateLink: boolean; warn: boolean } {
+  if (tier === 'catalog') return { updateLink: false, warn: true };
+  return isAffiliate ? { updateLink: false, warn: true } : { updateLink: true, warn: false };
 }
 
 /**
@@ -947,37 +977,48 @@ export class NaverAdapter implements RetailerAdapter {
     const parsedPrice = parseInt(item.lprice, 10);
     if (isNaN(parsedPrice)) throw new Error(`Failed to parse Naver price "${item.lprice}"`);
 
+    // Affiliate = a naver.me link (operator-entered or cached as affiliate_url). The
+    // affiliate buy link is monetized and must NEVER be replaced (Case A).
+    const isAffiliate = isNaverAffiliate(listing.url) || isNaverAffiliate(listing.affiliate_url);
+
     // ── Non-anchored fallback (Tier-2 official store / Tier-3 catalog) ─────────
-    // Price kept but ALWAYS warning (inspectionWarning). Buy-link rule (the /go
-    // redirect prefers affiliate_url → latest_matched_url → url):
-    //   - affiliate listing (naver.me / has affiliate_url) → NEVER change the buy
-    //     link (monetization): leave matchedUrl null so latest_matched_url is not
-    //     overwritten; if the matched price is from an official store, flag the
-    //     possible price/link-owner mismatch in the warning.
-    //   - non-affiliate (brand/smartstore) → may update to the matched store URL.
-    //   - catalog price-comparison URL is never a buy link → matchedUrl stays null.
+    // Price/link handling follows the operator 3-case rules via fallbackPolicy:
+    //   A2 official + affiliate  → keep naver.me link, warning, record affiliate URL.
+    //   B2 official + non-affil. → update buy link to the official store, NO warning.
+    //   A3/B3 catalog            → keep operator link, warning (temp · 공식 아님).
     if (result.fallbackTier) {
-      const isAffiliate = /naver\.me\//i.test(listing.url) || !!listing.affiliate_url;
-      let inspectionWarning: string;
-      let matchedUrl: string | null;
+      const { updateLink, warn } = fallbackPolicy(result.fallbackTier, isAffiliate);
+      const priceStr = parsedPrice.toLocaleString('ko-KR');
+      let inspectionWarning: string | null = null;
+      let matchedUrl: string | null = null;
       let matchedMallName: string | null;
       let storeName: string | null;
+      let sourceText: string;
+
       if (result.fallbackTier === 'official-store') {
-        inspectionWarning =
-          `비앵커 공식몰 매칭(검수): ${item.mallName} ${parsedPrice.toLocaleString('ko-KR')}원` +
-          (isAffiliate ? ' · 구매링크=어필리에이트 유지(가격주체 불일치 가능)' : '');
-        matchedUrl = isAffiliate ? null : item.link || null;
+        matchedUrl = updateLink ? item.link || null : null; // B2 updates; A2 keeps affiliate
         matchedMallName = item.mallName || null;
         storeName = allowedStoreName || item.mallName;
+        if (warn) {
+          // A2: price from an official store but buy link stays the affiliate → record
+          // the affiliate URL (for later affiliate-application review) + flag mismatch.
+          inspectionWarning =
+            `비앵커 공식몰 매칭(검수): ${item.mallName} ${priceStr}원 · 구매링크=어필리에이트 유지(가격주체 불일치 가능) · affiliate=${listing.url}`;
+          sourceText = `Naver official-store fallback (affiliate kept): ${stripHtml(item.title)} — affiliate=${listing.url} — ${result.reason}`;
+        } else {
+          // B2: link updated to the official store → price/link same owner → coherent.
+          sourceText = `Naver official-store match (link → 공식몰): ${stripHtml(item.title)} — ${result.reason}`;
+        }
       } else {
-        // catalog
-        inspectionWarning = `비앵커 · 가격비교 최저가(리셀러 가능 · 공식 스토어 아님): ${parsedPrice.toLocaleString('ko-KR')}원`;
-        matchedUrl = null;
+        // catalog (A3/B3): all-sellers lowest; not the official store → always warning.
         matchedMallName = '네이버 가격비교';
         storeName = null;
+        inspectionWarning = `비앵커 · 가격비교 최저가(리셀러 가능 · 공식 스토어 아님, 임시): ${priceStr}원`;
+        sourceText = `Naver catalog lprice fallback (temp): ${stripHtml(item.title)} — ${result.reason}`;
       }
+
       console.warn(
-        `[Naver Adapter] anchor-miss ${result.fallbackTier} fallback for product ${product.id} (${product.name}) → ${parsedPrice}원 [warning] — ${result.reason}`
+        `[Naver Adapter] anchor-miss ${result.fallbackTier} fallback for product ${product.id} (${product.name}) → ${parsedPrice}원 ${warn ? '[warning]' : '[ok, link→공식몰]'} — ${result.reason}`
       );
       return {
         regularPrice: null, // fallback gives only a current price, no 정가 baseline
@@ -985,17 +1026,18 @@ export class NaverAdapter implements RetailerAdapter {
         inStock: true,
         promoType: 'none',
         promoText: null,
-        sourceText: `Naver ${result.fallbackTier} fallback: ${stripHtml(item.title)} — ${result.reason}`,
+        sourceText,
         storeName,
         parsedVolumeRaw: result.parsedVolumeRaw,
         matchedUrl,
         matchedMallName,
         inspectionWarning,
-        outcome: 'ok', // priced; healthcheck downgrades to warning via inspectionWarning
+        outcome: 'ok', // priced; healthcheck downgrades to warning when inspectionWarning set
       };
     }
 
-    // Tier-1: anchored to the curated SKU — the trusted price (no warning).
+    // Tier-1: anchored to the curated SKU — the trusted price (no warning). For an
+    // affiliate (naver.me) listing the buy link is never overwritten (matchedUrl null).
     return {
       regularPrice: null, // Shopping API returns only the lowest price (lprice)
       salePrice: parsedPrice,
@@ -1005,7 +1047,7 @@ export class NaverAdapter implements RetailerAdapter {
       sourceText: `Naver API match: ${stripHtml(item.title)} (${item.productId})`,
       storeName: allowedStoreName || item.mallName,
       parsedVolumeRaw: result.parsedVolumeRaw,
-      matchedUrl: item.link || null,
+      matchedUrl: isAffiliate ? null : item.link || null,
       matchedMallName: item.mallName || null,
       outcome: 'ok',
     };
