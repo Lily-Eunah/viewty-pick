@@ -474,6 +474,31 @@ const OY_MALL = '올리브영';
 const OY_MIN_SIMILARITY = 0.4; // below → no confident OY offer (Tier 4 link-only)
 const OY_AUTO_PRICE_SIMILARITY = 0.6; // HIGH band: only ≥ this AND a core token → auto-price
 
+// Cross-seller price-outlier rejection (operator decision: NO keyword exclusion —
+// a 디바이스/번들 may be a legit product; reject only on PRICE). A candidate priced
+// outside [ref/RATIO, ref×RATIO] of a reference price is dropped as an outlier.
+// Reference priority: ① an injected same-product other-seller (쿠팡/네이버) matched
+// price, else ② the median of the Naver search-result price distribution. Started
+// conservative (2.5×) so a normal candidate is never cut.
+const OY_OUTLIER_RATIO = 2.5;
+// Need a meaningful distribution before trusting the median as the ② reference —
+// with too few offers the median ≈ the candidates themselves (no signal) → skip
+// outlier rejection and lean on the 단품 rule only ("참조 빈약 → 보수적").
+const OY_MIN_DISTRIBUTION = 4;
+
+/** Median of positive finite numbers (null when none). */
+function medianPrice(nums: number[]): number | null {
+  const xs = nums.filter((n) => Number.isFinite(n) && n > 0).sort((a, b) => a - b);
+  if (xs.length === 0) return null;
+  const mid = Math.floor(xs.length / 2);
+  return xs.length % 2 ? xs[mid] : (xs[mid - 1] + xs[mid]) / 2;
+}
+
+/** A price is within the trusted band around a reference (not an outlier). */
+function priceInBand(price: number, ref: number): boolean {
+  return price >= ref / OY_OUTLIER_RATIO && price <= ref * OY_OUTLIER_RATIO;
+}
+
 // Marketing / packaging words that are NOT product-distinctive — stripped when
 // deriving the "core" tokens that must appear in an OY title to auto-price.
 const PROMO_WORDS = new Set([
@@ -500,7 +525,11 @@ export function distinctiveTokens(name: string): string[] {
  * Stays loose (no strict variant tokens — promo/influencer noise tolerated); the
  * band only gates AUTO-PRICE, never drops a product.
  */
-export function pickOliveYoungOffer(items: NaverShoppingItem[], productName: string): OfferMatchResult {
+export function pickOliveYoungOffer(
+  items: NaverShoppingItem[],
+  productName: string,
+  referencePrice?: number | null
+): OfferMatchResult {
   const oy = items.filter((it) => isIndividualMallOffer(it) && normalizeMallName(it.mallName) === OY_MALL);
   if (oy.length === 0) {
     return { matched: null, parsedVolumeRaw: null, identityScore: null, reason: 'no 올리브영 offer on Naver (Tier 4 link-only)' };
@@ -517,25 +546,72 @@ export function pickOliveYoungOffer(items: NaverShoppingItem[], productName: str
   if (scored.length === 0 || scored[0].s < OY_MIN_SIMILARITY) {
     return { matched: null, parsedVolumeRaw: null, identityScore: scored[0]?.s ?? null, reason: `no confident 올리브영 offer (best ${(scored[0]?.s ?? 0).toFixed(2)} < ${OY_MIN_SIMILARITY}) — Tier 4 link-only` };
   }
-  const top = scored[0];
-  // Ambiguous: two OY candidates almost equally similar but different prices.
-  if (scored.length > 1 && top.s - scored[1].s < 0.1 && top.it.lprice !== scored[1].it.lprice) {
-    return { matched: null, parsedVolumeRaw: null, identityScore: top.s, reason: `multiple close 올리브영 candidates (${top.it.lprice}/${scored[1].it.lprice}) — hold/inspection`, needsInspection: true };
+
+  // Disambiguate among multiple plausible OY candidates BEFORE the band check, so a
+  // cross-seller price-outlier (e.g. a 157,700 device 기획 next to a 39,000 단품)
+  // cannot become the chosen `top` or force a needless hold. No keyword exclusion —
+  // a 디바이스/번들 is dropped only via the 단품 rule or a pure price outlier.
+  let candidates = scored;
+  if (candidates.length > 1) {
+    // (1) "단품" literal preference — an explicit single-unit label outranks 기획/증정
+    //     siblings (바이오힐보 …30ml [단품/기획] 39,000; 몰바니 …단품 18,900).
+    const danpum = candidates.filter((x) => /단품/.test(stripHtml(x.it.title)));
+    if (danpum.length > 0 && danpum.length < candidates.length) candidates = danpum;
   }
-  const ext = extractPackageFromTitle(top.t);
-  if (ext.heterogeneous) {
-    return { matched: null, parsedVolumeRaw: null, identityScore: top.s, reason: '올리브영 offer is a heterogeneous set — hold/inspection', needsInspection: true };
+  if (candidates.length > 1) {
+    // (2) Price-outlier rejection vs a reference price. ① an injected other-seller
+    //     matched price; else ② the median of the search-result distribution (only
+    //     trusted when the distribution is broad enough — otherwise too thin → skip).
+    const distribution = items
+      .filter(isIndividualMallOffer)
+      .map((it) => parseInt(it.lprice, 10));
+    const median = medianPrice(distribution);
+    const ref =
+      referencePrice && referencePrice > 0
+        ? referencePrice
+        : distribution.filter((n) => Number.isFinite(n) && n > 0).length >= OY_MIN_DISTRIBUTION
+          ? median
+          : null;
+    if (ref) {
+      const inBand = candidates.filter((x) => priceInBand(parseInt(x.it.lprice, 10), ref));
+      // Only prune when it removes outliers AND leaves at least one in-band candidate.
+      if (inBand.length > 0 && inBand.length < candidates.length) candidates = inBand;
+    }
   }
+
   // Core-token guard: a distinctive token of the curated name must be in the title.
   const distinct = distinctiveTokens(productName);
-  const titleNorm = top.t.toLowerCase().replace(/\s+/g, '');
-  const coreTokenPresent = distinct.length === 0 || distinct.some((t) => titleNorm.includes(t));
-  if (top.s >= OY_AUTO_PRICE_SIMILARITY && coreTokenPresent) {
+  const hasCoreToken = (t: string): boolean => {
+    const tn = t.toLowerCase().replace(/\s+/g, '');
+    return distinct.length === 0 || distinct.some((d) => tn.includes(d));
+  };
+
+  // "동일 제품명 후보 중 최저가" (operator decision): among the candidates that EACH pass
+  // the auto-price band (sim ≥ HIGH, a core token present, not a heterogeneous set),
+  // adopt the CHEAPEST — they are the same product, so the lowest price is the best
+  // offer. This replaces the previous "two close different-price → hold": close
+  // same-product prices now resolve to the lowest (바이오힐보 39,000, 몰바니 18,900).
+  const adoptable = candidates.filter(
+    (c) => c.s >= OY_AUTO_PRICE_SIMILARITY && hasCoreToken(c.t) && !extractPackageFromTitle(c.t).heterogeneous
+  );
+  if (adoptable.length > 0) {
+    const chosen = adoptable.reduce(
+      (lo, c) => (parseInt(c.it.lprice, 10) < parseInt(lo.it.lprice, 10) ? c : lo),
+      adoptable[0]
+    );
+    const ext = extractPackageFromTitle(chosen.t);
     const parsedVolumeRaw = ext.detected && ext.unitType === 'ml' && ext.unitAmount !== null ? ext.unitAmount : null;
     const qty = ext.unitCount && ext.unitCount > 1 ? ext.unitCount : 1;
-    return { matched: top.it, parsedVolumeRaw, identityScore: top.s, reason: `올리브영 match (sim ${top.s.toFixed(2)})${qty > 1 ? ` ×${qty} (per-unit)` : ''}` };
+    const note = adoptable.length > 1 ? `, lowest of ${adoptable.length}` : '';
+    return { matched: chosen.it, parsedVolumeRaw, identityScore: chosen.s, reason: `올리브영 match (sim ${chosen.s.toFixed(2)}${note})${qty > 1 ? ` ×${qty} (per-unit)` : ''}` };
   }
-  // Plausible but below the auto-price band → hold for manual_override.
+
+  // No candidate qualifies for auto-price → hold for manual_override. Report the top
+  // candidate's reason (heterogeneous set, or below band / no core token).
+  const top = candidates[0];
+  if (extractPackageFromTitle(top.t).heterogeneous) {
+    return { matched: null, parsedVolumeRaw: null, identityScore: top.s, reason: '올리브영 offer is a heterogeneous set — hold/inspection', needsInspection: true };
+  }
   return {
     matched: null, parsedVolumeRaw: null, identityScore: top.s,
     reason: `올리브영 below auto-price band (sim ${top.s.toFixed(2)}${top.s >= OY_AUTO_PRICE_SIMILARITY ? ', no core token' : ''}) — hold/inspection`,
