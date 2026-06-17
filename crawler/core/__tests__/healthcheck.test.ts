@@ -204,6 +204,25 @@ it('store name NOT in allowlist → status=failed', () => {
   expect(result.message).toContain('allowlist');
 });
 
+console.log('\n--- inspectionWarning (non-anchored fallback) ---');
+it('offer.inspectionWarning → status=warning (price kept for inspection)', () => {
+  const result = runHealthCheck(
+    PRODUCT, LISTING,
+    baseOffer({ inspectionWarning: '비앵커 공식몰 매칭(검수): 에뛰드 본사직영샵 24,200원' }),
+    norm(), null, []
+  );
+  expect(result.status).toBe('warning');
+  expect(result.message).toContain('비앵커');
+});
+it('a sub-1,000 price still FAILS even with inspectionWarning (hard rule wins)', () => {
+  const result = runHealthCheck(
+    PRODUCT, LISTING,
+    baseOffer({ salePrice: 500, inspectionWarning: 'x' }),
+    norm({ sale_price: 500 }), null, []
+  );
+  expect(result.status).toBe('failed');
+});
+
 console.log('\n--- 정상 케이스 ---');
 it('clean price, no issues → status=ok', () => {
   const result = runHealthCheck(

@@ -20,6 +20,10 @@ import {
   buildAnchorQueries,
   pickOliveYoungOffer,
   distinctiveTokens,
+  isNaverHostedStore,
+  isOfficialBrandStoreOffer,
+  pickOfficialStoreFallback,
+  pickCatalogFallback,
   NaverShoppingItem,
   OfferMatchInput,
 } from '../naver';
@@ -342,6 +346,64 @@ it('OY no reference + no 단품, two close prices → adopt the lowest (몰바�
   const b = oyItem({ title: '몰바니 비타민C 세럼 30ml', lprice: '18900', link: 'https://smartstore.naver.com/x/products/881' });
   const r = pickOliveYoungOffer([a, b], '몰바니 비타민C 세럼');
   assert(r.matched !== null && r.matched.lprice === '18900', `same product → lowest 18,900, got ${r.matched?.lprice}`);
+});
+
+console.log('\n--- anchor-miss fallback: official Naver store (Tier-2) ---');
+it('isNaverHostedStore: smartstore/brand product links only', () => {
+  assert(isNaverHostedStore('https://smartstore.naver.com/etude/products/123'), 'smartstore');
+  assert(isNaverHostedStore('https://brand.naver.com/cosrx/products/9'), 'brand');
+  assert(!isNaverHostedStore('https://www.coupang.com/vp/products/1'), 'coupang not naver-hosted');
+  assert(!isNaverHostedStore('https://search.shopping.naver.com/catalog/123'), 'catalog not a store');
+});
+it('isOfficialBrandStoreOffer: brand-alone naver store → true; reseller → false', () => {
+  const official = item({ mallName: '코스알엑스', link: 'https://smartstore.naver.com/cosrx/products/5', productType: '2' });
+  const direct = item({ mallName: '에뛰드 본사직영샵', link: 'https://brand.naver.com/etude/products/7', productType: '2' });
+  const reseller = item({ mallName: '코스알엑스러버', link: 'https://smartstore.naver.com/lover/products/5', productType: '2' });
+  const external = item({ mallName: '코스알엑스', link: 'https://www.coupang.com/vp/products/5', productType: '2' });
+  assert(isOfficialBrandStoreOffer(official, null, '코스알엑스') === true, 'brand-alone store');
+  assert(isOfficialBrandStoreOffer(direct, null, '에뛰드') === true, '본사직영 store');
+  assert(isOfficialBrandStoreOffer(reseller, null, '코스알엑스') === false, 'brand-namedrop reseller excluded');
+  assert(isOfficialBrandStoreOffer(external, null, '코스알엑스') === false, 'non-naver-hosted excluded');
+});
+it('pickOfficialStoreFallback matches official store single → fallbackTier official-store', () => {
+  const off = item({ title: '코스알엑스 아드보훼이셜 토너 150ml', mallName: '코스알엑스', link: 'https://smartstore.naver.com/cosrx/products/5', lprice: '21390', productType: '2' });
+  const r = pickOfficialStoreFallback([off], { brand: '코스알엑스', name: '코스알엑스 아드보훼이셜 토너', volumeMl: 150, allowedStoreName: null });
+  assert(r.matched !== null && r.matched.lprice === '21390', `should match official store, got ${r.matched?.lprice}`);
+  assert(r.fallbackTier === 'official-store', `fallbackTier expected official-store, got ${r.fallbackTier}`);
+});
+it('pickOfficialStoreFallback prefers curated volume among multi-size (500 vs 350)', () => {
+  const big = item({ title: '에뛰드 순정 약산성 클렌징폼 500ml', mallName: '에뛰드', link: 'https://brand.naver.com/etude/products/1', lprice: '30000', productType: '2', productId: 'A' });
+  const cur = item({ title: '에뛰드 순정 약산성 클렌징폼 350ml', mallName: '에뛰드', link: 'https://brand.naver.com/etude/products/2', lprice: '24200', productType: '2', productId: 'B' });
+  const r = pickOfficialStoreFallback([big, cur], { brand: '에뛰드', name: '에뛰드 순정 약산성 클렌징폼', volumeMl: 350, allowedStoreName: null });
+  assert(r.matched !== null && r.matched.lprice === '24200', `should pick the 350ml curated size, got ${r.matched?.lprice}`);
+});
+it('pickOfficialStoreFallback: reseller-only results → no match', () => {
+  const reseller = item({ title: '코스알엑스 토너 150ml', mallName: '쿠팡', link: 'https://www.coupang.com/vp/products/5', lprice: '15000', productType: '2' });
+  const r = pickOfficialStoreFallback([reseller], { brand: '코스알엑스', name: '코스알엑스 토너', volumeMl: 150, allowedStoreName: null });
+  assert(r.matched === null, 'reseller is not an official store');
+});
+it('pickOfficialStoreFallback: form conflict (토너 vs 크림) → no match', () => {
+  const wrong = item({ title: '코스알엑스 아드보훼이셜 크림 100ml', mallName: '코스알엑스', link: 'https://smartstore.naver.com/cosrx/products/9', lprice: '21390', productType: '2' });
+  const r = pickOfficialStoreFallback([wrong], { brand: '코스알엑스', name: '코스알엑스 아드보훼이셜 토너', volumeMl: 150, allowedStoreName: null });
+  assert(r.matched === null, 'different form (크림 vs 토너) must be excluded');
+});
+
+console.log('\n--- anchor-miss fallback: 가격비교 catalog lprice (Tier-3) ---');
+it('pickCatalogFallback matches catalog item → fallbackTier catalog', () => {
+  const cat = item({ title: '넘버즈인 5번 시카 베리어 크림 50ml', mallName: '네이버', link: 'https://search.shopping.naver.com/catalog/4567', lprice: '17900', productType: '1' });
+  const r = pickCatalogFallback([cat], '넘버즈인 5번 시카 베리어 크림', 50);
+  assert(r.matched !== null && r.matched.lprice === '17900', `catalog lprice expected, got ${r.matched?.lprice}`);
+  assert(r.fallbackTier === 'catalog', `fallbackTier expected catalog, got ${r.fallbackTier}`);
+});
+it('pickCatalogFallback ignores lprice=0 catalog rows', () => {
+  const empty = item({ title: '넘버즈인 5번 시카 크림 50ml', mallName: '네이버', link: 'https://search.shopping.naver.com/catalog/1', lprice: '0', productType: '1' });
+  const r = pickCatalogFallback([empty], '넘버즈인 5번 시카 크림', 50);
+  assert(r.matched === null, 'lprice 0 catalog should be skipped');
+});
+it('pickCatalogFallback: low identity → no match', () => {
+  const other = item({ title: '조선미녀 맑은쌀 선크림 50ml', mallName: '네이버', link: 'https://search.shopping.naver.com/catalog/2', lprice: '20000', productType: '1' });
+  const r = pickCatalogFallback([other], '넘버즈인 5번 시카 베리어 크림', 50);
+  assert(r.matched === null, 'different product must not catalog-match');
 });
 
 // ---------------------------------------------------------------------------
