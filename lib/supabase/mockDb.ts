@@ -33,8 +33,9 @@ function getInitialState(): MockDBState {
     { id: 1, slug: 'oliveyoung', name: '올리브영', priority: 1, collect_method: 'crawl', is_affiliate_supported: true, is_price_comparison_enabled: true, is_trusted: true },
     { id: 2, slug: 'coupang', name: '쿠팡', priority: 2, collect_method: 'api', is_affiliate_supported: true, is_price_comparison_enabled: true, is_trusted: true },
     { id: 3, slug: 'naver', name: '네이버스토어', priority: 3, collect_method: 'api', is_affiliate_supported: true, is_price_comparison_enabled: true, is_trusted: true },
-    { id: 4, slug: 'zigzag', name: '지그재그', priority: 4, collect_method: 'crawl', is_affiliate_supported: true, is_price_comparison_enabled: true, is_trusted: true },
-    { id: 5, slug: 'ably', name: '에이블리', priority: 5, collect_method: 'crawl', is_affiliate_supported: true, is_price_comparison_enabled: true, is_trusted: true },
+    // zigzag/ably: seeded link-only for future expansion, not yet crawled → gated out of the UI (is_price_comparison_enabled=false). Listing data stays; flip to true to surface.
+    { id: 4, slug: 'zigzag', name: '지그재그', priority: 4, collect_method: 'crawl', is_affiliate_supported: true, is_price_comparison_enabled: false, is_trusted: true },
+    { id: 5, slug: 'ably', name: '에이블리', priority: 5, collect_method: 'crawl', is_affiliate_supported: true, is_price_comparison_enabled: false, is_trusted: true },
   ];
 
   const categories: Category[] = defaultCategories;

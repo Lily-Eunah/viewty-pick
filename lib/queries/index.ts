@@ -79,6 +79,22 @@ export function resolveDisplayImage(
 }
 
 /**
+ * Seller display gate: only sellers flagged for price comparison surface in the
+ * UI. zigzag/ably are seeded link-only for future expansion (no crawler yet) and
+ * carry is_price_comparison_enabled=false — their listing data stays in the DB but
+ * is gated out of every render path (stores, link-only rows, lowest/official calc).
+ * Flip the flag to true to surface them again. A missing seller is excluded too,
+ * so an orphan listing never leaks in as a '기타' row.
+ */
+export function isSellerDisplayed(
+  seller: { is_price_comparison_enabled?: boolean } | undefined
+): boolean {
+  return !!seller && seller.is_price_comparison_enabled === true;
+}
+
+type DbSeller = { id: number; slug: string; name: string; is_price_comparison_enabled: boolean };
+
+/**
  * Maps database tables to unified UIProduct structure.
  */
 function mapToUIProduct(
@@ -89,7 +105,7 @@ function mapToUIProduct(
   dbProductBadges: ProductBadge[],
   dbBadges: Badge[],
   dbListingPrices: PublicListingPrice[],
-  dbSellers: { id: number; slug: string; name: string }[]
+  dbSellers: DbSeller[]
 ): UIProduct {
   const category = dbCategories.find((c) => c.id === prod.category_id);
   // Parent major (대분류) of this product's minor category — for major-page aggregation.
@@ -118,7 +134,15 @@ function mapToUIProduct(
 
   // Build stores: a priced row when the listing has a displayable price, else a
   // link-only row (tier-4: still show the seller with a "보기" link, no price).
-  const prodListings = dbListings.filter((l) => l.product_id === prod.id && l.is_active);
+  // Single display gate (covers priced / link-only / lowest / 공식몰대비): only
+  // listings whose seller is display-enabled pass — non-display sellers
+  // (zigzag/ably) and orphan listings are dropped here, before any calc.
+  const prodListings = dbListings.filter(
+    (l) =>
+      l.product_id === prod.id &&
+      l.is_active &&
+      isSellerDisplayed(dbSellers.find((s) => s.id === l.seller_id))
+  );
   const stores: UIStorePrice[] = prodListings.map((listing): UIStorePrice => {
     const seller = dbSellers.find((s) => s.id === listing.seller_id);
     const lp = dbListingPrices.find((p) => p.listing_id === listing.id);
@@ -246,7 +270,7 @@ interface RawData {
   dbProductBadges: ProductBadge[];
   dbBadges: Badge[];
   dbListingPrices: PublicListingPrice[];
-  dbSellers: { id: number; slug: string; name: string }[];
+  dbSellers: DbSeller[];
 }
 
 const fetchAllData = cache(async (): Promise<RawData> => {
@@ -258,7 +282,7 @@ const fetchAllData = cache(async (): Promise<RawData> => {
       supabase.from('categories').select('*'),
       supabase.from('product_badges').select('*'),
       supabase.from('badges').select('*'),
-      supabase.from('sellers').select('id, slug, name'),
+      supabase.from('sellers').select('id, slug, name, is_price_comparison_enabled'),
       supabase.from('listing_prices_public').select('*'),
     ]);
 
@@ -456,7 +480,7 @@ export const getProductDetailPageData = cache(async (slug: string): Promise<{ pr
       supabase.from('listings').select('*').eq('product_id', prodRow.id).eq('is_active', true),
       supabase.from('product_badges').select('*').eq('product_id', prodRow.id),
       supabase.from('categories').select('*'),
-      supabase.from('sellers').select('id, slug, name'),
+      supabase.from('sellers').select('id, slug, name, is_price_comparison_enabled'),
       supabase.from('badges').select('*'),
     ]);
 
@@ -469,7 +493,7 @@ export const getProductDetailPageData = cache(async (slug: string): Promise<{ pr
       prodRow as Product, (listRes.data ?? []) as Listing[], [],
       (catRes.data ?? []) as Category[], (pbRes.data ?? []) as ProductBadge[],
       (badgeRes.data ?? []) as Badge[], (lpData ?? []) as PublicListingPrice[],
-      (selRes.data ?? []) as { id: number; slug: string; name: string }[],
+      (selRes.data ?? []) as DbSeller[],
     );
 
     const { data: relRows } = await supabase
@@ -492,7 +516,7 @@ export const getProductDetailPageData = cache(async (slug: string): Promise<{ pr
           p, (relListRes.data ?? []) as Listing[], [],
           (catRes.data ?? []) as Category[], (relPbRes.data ?? []) as ProductBadge[],
           (badgeRes.data ?? []) as Badge[], (relLpData ?? []) as PublicListingPrice[],
-          (selRes.data ?? []) as { id: number; slug: string; name: string }[],
+          (selRes.data ?? []) as DbSeller[],
         )
       );
     }

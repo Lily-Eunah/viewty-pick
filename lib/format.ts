@@ -1,3 +1,19 @@
+import { UIProduct } from './types';
+
+/**
+ * "비교" label source: names of sellers that contributed an actual price.
+ * Link-only / no-price sellers (e.g. a Naver link-only row) are excluded so the
+ * "○○ · ○○ 비교" tagline only names platforms a real price came from. Returns ''
+ * when no priced seller exists — callers hide the label in that case.
+ */
+export function pricedStoreNames(product: UIProduct, max = 3): string {
+  return product.stores
+    .filter((s) => s.hasPrice)
+    .map((s) => s.name)
+    .slice(0, max)
+    .join(' · ');
+}
+
 /**
  * Formats a number to Korean Won currency format.
  * Example: 9900 -> '9,900원'
