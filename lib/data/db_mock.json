@@ -75,7 +75,7 @@
       "priority": 4,
       "collect_method": "crawl",
       "is_affiliate_supported": true,
-      "is_price_comparison_enabled": true,
+      "is_price_comparison_enabled": false,
       "is_trusted": true
     },
     {
@@ -85,7 +85,7 @@
       "priority": 5,
       "collect_method": "crawl",
       "is_affiliate_supported": true,
-      "is_price_comparison_enabled": true,
+      "is_price_comparison_enabled": false,
       "is_trusted": true
     }
   ],
