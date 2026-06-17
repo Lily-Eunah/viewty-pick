@@ -22,6 +22,8 @@ import {
   distinctiveTokens,
   isNaverHostedStore,
   isOfficialBrandStoreOffer,
+  isNaverAffiliate,
+  fallbackPolicy,
   pickOfficialStoreFallback,
   pickCatalogFallback,
   NaverShoppingItem,
@@ -355,15 +357,39 @@ it('isNaverHostedStore: smartstore/brand product links only', () => {
   assert(!isNaverHostedStore('https://www.coupang.com/vp/products/1'), 'coupang not naver-hosted');
   assert(!isNaverHostedStore('https://search.shopping.naver.com/catalog/123'), 'catalog not a store');
 });
-it('isOfficialBrandStoreOffer: brand-alone naver store → true; reseller → false', () => {
+it('isOfficialBrandStoreOffer: mallName MUST contain the brand (necessary); else excluded', () => {
   const official = item({ mallName: '코스알엑스', link: 'https://smartstore.naver.com/cosrx/products/5', productType: '2' });
   const direct = item({ mallName: '에뛰드 본사직영샵', link: 'https://brand.naver.com/etude/products/7', productType: '2' });
-  const reseller = item({ mallName: '코스알엑스러버', link: 'https://smartstore.naver.com/lover/products/5', productType: '2' });
+  const noBrand = item({ mallName: '메가코스', link: 'https://smartstore.naver.com/megacos/products/5', productType: '2' });
   const external = item({ mallName: '코스알엑스', link: 'https://www.coupang.com/vp/products/5', productType: '2' });
-  assert(isOfficialBrandStoreOffer(official, null, '코스알엑스') === true, 'brand-alone store');
-  assert(isOfficialBrandStoreOffer(direct, null, '에뛰드') === true, '본사직영 store');
-  assert(isOfficialBrandStoreOffer(reseller, null, '코스알엑스') === false, 'brand-namedrop reseller excluded');
+  assert(isOfficialBrandStoreOffer(official, null, '코스알엑스') === true, 'brand in mallName → official');
+  assert(isOfficialBrandStoreOffer(direct, null, '에뛰드') === true, '본사직영 store (brand contained)');
+  assert(isOfficialBrandStoreOffer(noBrand, null, '코스알엑스') === false, 'brand NOT in mallName → excluded');
   assert(isOfficialBrandStoreOffer(external, null, '코스알엑스') === false, 'non-naver-hosted excluded');
+});
+it('isOfficialBrandStoreOffer: allowlist mallName is authoritative', () => {
+  const off = item({ mallName: '에뛰드 본사직영샵', link: 'https://brand.naver.com/etude/products/7', productType: '2' });
+  assert(isOfficialBrandStoreOffer(off, '에뛰드 본사직영샵', '에뛰드') === true, 'allowlist match');
+});
+
+console.log('\n--- isNaverAffiliate / fallbackPolicy (3-case rules) ---');
+it('isNaverAffiliate: only naver.me is affiliate', () => {
+  assert(isNaverAffiliate('https://naver.me/abc') === true, 'naver.me affiliate');
+  assert(isNaverAffiliate('https://brand.naver.com/etude/products/7') === false, 'brand link not affiliate');
+  assert(isNaverAffiliate('https://smartstore.naver.com/x/products/1') === false, 'smartstore not affiliate');
+  assert(isNaverAffiliate(null) === false, 'null not affiliate');
+});
+it('fallbackPolicy: A2 official+affiliate → keep link + warn', () => {
+  const p = fallbackPolicy('official-store', true);
+  assert(p.updateLink === false && p.warn === true, 'A2 keep link, warning');
+});
+it('fallbackPolicy: B2 official+non-affiliate → update link, NO warn', () => {
+  const p = fallbackPolicy('official-store', false);
+  assert(p.updateLink === true && p.warn === false, 'B2 update link, no warning');
+});
+it('fallbackPolicy: catalog always warns, never updates link (A3/B3)', () => {
+  assert(fallbackPolicy('catalog', true).warn === true && fallbackPolicy('catalog', true).updateLink === false, 'A3');
+  assert(fallbackPolicy('catalog', false).warn === true && fallbackPolicy('catalog', false).updateLink === false, 'B3');
 });
 it('pickOfficialStoreFallback matches official store single → fallbackTier official-store', () => {
   const off = item({ title: '코스알엑스 아드보훼이셜 토너 150ml', mallName: '코스알엑스', link: 'https://smartstore.naver.com/cosrx/products/5', lprice: '21390', productType: '2' });
