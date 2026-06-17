@@ -286,11 +286,62 @@ it('OY gift-stripped scoring: 토너 set with "(+올인원크림)" gift → held
   const r = pickOliveYoungOffer([tonerGift], '닥터지 레드 블레미쉬 포 맨 진정 올인원');
   assert(r.matched === null, '토너 set (gift=올인원크림) must not auto-price as 올인원');
 });
-it('OY two close candidates, different prices → hold (ambiguous)', () => {
+it('OY two close same-product candidates → adopt the lowest price', () => {
   const a = oyItem({ title: '토리든 다이브인 포맨 올인원 200ml', lprice: '19700', link: 'https://smartstore.naver.com/x/products/741' });
   const b = oyItem({ title: '토리든 다이브인 포맨 올인원 200ml 리뉴얼', lprice: '22000', link: 'https://smartstore.naver.com/x/products/742' });
   const r = pickOliveYoungOffer([a, b], '토리든 다이브인 포맨 올인원');
-  assert(r.matched === null && r.needsInspection === true, 'close competing OY candidates → hold');
+  assert(r.matched !== null && r.matched.lprice === '19700', `same product → lowest price, got ${r.matched?.lprice}`);
+});
+
+console.log('\n--- pickOliveYoungOffer: cross-seller price-outlier / 단품 (no keyword exclusion) ---');
+it('OY "단품" literal preference: device 기획 157,700 vs [단품] 39,000 → picks 39,000', () => {
+  // The device 기획 would otherwise be heterogeneous → hold. The explicit "단품"
+  // label disambiguates to the single. Distribution is thin (no median ref) so this
+  // is driven purely by the 단품 rule, NOT by the 디바이스 keyword.
+  const device = oyItem({ title: '[슈링크홈디바이스] 바이오힐보 NAD 프리즈셀 글로우 파워 세럼 30ml 기획', lprice: '157700', link: 'https://smartstore.naver.com/x/products/861' });
+  const danpum = oyItem({ title: '바이오힐보 NAD 프리즈셀 글로우 파워 세럼 30ml [단품/기획]', lprice: '39000', link: 'https://smartstore.naver.com/x/products/862' });
+  const r = pickOliveYoungOffer([device, danpum], '바이오힐보 NAD 프리즈셀 글로우 파워 세럼');
+  assert(r.matched !== null && r.matched.lprice === '39000', `단품 should win, got ${r.matched?.lprice}`);
+});
+
+it('OY price-outlier rejection (no keyword, no 단품): drops 157,700 via search median → 39,000', () => {
+  // Neither candidate carries "단품"; the 157,700 is a plain (non-heterogeneous)
+  // single that would WRONGLY auto-price without the outlier rule. A broad search
+  // distribution (~33k–41k) makes 157,700 a price outlier (>2.5× median) → dropped.
+  const high = oyItem({ title: '바이오힐보 NAD 프리즈셀 글로우 파워 세럼 30ml 기획', lprice: '157700', link: 'https://smartstore.naver.com/x/products/863' });
+  const single = oyItem({ title: '바이오힐보 NAD 프리즈셀 글로우 파워 세럼 30ml', lprice: '39000', link: 'https://smartstore.naver.com/x/products/864' });
+  const dist = [
+    item({ title: '바이오힐보 NAD 세럼 30ml', mallName: '바이오힐보', lprice: '33000', link: 'https://smartstore.naver.com/b/products/1' }),
+    item({ title: '바이오힐보 NAD 세럼 30ml', mallName: '쿠팡', lprice: '36000', link: 'https://smartstore.naver.com/c/products/2' }),
+    item({ title: '바이오힐보 NAD 세럼 30ml', mallName: '롭스', lprice: '38000', link: 'https://smartstore.naver.com/d/products/3' }),
+    item({ title: '바이오힐보 NAD 세럼 30ml', mallName: '화해', lprice: '41000', link: 'https://smartstore.naver.com/e/products/4' }),
+  ];
+  const r = pickOliveYoungOffer([high, single, ...dist], '바이오힐보 NAD 프리즈셀 글로우 파워 세럼');
+  assert(r.matched !== null && r.matched.lprice === '39000', `outlier 157,700 should be dropped → 39,000, got ${r.matched?.lprice}`);
+});
+
+it('OY injected reference price drops the outlier (① other-seller match)', () => {
+  const high = oyItem({ title: '바이오힐보 NAD 세럼 30ml 기획', lprice: '157700', link: 'https://smartstore.naver.com/x/products/865' });
+  const single = oyItem({ title: '바이오힐보 NAD 세럼 30ml', lprice: '39000', link: 'https://smartstore.naver.com/x/products/866' });
+  const r = pickOliveYoungOffer([high, single], '바이오힐보 NAD 세럼', 38000);
+  assert(r.matched !== null && r.matched.lprice === '39000', `ref 38,000 should drop 157,700, got ${r.matched?.lprice}`);
+});
+
+it('OY keyword alone does NOT exclude: in-band device candidate is not dropped', () => {
+  // A device-keyword candidate priced IN-BAND (not an outlier) and the only single
+  // must NOT be excluded by the 디바이스 keyword (over-exclusion guard). Single vol.
+  const device = oyItem({ title: '메디큐브 에이지알 부스터 프로 디바이스 1개', lprice: '40000', link: 'https://smartstore.naver.com/x/products/867' });
+  const r = pickOliveYoungOffer([device], '메디큐브 에이지알 부스터 프로 디바이스');
+  // (heterogeneous device → still inspection per existing guard; the point is the
+  // keyword itself isn't a hard exclusion path — behavior comes from existing rules.)
+  assert(r.matched === null, 'single heterogeneous device → inspection (existing guard), not keyword-excluded match');
+});
+
+it('OY no reference + no 단품, two close prices → adopt the lowest (몰바니 18,900)', () => {
+  const a = oyItem({ title: '몰바니 비타민C 세럼 30ml 증정기획', lprice: '28000', link: 'https://smartstore.naver.com/x/products/882' });
+  const b = oyItem({ title: '몰바니 비타민C 세럼 30ml', lprice: '18900', link: 'https://smartstore.naver.com/x/products/881' });
+  const r = pickOliveYoungOffer([a, b], '몰바니 비타민C 세럼');
+  assert(r.matched !== null && r.matched.lprice === '18900', `same product → lowest 18,900, got ${r.matched?.lprice}`);
 });
 
 // ---------------------------------------------------------------------------
