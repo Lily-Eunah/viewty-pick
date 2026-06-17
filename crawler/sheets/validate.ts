@@ -4,12 +4,42 @@ const boolField    = z.union([z.boolean(), z.string().transform((v) => v.toLower
 // is_disabled: blank/false → active (is_active=true), 'true' → inactive (is_active=false)
 const disabledField = z.union([z.boolean(), z.string().transform((v) => v.toLowerCase() === 'true')]).default(false);
 
-// ─── categories ──────────────────────────────────────────────────────────────
-export const categoryRowSchema = z.object({
-  slug:       z.string().min(1),
-  name:       z.string().min(1),
-  sort_order: z.number().or(z.string().transform((v) => parseInt(v, 10) || 0)).default(0),
+// ─── _categories (single source of truth — replaces the old flat `categories` tab)
+// One row per minor (소분류); the major (대분류) is repeated across its minors.
+// Korean header names match the operator sheet Cowork set up.
+export const categoriesRefRowSchema = z.object({
+  대분류:      z.string().min(1),
+  대분류_slug: z.string().min(1),
+  소분류:      z.string().min(1),
+  소분류_slug: z.string().min(1),
+  sort_order:  z.number().or(z.string().transform((v) => parseInt(v, 10) || 0)).default(0),
 });
+
+export interface CategoryMajor { slug: string; name: string }
+export interface CategoryMinor { slug: string; name: string; sort_order: number; major_slug: string }
+
+/**
+ * Parse the `_categories` ref tab into deduped majors + minors. Majors are keyed
+ * by slug (repeated rows collapse to one); minors carry their parent major's slug
+ * so the importer can resolve parent_id after upserting the majors. Invalid rows
+ * are skipped and surfaced via `errors`.
+ */
+export function parseCategoriesRef(
+  rows: Record<string, string>[],
+): { majors: CategoryMajor[]; minors: CategoryMinor[]; errors: string[] } {
+  const majorsBySlug = new Map<string, CategoryMajor>();
+  const minorsBySlug = new Map<string, CategoryMinor>();
+  const errors: string[] = [];
+  for (const row of rows) {
+    const p = categoriesRefRowSchema.safeParse(row);
+    if (!p.success) { errors.push(`_categories: ${p.error.message}`); continue; }
+    const majorSlug = p.data.대분류_slug.trim();
+    const minorSlug = p.data.소분류_slug.trim();
+    if (!majorsBySlug.has(majorSlug)) majorsBySlug.set(majorSlug, { slug: majorSlug, name: p.data.대분류.trim() });
+    minorsBySlug.set(minorSlug, { slug: minorSlug, name: p.data.소분류.trim(), sort_order: p.data.sort_order, major_slug: majorSlug });
+  }
+  return { majors: [...majorsBySlug.values()], minors: [...minorsBySlug.values()], errors };
+}
 
 // ─── products ────────────────────────────────────────────────────────────────
 // product_key: leave blank → auto-generated from brand|name hash
@@ -26,7 +56,14 @@ export const simpleProductRowSchema = z.object({
   hwahae_url:  z.string().url().or(z.literal('')).optional(),
   image_url:   z.string().url().or(z.literal('')).optional(),
   is_disabled: disabledField,
+  // Optional English URL slug; blank → DB slug falls back to product_key.
+  slug:        z.string().optional(),
 });
+
+/** DB slug = explicit sheet slug if present, else the stable product_key. */
+export function resolveDisplaySlug(sheetSlug: string | undefined, productKey: string): string {
+  return sheetSlug?.trim() || productKey;
+}
 
 // ─── product_links (wide — one row per product, one column per seller) ────────
 // product_key (stable) is the primary join; product_name is a formula-synced
@@ -42,16 +79,83 @@ export const productLinksWideRowSchema = z.object({
   ably:         z.string().default(''),
 });
 
-// ─── badges ──────────────────────────────────────────────────────────────────
-export const simpleBadgeRowSchema = z.object({
-  product_key:  z.string().optional(),
-  product_name: z.string().default(''),
-  badge_type:   z.string().min(1),
-  detail:       z.string().optional().nullable(),
-  source_title: z.string().optional().nullable(),
-  ref_url:      z.string().url().or(z.literal('')).optional().nullable(),
-  source_date:  z.string().regex(/^\d{4}-\d{2}-\d{2}$/).or(z.literal('')).optional().nullable(),
-});
+// ─── badges (wide, per-source) ────────────────────────────────────────────────
+// One row per product (row-aligned with products). Each badge source is a group
+// of columns `<source>_detail`, `<source>_source`, `<source>_ref_url`,
+// `<source>_date`. Sources are DISCOVERED from the `_detail` header suffix, so
+// adding a new source (e.g. hwahae_detail/…) needs NO code change. A product can
+// carry several badges (one per filled source group).
+export interface FlatBadge {
+  product_key:  string;
+  badge_type:   string;
+  detail:       string | null;
+  source_title: string | null;
+  ref_url:      string | null;
+  source_date:  string | null;
+}
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Discover badge sources from `<source>_detail` headers across all rows. */
+export function discoverBadgeSources(rows: Record<string, string>[]): string[] {
+  const sources = new Set<string>();
+  for (const row of rows) {
+    for (const key of Object.keys(row)) {
+      const m = /^(.+)_detail$/.exec(key.trim());
+      if (m) sources.add(m[1]);
+    }
+  }
+  return [...sources];
+}
+
+/**
+ * Expand wide badge rows into flat per-source product_badge records. A source
+ * group is emitted only when it has content (detail / source / ref_url non-empty;
+ * a lone date is ignored). Invalid ref_url/date are dropped to null (kept lenient
+ * so one bad cell never blocks the rest). Rows whose product can't be resolved AND
+ * that carry badge data are returned as `skipped` for the caller to report.
+ */
+export function expandBadges(
+  rawBadges: Record<string, string>[],
+  nameToKey: Map<string, string>,
+): { flat: FlatBadge[]; skipped: string[] } {
+  const sources = discoverBadgeSources(rawBadges);
+  const flat: FlatBadge[] = [];
+  const skipped: string[] = [];
+  for (const row of rawBadges) {
+    const groups = sources
+      .map((src) => {
+        const detail       = (row[`${src}_detail`]   ?? '').trim();
+        const source_title = (row[`${src}_source`]   ?? '').trim();
+        const refRaw       = (row[`${src}_ref_url`]  ?? '').trim();
+        const dateRaw      = (row[`${src}_date`]     ?? '').trim();
+        const hasData = !!(detail || source_title || refRaw);
+        return { src, detail, source_title, refRaw, dateRaw, hasData };
+      })
+      .filter((g) => g.hasData);
+    if (groups.length === 0) continue;
+
+    const productKey = resolveProductKey(
+      { product_key: row.product_key, product_name: row.product_name },
+      nameToKey,
+    );
+    if (!productKey) {
+      skipped.push(row.product_key?.trim() || row.product_name?.trim() || '(unknown)');
+      continue;
+    }
+    for (const g of groups) {
+      flat.push({
+        product_key:  productKey,
+        badge_type:   g.src,
+        detail:       g.detail || null,
+        source_title: g.source_title || null,
+        ref_url:      /^https?:\/\//i.test(g.refRaw) ? g.refRaw : null,
+        source_date:  DATE_RE.test(g.dateRaw) ? g.dateRaw : null,
+      });
+    }
+  }
+  return { flat, skipped };
+}
 
 // ─── retailer_allowlist ──────────────────────────────────────────────────────
 export const simpleAllowlistRowSchema = z.object({
@@ -108,6 +212,27 @@ export function buildNameToKey(rawProducts: Record<string, string>[]): Map<strin
     nameToKey.set(p.data.name.trim(), key);
   }
   return nameToKey;
+}
+
+/**
+ * Plan product_key freeze: for product rows whose product_key cell is BLANK,
+ * compute the stable key (same derivation the importer uses) and the sheet row to
+ * write it back to. Rows that already have a key are left untouched (never
+ * overwritten) so a later rename can't regenerate the product id. Pure (no I/O):
+ * `rowNumber` = array index + 2 (header occupies sheet row 1). The caller does the
+ * actual batched write-back, and tolerates write failure.
+ */
+export function planKeyFreeze(
+  rawProducts: Record<string, string>[],
+): { rowNumber: number; key: string }[] {
+  const out: { rowNumber: number; key: string }[] = [];
+  rawProducts.forEach((row, i) => {
+    const p = simpleProductRowSchema.safeParse(row);
+    if (!p.success) return;
+    if (p.data.product_key?.trim()) return; // already frozen — never overwrite
+    out.push({ rowNumber: i + 2, key: makeProductKey(p.data.brand, p.data.name) });
+  });
+  return out;
 }
 
 /**
@@ -173,6 +298,11 @@ export function expandListings(
 export interface SheetDuplicateReport {
   // same product_key produced by more than one distinct product name
   duplicateProductKeys: { product_key: string; names: string[] }[];
+  // same product_name maps to more than one distinct product_key — name-based
+  // link/badge join would be ambiguous (v2 links/badges have no product_key col)
+  duplicateProductNames: { name: string; product_keys: string[] }[];
+  // same explicit (non-blank) slug used by more than one product — routing clash
+  duplicateSlugs: { slug: string; product_keys: string[] }[];
   // same (seller, product) listing appears in more than one product_links row
   duplicateLinkKeys: { link_key: string; count: number }[];
   // same url reused across more than one listing (link_key)
@@ -187,6 +317,8 @@ export function detectSheetDuplicates(
   // row per key is a duplicate — whether the rows share a name (exact dupe) or
   // differ (two products colliding onto one key).
   const keyToNames = new Map<string, string[]>();
+  const nameToKeys = new Map<string, Set<string>>();   // product_name → distinct keys
+  const slugToKeys = new Map<string, Set<string>>();   // explicit slug → distinct keys
   for (const row of rawProducts) {
     const p = simpleProductRowSchema.safeParse(row);
     if (!p.success) continue;
@@ -194,10 +326,23 @@ export function detectSheetDuplicates(
     const key = p.data.product_key?.trim() || makeProductKey(p.data.brand, p.data.name);
     if (!keyToNames.has(key)) keyToNames.set(key, []);
     keyToNames.get(key)!.push(name);
+    if (!nameToKeys.has(name)) nameToKeys.set(name, new Set());
+    nameToKeys.get(name)!.add(key);
+    const slug = p.data.slug?.trim();
+    if (slug) {
+      if (!slugToKeys.has(slug)) slugToKeys.set(slug, new Set());
+      slugToKeys.get(slug)!.add(key);
+    }
   }
   const duplicateProductKeys = [...keyToNames.entries()]
     .filter(([, names]) => names.length > 1)
     .map(([product_key, names]) => ({ product_key, names: [...new Set(names)] }));
+  const duplicateProductNames = [...nameToKeys.entries()]
+    .filter(([, keys]) => keys.size > 1)
+    .map(([name, keys]) => ({ name, product_keys: [...keys] }));
+  const duplicateSlugs = [...slugToKeys.entries()]
+    .filter(([, keys]) => keys.size > 1)
+    .map(([slug, keys]) => ({ slug, product_keys: [...keys] }));
 
   const nameToKey = buildNameToKey(rawProducts);
   const flat = expandListings(rawLinks, nameToKey);
@@ -217,11 +362,13 @@ export function detectSheetDuplicates(
     .filter(([, keys]) => keys.size > 1)
     .map(([url, keys]) => ({ url, link_keys: [...keys] }));
 
-  return { duplicateProductKeys, duplicateLinkKeys, duplicateUrls };
+  return { duplicateProductKeys, duplicateProductNames, duplicateSlugs, duplicateLinkKeys, duplicateUrls };
 }
 
 export function hasDuplicates(r: SheetDuplicateReport): boolean {
   return r.duplicateProductKeys.length > 0
+    || r.duplicateProductNames.length > 0
+    || r.duplicateSlugs.length > 0
     || r.duplicateLinkKeys.length > 0
     || r.duplicateUrls.length > 0;
 }
@@ -231,6 +378,12 @@ export function formatDuplicateReport(r: SheetDuplicateReport): string {
   const lines: string[] = [];
   for (const d of r.duplicateProductKeys) {
     lines.push(`  duplicate product_key "${d.product_key}" shared by names: ${d.names.join(' | ')}`);
+  }
+  for (const d of r.duplicateProductNames) {
+    lines.push(`  duplicate product_name "${d.name}" maps to keys: ${d.product_keys.join(', ')} (name-join would be ambiguous)`);
+  }
+  for (const d of r.duplicateSlugs) {
+    lines.push(`  duplicate slug "${d.slug}" used by products: ${d.product_keys.join(', ')}`);
   }
   for (const d of r.duplicateLinkKeys) {
     lines.push(`  duplicate listing (link_key) "${d.link_key}" appears ${d.count}×`);

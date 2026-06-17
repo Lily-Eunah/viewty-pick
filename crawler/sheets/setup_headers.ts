@@ -1,13 +1,13 @@
 import { google } from 'googleapis';
 
-// Column headers must match validate.ts schemas exactly
+// Column headers must match validate.ts schemas exactly (sheet schema v2).
 const HEADERS: Record<string, string[]> = {
-  categories:         ['slug', 'name', 'sort_order'],
-  products:           ['product_key', 'name', 'brand', 'category', 'volume_ml', 'skin_types', 'features', 'hwahae_url', 'image_url', 'is_disabled'],
+  _categories:        ['대분류', '대분류_slug', '소분류', '소분류_slug', 'sort_order'],
+  products:           ['product_key', 'name', 'brand', 'category', 'volume_ml', 'skin_types', 'features', 'hwahae_url', 'image_url', 'is_disabled', 'slug'],
   product_links:      ['product_name', 'brand', 'oliveyoung', 'coupang', 'naver', 'zigzag', 'ably'],
-  badges:             ['product_name', 'badge_type', 'detail', 'source_title', 'ref_url', 'source_date'],
+  badges:             ['product_name', 'brand', 'directorpi_detail', 'directorpi_source', 'directorpi_ref_url', 'directorpi_date'],
   retailer_allowlist: ['seller', 'brand', 'allowed_store_name'],
-  manual_overrides:   ['product_name', 'seller', 'override_type', 'value', 'reason', 'expires_at'],
+  manual_overrides:   ['product_name', 'seller', 'override_type', 'value', 'reason', 'expires_at', 'product_key'],
   seo_pages:          ['slug', 'page_type', 'title', 'h1', 'description', 'category', 'skin_type', 'badge_type', 'is_active'],
 };
 
