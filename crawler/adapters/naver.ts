@@ -22,6 +22,7 @@ import { PriceOffer, RetailerAdapter } from './index';
 import { isSupabaseServerConfigured, supabaseServer } from '../../lib/supabase/server';
 import { loadMockDB } from '../../lib/supabase/mockDb';
 import { extractPackageFromTitle, stripPromoGifts } from '../core/packageExtractor';
+import { crawlNaverPagePrice, isNaverStorefrontUrl } from '../core/naverPageCrawl';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -710,6 +711,52 @@ export class NaverAdapter implements RetailerAdapter {
     const result = await matchNaverOffer(product, allowedStoreName, clientId as string, clientSecret as string, anchorProductNo);
 
     if (!result.matched) {
+      // ── Phase-1 page-crawl fallback ────────────────────────────────────────
+      // The Shopping API anchor missed (curated SKU absent from results). If the
+      // curated link is a Naver storefront, crawl the product page directly for
+      // 정가+할인가 (operator-authorized; robots risk accepted). This both recovers
+      // the anchor-miss price AND yields the official 정가 the API never exposes.
+      //
+      // A KNOWN set (needsInspection — anchored to a heterogeneous set page) is NOT
+      // crawled: its page price is a set price, so it stays inspection/link-only.
+      // Mock runs skip the crawl entirely (no network).
+      if (!isMock && !result.needsInspection && isNaverStorefrontUrl(listing.url)) {
+        const crawled = await crawlNaverPagePrice(listing.url);
+        if (crawled && crawled.found && !crawled.soldOut && crawled.salePrice !== null) {
+          // 정가만 있으면 sale=정가 (parser already collapses that). Keep regular only
+          // when it is a real, higher 정가 so "공식몰 대비" is against the 정가 baseline.
+          const regular =
+            crawled.regularPrice !== null && crawled.regularPrice >= crawled.salePrice
+              ? crawled.regularPrice
+              : null;
+          // Volume/단품 from the page title via the existing packageExtractor path.
+          const titleClean = crawled.title ? stripHtml(crawled.title) : '';
+          const ext = titleClean ? extractPackageFromTitle(titleClean) : null;
+          const parsedVolumeRaw =
+            ext && ext.detected && ext.unitType === 'ml' && ext.unitAmount !== null ? ext.unitAmount : null;
+          console.log(
+            `[Naver Adapter] page-crawl recovered product ${product.id} (${product.name}) — 정가 ${regular ?? '-'} / 할인가 ${crawled.salePrice}`
+          );
+          return {
+            regularPrice: regular,
+            salePrice: crawled.salePrice,
+            inStock: true,
+            promoType: 'none',
+            promoText: null,
+            sourceText: `Naver page crawl: ${titleClean || product.name} (정가 ${regular ?? '-'} / 할인가 ${crawled.salePrice})`,
+            storeName: allowedStoreName || null,
+            parsedVolumeRaw,
+            matchedUrl: listing.url || null,
+            matchedMallName: allowedStoreName || null,
+            outcome: 'ok',
+          };
+        }
+        console.warn(
+          `[Naver Adapter] page-crawl fallback found no usable price for product ${product.id} (${product.name})` +
+            `${crawled?.soldOut ? ' (sold out / sale suspended)' : ''} — link-only`
+        );
+      }
+
       // Exclude from comparison + flag for inspection. No reseller fallback.
       console.warn(`[Naver Adapter] No official-mall match for product ${product.id} (${product.name}): ${result.reason}`);
       return {
