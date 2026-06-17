@@ -314,6 +314,20 @@ describe('ml당 가격 (unit_price)', () => {
   });
 });
 
+describe('non-anchored fallback (inspectionWarning) → ml unit_price unreliable', () => {
+  it('inspectionWarning set → unit_price=null, unit_price_reliable=false, base price kept', () => {
+    const result = normalizePrice(BASE_PRODUCT, offer({
+      salePrice: 24200,
+      sourceText: '에뛰드 순정 약산성 클렌징폼 150ml',
+      inspectionWarning: '비앵커 공식몰 매칭(검수)',
+    }));
+    expect(result.sale_price).toBe(24200);
+    expect(result.base_unit_price).toBe(24200); // price stays visible/comparable
+    expect(result.unit_price_reliable).toBe(false);
+    expect(result.unit_price).toBeNull(); // ml normalization disabled (unverified identity)
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Summary
 // ---------------------------------------------------------------------------

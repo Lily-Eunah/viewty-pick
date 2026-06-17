@@ -54,6 +54,15 @@ export function runHealthCheck(
     };
   }
 
+  // Rule 4b: Non-anchored fallback match (Naver anchor-miss → official-store /
+  // catalog lprice). The price is real but the SKU identity is unverified, so it
+  // is surfaced as a warning for operator inspection. Placed AFTER the hard
+  // 'failed' price/math rules so a genuinely bad price still fails first; placed
+  // before the volume rule so its (more specific) message wins.
+  if (offer.inspectionWarning) {
+    return { status: 'warning', message: offer.inspectionWarning, severity: 'warning' };
+  }
+
   // Rule 5: Volume mismatch (§1 compromise) — the price is real, so we do NOT
   // gate it. The listing surfaces base/effective prices normally; only the
   // ml-based unit_price is nulled in normalize (unit_price_reliable=false). The

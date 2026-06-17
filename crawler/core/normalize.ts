@@ -206,7 +206,11 @@ export function normalizePrice(product: Product, offer: PriceOffer): NormalizedP
   // §1b: an explicitly-unverified DB volume (LLM-seeded default) is also unreliable
   // for ml normalization, even without a detected mismatch. Price stays; ml off.
   const volume_unverified = product.volume_verified === false;
-  const unit_price_reliable = !volume_mismatch && !volume_unverified;
+  // A non-anchored fallback match (offer.inspectionWarning set) has UNVERIFIED SKU
+  // identity, so its ml normalization is not trustworthy either — disable the
+  // ml-based unit_price (price itself stays visible/comparable, like §1b).
+  const match_unverified = !!offer.inspectionWarning;
+  const unit_price_reliable = !volume_mismatch && !volume_unverified && !match_unverified;
   const unit_price =
     unit_price_reliable && effective_unit_price !== null
       ? Number((effective_unit_price / volume_ml).toFixed(4))
