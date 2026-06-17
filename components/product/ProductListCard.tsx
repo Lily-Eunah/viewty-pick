@@ -4,6 +4,7 @@ import ProductImage from '../common/ProductImage';
 import Badge from '../common/Badge';
 import PriceText from '../common/PriceText';
 import { UIProduct } from '../../lib/types';
+import { pricedStoreNames } from '../../lib/format';
 
 interface ProductListCardProps {
   product: UIProduct;
@@ -11,8 +12,9 @@ interface ProductListCardProps {
 }
 
 export default function ProductListCard({ product, rank }: ProductListCardProps) {
-  // Retailer checklist tag: E.g., "쿠팡 / 올리브영 비교"
-  const storeNames = product.stores.map((s) => s.name).slice(0, 3).join(' · ');
+  // Comparison tagline (e.g. "쿠팡 · 올리브영 비교") names only priced sellers;
+  // empty when none → label hidden.
+  const storeNames = pricedStoreNames(product);
 
   return (
     <Link
@@ -87,11 +89,13 @@ export default function ProductListCard({ product, rank }: ProductListCardProps)
             )}
           </div>
 
-          <div className="flex flex-col items-end">
-            <span className="text-[10px] text-text-secondary font-black tracking-tight max-w-[150px] truncate leading-none">
-              {storeNames} 비교
-            </span>
-          </div>
+          {storeNames && (
+            <div className="flex flex-col items-end">
+              <span className="text-[10px] text-text-secondary font-black tracking-tight max-w-[150px] truncate leading-none">
+                {storeNames} 비교
+              </span>
+            </div>
+          )}
         </div>
       </div>
     </Link>

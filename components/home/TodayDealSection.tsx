@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import ProductImageWithFallback from '../common/ProductImageWithFallback';
 import Badge from '../common/Badge';
-import { won, perMl } from '../../lib/format';
+import { won, perMl, pricedStoreNames } from '../../lib/format';
 import { UIProduct } from '../../lib/types';
 
 interface TodayDealSectionProps {
@@ -47,7 +47,7 @@ export default function TodayDealSection({ products, loading }: TodayDealSection
             const shortDesc = prod.features && prod.features.length > 0
               ? `${prod.features.slice(0, 2).join(' / ')} / ${prod.volume}`
               : `${prod.description} / ${prod.volume}`;
-            const sellerNames = prod.stores.filter((s) => s.hasPrice !== false).map((s) => s.name).slice(0, 3).join(' · ');
+            const sellerNames = pricedStoreNames(prod);
 
             return (
               <Link
@@ -95,9 +95,11 @@ export default function TodayDealSection({ products, loading }: TodayDealSection
                         <span className="text-[11px] text-muted font-bold">공식가 {won(prod.officialPrice)}</span>
                       )}
                     </div>
-                    <span className="text-[10px] text-text-secondary font-black tracking-tight max-w-[170px] truncate leading-none">
-                      {sellerNames} 비교
-                    </span>
+                    {sellerNames && (
+                      <span className="text-[10px] text-text-secondary font-black tracking-tight max-w-[170px] truncate leading-none">
+                        {sellerNames} 비교
+                      </span>
+                    )}
                   </div>
                 </div>
 
