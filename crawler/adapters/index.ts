@@ -32,6 +32,11 @@ export interface PriceOffer {
   matchedMallName?: string | null; // raw mallName of the matched offer (audit / change detection)
   imageUrl?: string | null;        // product image from the matched offer (e.g. Coupang productImage) — display fallback
   matchExcluded?: boolean;         // true → no official-mall match; exclude from comparison
+  // Non-empty → this price came from a NON-ANCHORED fallback match (Naver
+  // anchor-miss → official-store mallName match or 가격비교 catalog lprice). The
+  // price is kept but flagged: healthcheck forces status='warning' (inspection)
+  // and normalize marks the ml unit_price unreliable (identity is unverified).
+  inspectionWarning?: string | null;
   // Explicit fetch outcome. Absent ⇒ treated as 'ok' (priced). A successful
   // fetch with no qualified offer MUST set 'no_offer' so it does not increment
   // fail_count. (Technical failures throw instead → run.ts classifies 'failed'.)

@@ -54,6 +54,11 @@ export interface OfferMatchResult {
   // True when an anchored/matched SKU combines two DIFFERENT products (heterogeneous
   // set) → per-unit price not computable → excluded for operator inspection.
   needsInspection?: boolean;
+  // Set when this match came from a NON-ANCHORED anchor-miss fallback (not the
+  // curated SKU): 'official-store' = an official Naver brand-store offer matched by
+  // mallName; 'catalog' = a 가격비교 catalog lprice. Such prices are always surfaced
+  // as warning (inspection) — see NaverAdapter.fetchOffer + healthcheck.
+  fallbackTier?: 'official-store' | 'catalog';
 }
 
 // productType: individual mall offers vs price-comparison catalog representative.
@@ -422,44 +427,208 @@ export function buildAnchorQueries(brand: string | null, name: string): string[]
   );
 }
 
+// ---------------------------------------------------------------------------
+// Anchor-miss fallback (operator decision): brand.naver.com channelProductNo lives
+// in a different namespace than the Shopping API's smartstore productId, so the
+// curated SKU number frequently never appears in results (anchor miss) AND a direct
+// page crawl is hard-blocked (HTTP 429 anti-bot; see diagnose-naver-crawl). BUT the
+// official brand store itself DOES surface in results by mallName (에뛰드 본사직영샵,
+// 코스알엑스, 토리든…). So on anchor miss we recover a price WITHOUT crawling, in tiers:
+//   Tier-2  official Naver brand-store offer matched by mallName  → 공식가
+//   Tier-3  가격비교 catalog lprice (no official store)            → 전판매처 최저가
+//   Tier-4  none of the above                                    → link-only
+// Every fallback price is NON-ANCHORED → always surfaced as warning (inspection):
+// the match is by fuzzy title identity, not the exact curated SKU. Identity is
+// STRICT (sim ≥ 0.6 on gift-stripped title + a distinctive core token + no form
+// conflict + volume agreement) to avoid pricing a different product/size.
+// ---------------------------------------------------------------------------
+
+// A Naver-HOSTED official store (smartstore/brand), not an external reseller mall.
+const NAVER_STORE_LINK_RE = /(?:smartstore|brand)\.naver\.com\/[^/]+\/products\//i;
+export function isNaverHostedStore(link?: string | null): boolean {
+  return !!link && NAVER_STORE_LINK_RE.test(link);
+}
+
 /**
- * Resolve a Naver price by ANCHORING to the operator-curated SKU only.
+ * True when the offer is the brand's OWN official Naver store (smartstore/brand
+ * host). Allowlist mallName is authoritative; else mallName must contain the brand
+ * AND look official (공식/직영/본사 or the store name is essentially the brand alone),
+ * so a reseller that merely name-drops the brand is not adopted.
+ */
+export function isOfficialBrandStoreOffer(
+  item: NaverShoppingItem,
+  allowedStoreName: string | null,
+  brand: string | null
+): boolean {
+  if (!isIndividualMallOffer(item)) return false; // not a catalog representative
+  if (!isNaverHostedStore(item.link)) return false; // smartstore/brand host only
+  const nm = normalizeMallName(item.mallName);
+  if (!nm || nm === '네이버') return false;
+  if (allowedStoreName) {
+    const na = normalizeMallName(allowedStoreName);
+    return na.length > 0 && (nm.includes(na) || na.includes(nm));
+  }
+  if (!brand) return false;
+  const nb = normalizeMallName(brand.replace(/\s*\([^)]*\)/g, '').split(' ')[0]);
+  if (nb.length < 2 || !nm.includes(nb)) return false;
+  return /(공식|직영|본사)/.test(nm) || nm === nb;
+}
+
+/**
+ * STRICT identity gate shared by both fallback tiers — same bar as OY auto-price.
+ * On the gift-stripped title: similarity ≥ 0.6, a distinctive core token present,
+ * no form conflict, not a heterogeneous set, and (when both known) volume agrees
+ * with the curated DB volume (multi-size disambiguation, e.g. 500 vs 350ml).
+ */
+function passesStrictIdentity(
+  title: string,
+  name: string,
+  volumeMl: number | null
+): { ok: boolean; score: number; parsedVol: number | null; reason: string } {
+  const t = stripPromoGifts(stripHtml(title));
+  const score = productIdentityScore(t, name);
+  if (score < OY_AUTO_PRICE_SIMILARITY) return { ok: false, score, parsedVol: null, reason: `sim ${score.toFixed(2)} < ${OY_AUTO_PRICE_SIMILARITY}` };
+  if (hasFormConflict(name, t)) return { ok: false, score, parsedVol: null, reason: 'form conflict' };
+  const distinct = distinctiveTokens(name);
+  const tn = t.toLowerCase().replace(/\s+/g, '');
+  if (distinct.length > 0 && !distinct.some((d) => tn.includes(d))) return { ok: false, score, parsedVol: null, reason: 'no distinctive core token' };
+  const ext = extractPackageFromTitle(t);
+  if (ext.heterogeneous) return { ok: false, score, parsedVol: null, reason: 'heterogeneous set' };
+  const parsedVol = ext.detected && ext.unitType === 'ml' && ext.unitAmount !== null ? ext.unitAmount : null;
+  if (volumeMl != null && parsedVol != null && parsedVol !== volumeMl) {
+    return { ok: false, score, parsedVol, reason: `volume ${parsedVol}ml ≠ DB ${volumeMl}ml` };
+  }
+  return { ok: true, score, parsedVol, reason: `sim ${score.toFixed(2)}` };
+}
+
+type ScoredCandidate = { it: NaverShoppingItem; score: number; parsedVol: number | null };
+
+/**
+ * Among strict-identity-passing candidates, drop cross-seller price outliers vs the
+ * search-result median (only when the distribution is broad enough), then prefer a
+ * volume-exact match, then higher identity, then lowest price.
+ */
+function chooseFallback(passing: ScoredCandidate[], items: NaverShoppingItem[], volumeMl: number | null): ScoredCandidate {
+  let cands = passing;
+  if (cands.length > 1) {
+    const distribution = items.filter(isIndividualMallOffer).map((it) => parseInt(it.lprice, 10));
+    const median = medianPrice(distribution);
+    if (median && distribution.filter((n) => Number.isFinite(n) && n > 0).length >= OY_MIN_DISTRIBUTION) {
+      const inBand = cands.filter((c) => priceInBand(parseInt(c.it.lprice, 10), median));
+      if (inBand.length > 0 && inBand.length < cands.length) cands = inBand;
+    }
+  }
+  return [...cands].sort((a, b) => {
+    const av = volumeMl != null && a.parsedVol === volumeMl ? 1 : 0;
+    const bv = volumeMl != null && b.parsedVol === volumeMl ? 1 : 0;
+    if (av !== bv) return bv - av;
+    if (b.score !== a.score) return b.score - a.score;
+    return parseInt(a.it.lprice, 10) - parseInt(b.it.lprice, 10);
+  })[0];
+}
+
+/** Tier-2: an official Naver brand-store offer matched by mallName + strict identity. */
+export function pickOfficialStoreFallback(items: NaverShoppingItem[], input: OfferMatchInput): OfferMatchResult {
+  const official = items.filter((it) => isOfficialBrandStoreOffer(it, input.allowedStoreName, input.brand));
+  if (official.length === 0) {
+    return { matched: null, parsedVolumeRaw: null, identityScore: null, reason: 'no official Naver brand-store offer in results' };
+  }
+  const passing: ScoredCandidate[] = official
+    .map((it) => { const id = passesStrictIdentity(it.title, input.name, input.volumeMl); return { it, score: id.score, parsedVol: id.parsedVol, ok: id.ok }; })
+    .filter((x) => x.ok)
+    .map(({ it, score, parsedVol }) => ({ it, score, parsedVol }));
+  if (passing.length === 0) {
+    return { matched: null, parsedVolumeRaw: null, identityScore: null, reason: 'official store offer(s) failed strict identity/volume' };
+  }
+  const chosen = chooseFallback(passing, items, input.volumeMl);
+  return {
+    matched: chosen.it,
+    parsedVolumeRaw: chosen.parsedVol,
+    identityScore: chosen.score,
+    reason: `official Naver store fallback "${chosen.it.mallName}" (sim ${chosen.score.toFixed(2)})`,
+    fallbackTier: 'official-store',
+  };
+}
+
+/** Tier-3: a 가격비교 catalog lprice matched by strict identity (no official store). */
+export function pickCatalogFallback(items: NaverShoppingItem[], name: string, volumeMl: number | null): OfferMatchResult {
+  const catalogs = items.filter((it) => it.link && CATALOG_LINK_RE.test(it.link) && parseInt(it.lprice, 10) > 0);
+  if (catalogs.length === 0) {
+    return { matched: null, parsedVolumeRaw: null, identityScore: null, reason: 'no 가격비교 catalog offer with lprice in results' };
+  }
+  const passing: ScoredCandidate[] = catalogs
+    .map((it) => { const id = passesStrictIdentity(it.title, name, volumeMl); return { it, score: id.score, parsedVol: id.parsedVol, ok: id.ok }; })
+    .filter((x) => x.ok)
+    .map(({ it, score, parsedVol }) => ({ it, score, parsedVol }));
+  if (passing.length === 0) {
+    return { matched: null, parsedVolumeRaw: null, identityScore: null, reason: 'catalog offer(s) failed strict identity/volume' };
+  }
+  const chosen = chooseFallback(passing, items, volumeMl);
+  return {
+    matched: chosen.it,
+    parsedVolumeRaw: chosen.parsedVol,
+    identityScore: chosen.score,
+    reason: `가격비교 catalog lprice fallback (sim ${chosen.score.toFixed(2)})`,
+    fallbackTier: 'catalog',
+  };
+}
+
+/**
+ * Resolve a Naver price: Tier-1 ANCHOR to the curated SKU, then anchor-miss
+ * fallback (Tier-2 official Naver store → Tier-3 가격비교 catalog → Tier-4 link-only).
  *
- * Policy (operator decision): the price comes solely from the result whose link is
- * the curated channel-product number N. There is NO fuzzy title/variant price
- * fallback — a name-similar but different product's price (e.g. a 크림 for a 로션,
- * or a different size) is worse than no price (trust-first). On anchor miss the
- * caller surfaces the listing as link-only (no_offer, no fail_count).
+ * Tier-1 (anchor) is the trusted path: the price comes from the result whose link is
+ * the curated channel-product number N (single or homogeneous bundle priced;
+ * heterogeneous set → inspection). When N is absent from results (anchor miss) — or
+ * no N could be resolved — we DO NOT fabricate, but we attempt the NON-ANCHORED
+ * fallbacks above, each gated by STRICT identity and surfaced as warning. There is
+ * still no loose anchored-path price for a name-similar different product/size.
  *
- * Multi-query recall (buildAnchorQueries) widens the search to find N. OliveYoung
- * (oy.run, no curated N) short-circuits to link-only here; its price comes only
- * from a manual_override (applied in run.ts).
- *
- * NOTE: pickOfficialOffer / hasFormConflict remain exported for the OY-strict
- * matching ALTERNATIVE, but are intentionally NOT used in this price path.
+ * Multi-query recall (buildAnchorQueries) widens the search. OliveYoung uses its
+ * own matchOliveYoungOffer, not this path. pickOfficialOffer/hasFormConflict remain
+ * exported for the OY-strict alternative.
  */
 export async function matchNaverOffer(
   product: NaverProductLike,
-  allowedStoreName: string | null, // unused in anchor-only path; kept for the OY-strict alternative
+  allowedStoreName: string | null,
   clientId: string,
   clientSecret: string,
   anchorProductNo: string | null = null
 ): Promise<OfferMatchResult> {
-  void allowedStoreName;
-  if (!anchorProductNo) {
-    return { matched: null, parsedVolumeRaw: null, identityScore: null, reason: 'no curated productId to anchor — link-only' };
-  }
   const candidates = buildAnchorQueries(product.brand, product.name);
+  const merged: NaverShoppingItem[] = [];
+  const seen = new Set<string>();
   for (const query of candidates) {
     const items = await searchNaverShopping(query, clientId, clientSecret);
-    const anchor = pickAnchoredOffer(items, anchorProductNo);
-    if (anchor) return anchor; // anchored single (price) OR anchored set (link-only + signal)
+    if (anchorProductNo) {
+      const anchor = pickAnchoredOffer(items, anchorProductNo);
+      if (anchor) return anchor; // Tier-1: anchored single/bundle (price) OR set (inspection)
+    }
+    for (const it of items) {
+      const k = it.link || it.productId;
+      if (k && !seen.has(k)) { seen.add(k); merged.push(it); }
+    }
   }
+
+  // Anchor missed (or no curated N). Try the non-anchored fallbacks (warning-flagged).
+  const input: OfferMatchInput = {
+    brand: product.brand,
+    name: product.name,
+    volumeMl: product.volume_ml ?? null,
+    allowedStoreName,
+  };
+  const tier2 = pickOfficialStoreFallback(merged, input);
+  if (tier2.matched) return tier2;
+  const tier3 = pickCatalogFallback(merged, product.name, product.volume_ml ?? null);
+  if (tier3.matched) return tier3;
+
   return {
     matched: null,
     parsedVolumeRaw: null,
     identityScore: null,
-    reason: `anchor miss — curated productNo ${anchorProductNo} not in ${candidates.length} queries — link-only (no fuzzy price)`,
+    reason: anchorProductNo
+      ? `anchor miss (productNo ${anchorProductNo}) + no official-store/catalog fallback — link-only`
+      : 'no curated productId + no official-store/catalog fallback — link-only',
   };
 }
 
@@ -711,16 +880,15 @@ export class NaverAdapter implements RetailerAdapter {
     const result = await matchNaverOffer(product, allowedStoreName, clientId as string, clientSecret as string, anchorProductNo);
 
     if (!result.matched) {
-      // ── Phase-1 page-crawl fallback ────────────────────────────────────────
-      // The Shopping API anchor missed (curated SKU absent from results). If the
-      // curated link is a Naver storefront, crawl the product page directly for
-      // 정가+할인가 (operator-authorized; robots risk accepted). This both recovers
-      // the anchor-miss price AND yields the official 정가 the API never exposes.
-      //
-      // A KNOWN set (needsInspection — anchored to a heterogeneous set page) is NOT
-      // crawled: its page price is a set price, so it stays inspection/link-only.
-      // Mock runs skip the crawl entirely (no network).
-      if (!isMock && !result.needsInspection && isNaverStorefrontUrl(listing.url)) {
+      // ── DORMANT page-crawl fallback (gated OFF) ────────────────────────────
+      // Direct page crawl proved HARD-BLOCKED (HTTP 429 anti-bot on brand.naver.com;
+      // naver.me → brandconnect affiliate; see diagnose-naver-crawl) → recovery 0.
+      // The anchor-miss recovery now happens via matchNaverOffer's Tier-2/Tier-3
+      // (official-store / catalog) above, which is robots-clean. The crawl is kept
+      // behind NAVER_PAGE_CRAWL=on (default off) so it costs no Playwright timeout
+      // per anchor-miss product, but the parser stays available if Naver relents.
+      // A KNOWN set (needsInspection) is never crawled (its page price is a set price).
+      if (process.env.NAVER_PAGE_CRAWL === 'on' && !isMock && !result.needsInspection && isNaverStorefrontUrl(listing.url)) {
         const crawled = await crawlNaverPagePrice(listing.url);
         if (crawled && crawled.found && !crawled.soldOut && crawled.salePrice !== null) {
           // 정가만 있으면 sale=정가 (parser already collapses that). Keep regular only
@@ -779,6 +947,55 @@ export class NaverAdapter implements RetailerAdapter {
     const parsedPrice = parseInt(item.lprice, 10);
     if (isNaN(parsedPrice)) throw new Error(`Failed to parse Naver price "${item.lprice}"`);
 
+    // ── Non-anchored fallback (Tier-2 official store / Tier-3 catalog) ─────────
+    // Price kept but ALWAYS warning (inspectionWarning). Buy-link rule (the /go
+    // redirect prefers affiliate_url → latest_matched_url → url):
+    //   - affiliate listing (naver.me / has affiliate_url) → NEVER change the buy
+    //     link (monetization): leave matchedUrl null so latest_matched_url is not
+    //     overwritten; if the matched price is from an official store, flag the
+    //     possible price/link-owner mismatch in the warning.
+    //   - non-affiliate (brand/smartstore) → may update to the matched store URL.
+    //   - catalog price-comparison URL is never a buy link → matchedUrl stays null.
+    if (result.fallbackTier) {
+      const isAffiliate = /naver\.me\//i.test(listing.url) || !!listing.affiliate_url;
+      let inspectionWarning: string;
+      let matchedUrl: string | null;
+      let matchedMallName: string | null;
+      let storeName: string | null;
+      if (result.fallbackTier === 'official-store') {
+        inspectionWarning =
+          `비앵커 공식몰 매칭(검수): ${item.mallName} ${parsedPrice.toLocaleString('ko-KR')}원` +
+          (isAffiliate ? ' · 구매링크=어필리에이트 유지(가격주체 불일치 가능)' : '');
+        matchedUrl = isAffiliate ? null : item.link || null;
+        matchedMallName = item.mallName || null;
+        storeName = allowedStoreName || item.mallName;
+      } else {
+        // catalog
+        inspectionWarning = `비앵커 · 가격비교 최저가(리셀러 가능 · 공식 스토어 아님): ${parsedPrice.toLocaleString('ko-KR')}원`;
+        matchedUrl = null;
+        matchedMallName = '네이버 가격비교';
+        storeName = null;
+      }
+      console.warn(
+        `[Naver Adapter] anchor-miss ${result.fallbackTier} fallback for product ${product.id} (${product.name}) → ${parsedPrice}원 [warning] — ${result.reason}`
+      );
+      return {
+        regularPrice: null, // fallback gives only a current price, no 정가 baseline
+        salePrice: parsedPrice,
+        inStock: true,
+        promoType: 'none',
+        promoText: null,
+        sourceText: `Naver ${result.fallbackTier} fallback: ${stripHtml(item.title)} — ${result.reason}`,
+        storeName,
+        parsedVolumeRaw: result.parsedVolumeRaw,
+        matchedUrl,
+        matchedMallName,
+        inspectionWarning,
+        outcome: 'ok', // priced; healthcheck downgrades to warning via inspectionWarning
+      };
+    }
+
+    // Tier-1: anchored to the curated SKU — the trusted price (no warning).
     return {
       regularPrice: null, // Shopping API returns only the lowest price (lprice)
       salePrice: parsedPrice,
