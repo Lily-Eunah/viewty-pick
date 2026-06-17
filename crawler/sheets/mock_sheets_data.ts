@@ -1,23 +1,35 @@
-// Mock data mirrors the simplified Google Sheet format (validate.ts schemas).
-// product_key is optional (auto-generated when blank).
+// Mock data mirrors the v2 Google Sheet format (validate.ts schemas).
+// product_key is optional (auto-generated when blank); slug is optional.
 
-export const mockCategoriesSheet = [
-  { slug: 'sunscreen', name: '선크림',  sort_order: '1' },
-  { slug: 'toner',     name: '토너',    sort_order: '2' },
-  { slug: 'cream',     name: '크림',    sort_order: '3' },
-  { slug: 'serum',     name: '세럼',    sort_order: '4' },
-  { slug: 'cleansing', name: '클렌징',  sort_order: '5' },
-  { slug: 'cushion',   name: '쿠션',    sort_order: '6' },
+// _categories ref tab — one row per minor (소분류), major (대분류) repeated.
+// Mirrors migration 0012 / lib/data/categories.ts (6 majors / 16 minors).
+export const mockCategoriesRefSheet = [
+  { 대분류: '선케어',         대분류_slug: 'suncare',        소분류: '선크림',          소분류_slug: 'sunscreen',       sort_order: '1' },
+  { 대분류: '선케어',         대분류_slug: 'suncare',        소분류: '선스틱',          소분류_slug: 'sunstick',        sort_order: '2' },
+  { 대분류: '선케어',         대분류_slug: 'suncare',        소분류: '선쿠션',          소분류_slug: 'suncushion',      sort_order: '3' },
+  { 대분류: '스킨케어',       대분류_slug: 'skincare',       소분류: '스킨/토너',        소분류_slug: 'toner',           sort_order: '1' },
+  { 대분류: '스킨케어',       대분류_slug: 'skincare',       소분류: '로션',            소분류_slug: 'lotion',          sort_order: '2' },
+  { 대분류: '스킨케어',       대분류_slug: 'skincare',       소분류: '에센스/세럼/앰플', 소분류_slug: 'serum',           sort_order: '3' },
+  { 대분류: '스킨케어',       대분류_slug: 'skincare',       소분류: '올인원',          소분류_slug: 'allinone',        sort_order: '4' },
+  { 대분류: '스킨케어',       대분류_slug: 'skincare',       소분류: '크림',            소분류_slug: 'cream',           sort_order: '5' },
+  { 대분류: '클렌징',         대분류_slug: 'cleansing-care', 소분류: '클렌징폼/젤',      소분류_slug: 'cleansing',       sort_order: '1' },
+  { 대분류: '클렌징',         대분류_slug: 'cleansing-care', 소분류: '오일/밤',         소분류_slug: 'cleansing-oil',   sort_order: '2' },
+  { 대분류: '클렌징',         대분류_slug: 'cleansing-care', 소분류: '워터/밀크',        소분류_slug: 'cleansing-water', sort_order: '3' },
+  { 대분류: '마스크팩',       대분류_slug: 'maskpack',       소분류: '시트팩',          소분류_slug: 'sheet-mask',      sort_order: '1' },
+  { 대분류: '마스크팩',       대분류_slug: 'maskpack',       소분류: '패드',            소분류_slug: 'pad',             sort_order: '2' },
+  { 대분류: '바디케어',       대분류_slug: 'bodycare',       소분류: '샤워/입욕',        소분류_slug: 'shower',          sort_order: '1' },
+  { 대분류: '바디케어',       대분류_slug: 'bodycare',       소분류: '바디로션/크림',    소분류_slug: 'body-lotion',     sort_order: '2' },
+  { 대분류: '베이스 메이크업', 대분류_slug: 'base-makeup',    소분류: '쿠션',            소분류_slug: 'cushion',         sort_order: '1' },
 ];
 
 export const mockProductsSheet = [
-  { product_key: '', name: '엑설런트 선크림',                    brand: '몽디에스',           category: '선크림', volume_ml: '50', skin_types: '건성,민감성',            features: 'SPF50+ PA++++, 무기자차, 피부 저자극',          hwahae_url: '', image_url: '', is_disabled: '' },
-  { product_key: '', name: '더마 트러블 징크 카밍 선크림',       brand: '후시다딘 (동화약품)', category: '선크림', volume_ml: '50', skin_types: '수부지,지성,복합성',      features: 'SPF50+ PA++++, 무기자차, 트러블 진정',          hwahae_url: '', image_url: '', is_disabled: '' },
-  { product_key: '', name: '피디알엔 스킨핏 수분 선크림',        brand: '스타라이크',          category: '선크림', volume_ml: '50', skin_types: '수부지,지성',            features: 'SPF50+ PA++++, 유기자차, 물광 에센스 제형',     hwahae_url: '', image_url: '', is_disabled: '' },
-  { product_key: '', name: '멜라 TXA 선세럼',                   brand: '아로셀',             category: '선크림', volume_ml: '50', skin_types: '건성,복합성',            features: 'SPF50+ PA++++, 유기자차, 미백/주름/자외선 3중', hwahae_url: '', image_url: '', is_disabled: '' },
-  { product_key: '', name: '데일리 유브이 톤업 노세범 선크림',   brand: '이니스프리',          category: '선크림', volume_ml: '50', skin_types: '지성,복합성,민감성',      features: 'SPF50+ PA++++, 무기자차, 오일컨트롤',          hwahae_url: '', image_url: '', is_disabled: '' },
-  { product_key: '', name: '스테이 프레쉬 톤업 선크림 퍼플',    brand: '조선미녀',            category: '선크림', volume_ml: '50', skin_types: '건성,민감성,복합성',      features: 'SPF50+ PA++++, 혼합자차, 톤 보정',             hwahae_url: '', image_url: '', is_disabled: '' },
-  { product_key: '', name: '3번 도자기결 톤업베이지 선크림',     brand: '넘버즈인',            category: '선크림', volume_ml: '50', skin_types: '민감성,복합성,지성,건성', features: 'SPF50+ PA++++, 혼합자차, 파데프리 톤업',       hwahae_url: '', image_url: '', is_disabled: '' },
+  { product_key: '', name: '엑설런트 선크림',                    brand: '몽디에스',           category: '선크림', volume_ml: '50', skin_types: '건성,민감성',            features: 'SPF50+ PA++++, 무기자차, 피부 저자극',          hwahae_url: '', image_url: '', is_disabled: '', slug: '' },
+  { product_key: '', name: '더마 트러블 징크 카밍 선크림',       brand: '후시다딘 (동화약품)', category: '선크림', volume_ml: '50', skin_types: '수부지,지성,복합성',      features: 'SPF50+ PA++++, 무기자차, 트러블 진정',          hwahae_url: '', image_url: '', is_disabled: '', slug: '' },
+  { product_key: '', name: '피디알엔 스킨핏 수분 선크림',        brand: '스타라이크',          category: '선크림', volume_ml: '50', skin_types: '수부지,지성',            features: 'SPF50+ PA++++, 유기자차, 물광 에센스 제형',     hwahae_url: '', image_url: '', is_disabled: '', slug: '' },
+  { product_key: '', name: '멜라 TXA 선세럼',                   brand: '아로셀',             category: '선크림', volume_ml: '50', skin_types: '건성,복합성',            features: 'SPF50+ PA++++, 유기자차, 미백/주름/자외선 3중', hwahae_url: '', image_url: '', is_disabled: '', slug: '' },
+  { product_key: '', name: '데일리 유브이 톤업 노세범 선크림',   brand: '이니스프리',          category: '선크림', volume_ml: '50', skin_types: '지성,복합성,민감성',      features: 'SPF50+ PA++++, 무기자차, 오일컨트롤',          hwahae_url: '', image_url: '', is_disabled: '', slug: '' },
+  { product_key: '', name: '스테이 프레쉬 톤업 선크림 퍼플',    brand: '조선미녀',            category: '선크림', volume_ml: '50', skin_types: '건성,민감성,복합성',      features: 'SPF50+ PA++++, 혼합자차, 톤 보정',             hwahae_url: '', image_url: '', is_disabled: '', slug: '' },
+  { product_key: '', name: '3번 도자기결 톤업베이지 선크림',     brand: '넘버즈인',            category: '선크림', volume_ml: '50', skin_types: '민감성,복합성,지성,건성', features: 'SPF50+ PA++++, 혼합자차, 파데프리 톤업',       hwahae_url: '', image_url: '', is_disabled: '', slug: '' },
 ];
 
 // Wide format: one row per product, one URL column per seller
@@ -80,15 +92,16 @@ export const mockProductLinksSheet = [
   },
 ];
 
-// Simplified: product_name + badge_type (display name auto-resolved in import.ts)
-export const mockBadgesSheet = [
-  { product_name: '엑설런트 선크림',                  badge_type: 'directorpi', detail: '2026 무기자차 건성·민감성 Top', source_title: '디렉터파이 2026 선크림 추천', ref_url: '', source_date: '2026-06-12' },
-  { product_name: '더마 트러블 징크 카밍 선크림',      badge_type: 'directorpi', detail: '2026 무기자차 수부지·지성 Top',  source_title: '디렉터파이 2026 선크림 추천', ref_url: '', source_date: '2026-06-12' },
-  { product_name: '피디알엔 스킨핏 수분 선크림',       badge_type: 'directorpi', detail: '2026 유기자차 수부지·지성 Top',  source_title: '디렉터파이 2026 선크림 추천', ref_url: '', source_date: '2026-06-12' },
-  { product_name: '멜라 TXA 선세럼',                  badge_type: 'directorpi', detail: '2026 유기자차 건성·복합성 Top',  source_title: '디렉터파이 2026 선크림 추천', ref_url: '', source_date: '2026-06-12' },
-  { product_name: '데일리 유브이 톤업 노세범 선크림', badge_type: 'directorpi', detail: '2026 톤업 보송 Top',             source_title: '디렉터파이 2026 선크림 추천', ref_url: '', source_date: '2026-06-12' },
-  { product_name: '스테이 프레쉬 톤업 선크림 퍼플',   badge_type: 'directorpi', detail: '2026 톤업 촉촉 Top',             source_title: '디렉터파이 2026 선크림 추천', ref_url: '', source_date: '2026-06-12' },
-  { product_name: '3번 도자기결 톤업베이지 선크림',    badge_type: 'directorpi', detail: '2026 톤업 파데프리 Top',          source_title: '디렉터파이 2026 선크림 추천', ref_url: '', source_date: '2026-06-12' },
+// Wide per-source: one row per product, a `<source>_*` column group per badge
+// source (display name auto-resolved in import.ts; new sources need no code change).
+export const mockBadgesWideSheet = [
+  { product_name: '엑설런트 선크림',                  directorpi_detail: '2026 무기자차 건성·민감성 Top', directorpi_source: '디렉터파이 2026 선크림 추천', directorpi_ref_url: '', directorpi_date: '2026-06-12' },
+  { product_name: '더마 트러블 징크 카밍 선크림',      directorpi_detail: '2026 무기자차 수부지·지성 Top',  directorpi_source: '디렉터파이 2026 선크림 추천', directorpi_ref_url: '', directorpi_date: '2026-06-12' },
+  { product_name: '피디알엔 스킨핏 수분 선크림',       directorpi_detail: '2026 유기자차 수부지·지성 Top',  directorpi_source: '디렉터파이 2026 선크림 추천', directorpi_ref_url: '', directorpi_date: '2026-06-12' },
+  { product_name: '멜라 TXA 선세럼',                  directorpi_detail: '2026 유기자차 건성·복합성 Top',  directorpi_source: '디렉터파이 2026 선크림 추천', directorpi_ref_url: '', directorpi_date: '2026-06-12' },
+  { product_name: '데일리 유브이 톤업 노세범 선크림', directorpi_detail: '2026 톤업 보송 Top',             directorpi_source: '디렉터파이 2026 선크림 추천', directorpi_ref_url: '', directorpi_date: '2026-06-12' },
+  { product_name: '스테이 프레쉬 톤업 선크림 퍼플',   directorpi_detail: '2026 톤업 촉촉 Top',             directorpi_source: '디렉터파이 2026 선크림 추천', directorpi_ref_url: '', directorpi_date: '2026-06-12' },
+  { product_name: '3번 도자기결 톤업베이지 선크림',    directorpi_detail: '2026 톤업 파데프리 Top',          directorpi_source: '디렉터파이 2026 선크림 추천', directorpi_ref_url: '', directorpi_date: '2026-06-12' },
 ];
 
 // seller (enum) instead of seller_code
