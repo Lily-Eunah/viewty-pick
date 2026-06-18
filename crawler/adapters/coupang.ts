@@ -3,7 +3,7 @@ import { Listing, Product, PromoType } from '../../lib/types';
 import { PriceOffer, RetailerAdapter } from './index';
 import { isSupabaseServerConfigured, supabaseServer } from '../../lib/supabase/server';
 import { loadMockDB } from '../../lib/supabase/mockDb';
-import { productIdentityScore, hasFormConflict, distinctiveTokens, classifyOfferComposition, stripHtml } from './naver';
+import { productIdentityScore, hasFormConflict, distinctiveTokens, stripHtml } from './naver';
 import { stripPromoGifts } from '../core/packageExtractor';
 
 // ---------------------------------------------------------------------------
@@ -193,20 +193,58 @@ export function isCoupangProductPageUrl(url: string): boolean {
 const IMAGE_IDENTITY_SIMILARITY = 0.6;
 
 /**
- * Strict product-identity gate for an image fallback, reusing the SAME pure gates as
- * price matching: title-token similarity ≥ 0.6, a distinctive core token present, no
- * form conflict, and not a bundle/set/multipack/gift (classifyOfferComposition). The
- * only relaxation vs price is VOLUME — the same product's other sizes show the same
- * photo, so volume is not checked here. A non-passing (= different) product is rejected.
+ * Normalized brand match tokens: the main brand plus any parenthetical alias, each
+ * lower-cased and space-stripped. "아이소이(isoi)" → ["isoi", "아이소이"]; "대라(DAERA)"
+ * → ["daera", "대라"]. Either form is accepted so a Korean/English alias still matches.
  */
-function passesImageIdentity(title: string, name: string): boolean {
+function brandMatchTokens(brand: string | null | undefined): string[] {
+  if (!brand) return [];
+  const lower = brand.toLowerCase();
+  const tokens: string[] = [];
+  // Parenthetical alias(es) first: "아이소이(isoi)" → "isoi".
+  for (const m of lower.matchAll(/\(([^)]*)\)/g)) {
+    const alias = m[1].replace(/\s+/g, '');
+    if (alias) tokens.push(alias);
+  }
+  const main = lower.replace(/\([^)]*\)/g, '').replace(/\s+/g, '');
+  if (main) tokens.push(main);
+  return tokens;
+}
+
+/**
+ * Brand-presence gate for an image candidate. The title MUST contain the product's
+ * brand (substring on a normalized, space-stripped form — the same tolerance as the
+ * official-mall brand check). A DIFFERENT brand's same-category listing (e.g. 대라/
+ * DAERA cushion for an 아이소이 cushion) is rejected even when generic tokens
+ * (스킨케어·쿠션) overlap. An empty brand cannot pass — the safe side is to leave the
+ * image unresolved (→ placeholder) rather than adopt a possibly-wrong photo.
+ */
+function brandMatchesTitle(title: string, brand: string | null | undefined): boolean {
+  const tokens = brandMatchTokens(brand);
+  if (tokens.length === 0) return false;
+  const nt = stripHtml(title || '').toLowerCase().replace(/\s+/g, '');
+  return tokens.some((b) => nt.includes(b));
+}
+
+/**
+ * Strict product-identity gate for an image fallback. Reuses the SAME pure gates as
+ * price matching for IDENTITY (title-token similarity ≥ 0.6, a distinctive core token
+ * present, no form conflict) AND additionally requires the candidate to carry the
+ * product's BRAND. Two deliberate differences vs price matching:
+ *   - VOLUME is not checked — the same product's other sizes show the same photo.
+ *   - COMPOSITION (set/bundle/refill, e.g. 본품+리필 / 기획세트) is NOT rejected — those
+ *     are the SAME product's photo, so they are valid image sources. hasFormConflict
+ *     still rejects a different FORM (e.g. 토너 ↔ 패드), which IS a different photo.
+ * A non-passing (= different brand / different product) candidate is rejected.
+ */
+function passesImageIdentity(title: string, name: string, brand: string | null | undefined): boolean {
   const t = stripPromoGifts(stripHtml(title || ''));
+  if (!brandMatchesTitle(t, brand)) return false; // brand must match — reject other brands
   if (productIdentityScore(t, name) < IMAGE_IDENTITY_SIMILARITY) return false;
   if (hasFormConflict(name, t)) return false;
   const distinct = distinctiveTokens(name);
   const tn = t.toLowerCase().replace(/\s+/g, '');
   if (distinct.length > 0 && !distinct.some((d) => tn.includes(d))) return false;
-  if (classifyOfferComposition(t).kind !== 'single') return false; // exclude bundle/set/gift
   return true;
 }
 
@@ -219,18 +257,20 @@ function passesImageIdentity(title: string, name: string): boolean {
  *      listing of it). Identity is lenient on volume but NEVER on product identity.
  *   3. otherwise null → caller stores '' → placeholder. A DIFFERENT product's image
  *      (the earlier blind top-hit bug) is never used.
- * `productName` is the operator-curated name used for the identity gate.
+ * `productName`/`brand` are the operator-curated identity used for the fallback gate;
+ * the candidate must match BOTH the brand and the product identity.
  */
 export function pickCoupangImage(
   items: CoupangApiItem[],
   anchorProductId: string,
-  productName: string
+  productName: string,
+  brand: string | null | undefined
 ): string | null {
   const anchored = pickCoupangMatch(items, anchorProductId);
   if (anchored?.productImage) return anchored.productImage;
   // Results arrive in relevance order — first identity-passing one with an image wins.
   const sameProduct = items.find(
-    (it) => it.productImage && passesImageIdentity(it.productName, productName)
+    (it) => it.productImage && passesImageIdentity(it.productName, productName, brand)
   );
   return sameProduct?.productImage ?? null;
 }
@@ -330,7 +370,7 @@ export async function resolveCoupangImageFromUrl(
   const keyword = buildSearchKeyword(brand, name);
   try {
     const items = await searchCoupang(keyword, accessKey, secretKey);
-    const image = pickCoupangImage(items, productId, name);
+    const image = pickCoupangImage(items, productId, name, brand);
     console.log(
       `[Coupang Image] "${keyword}" (productId ${productId}) → ${image ? image : 'unresolved (no image in search)'}`
     );

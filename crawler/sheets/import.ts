@@ -120,7 +120,22 @@ const BADGE_NAMES: Record<string, string> = {
 // ---------------------------------------------------------------------------
 
 /**
- * Pre-resolve every distinct products.image_url. Keyed by the raw sheet value:
+ * Composite resolve key: raw image_url + brand + name. A Coupang product-page URL is
+ * resolved PER PRODUCT, not per URL — so when two different products mistakenly share
+ * the same image_url cell, each is resolved with its own brand+name and one product's
+ * resolved image can never leak onto the other. (The earlier URL-only key resolved
+ * such a URL once, under whichever row came first, and applied it to both.)
+ */
+function imageResolveKey(
+  rawImageUrl: string,
+  brand: string | null | undefined,
+  name: string | null | undefined,
+): string {
+  return `${rawImageUrl}|${(brand ?? '').trim()}|${(name ?? '').trim()}`;
+}
+
+/**
+ * Pre-resolve every products.image_url, keyed by (raw value + brand + name):
  *   - direct image URL          → itself (pass-through, used as-is),
  *   - Coupang product-page URL   → resolved productImage, or '' when unresolved,
  *   - empty / anything else      → as-is (operator's value; '' stays '').
@@ -128,28 +143,48 @@ const BADGE_NAMES: Record<string, string> = {
  */
 async function resolveProductImages(rawProducts: Record<string, string>[]): Promise<Map<string, string>> {
   const out = new Map<string, string>();
+  const urlOwners = new Map<string, Set<string>>(); // raw page URL → distinct (brand+name) products
   let resolvedCount = 0;
   for (const row of rawProducts) {
     const raw = (row.image_url ?? '').trim();
-    if (!raw || out.has(raw)) continue;
-    if (!isCoupangProductPageUrl(raw)) { out.set(raw, raw); continue; }
-    const image = await resolveCoupangImageFromUrl(raw, (row.brand ?? '').trim() || null, (row.name ?? '').trim());
-    out.set(raw, image ?? '');
+    if (!raw) continue;
+    const brand = (row.brand ?? '').trim() || null;
+    const name = (row.name ?? '').trim();
+    const key = imageResolveKey(raw, brand, name);
+    if (out.has(key)) continue;
+    if (!isCoupangProductPageUrl(raw)) { out.set(key, raw); continue; }
+    // Same page URL on two different products is almost certainly an operator typo —
+    // resolve each separately (below) and warn so the sheet gets fixed.
+    (urlOwners.get(raw) ?? urlOwners.set(raw, new Set()).get(raw)!).add(`${brand ?? ''}|${name}`);
+    const image = await resolveCoupangImageFromUrl(raw, brand, name);
+    out.set(key, image ?? '');
     if (image) resolvedCount++;
+  }
+  for (const [url, owners] of urlOwners) {
+    if (owners.size > 1) {
+      console.warn(`[Sheet Import] image_url shared by ${owners.size} different products (resolved per-product): ${url}`);
+    }
   }
   if (out.size) console.log(`[Sheet Import] Coupang image_url resolution: ${resolvedCount} resolved.`);
   return out;
 }
 
 /**
- * Final products.image_url to store, given the raw sheet value and the pre-resolved
- * map. A Coupang product-page URL collapses to its resolved image or null (never the
- * page URL); a direct image URL passes through; empty → null.
+ * Final products.image_url to store, given the raw sheet value, the product's
+ * brand+name, and the pre-resolved map. A Coupang product-page URL collapses to ITS
+ * product's resolved image or null (never the page URL); a direct image URL passes
+ * through; empty → null.
  */
-function resolveImageUrl(rawImageUrl: string | undefined, resolved: Map<string, string>): string | null {
+function resolveImageUrl(
+  rawImageUrl: string | undefined,
+  brand: string | null | undefined,
+  name: string | null | undefined,
+  resolved: Map<string, string>,
+): string | null {
   const raw = (rawImageUrl ?? '').trim();
   if (!raw) return null;
-  const value = resolved.has(raw) ? resolved.get(raw)! : raw;
+  const key = imageResolveKey(raw, brand, name);
+  const value = resolved.has(key) ? resolved.get(key)! : raw;
   return value || null;
 }
 
@@ -297,7 +332,7 @@ export async function runSheetImport(): Promise<ImportStats> {
           category_id: categoryId,
           volume_ml:   p.data.volume_ml,
           hwahae_url:  p.data.hwahae_url  || null,
-          image_url:   resolveImageUrl(p.data.image_url, resolvedImages),
+          image_url:   resolveImageUrl(p.data.image_url, p.data.brand || null, p.data.name, resolvedImages),
           features:    p.data.features    || null,
           skin_types:  p.data.skin_types,
           is_active:   !p.data.is_disabled,
@@ -505,7 +540,7 @@ export async function runSheetImport(): Promise<ImportStats> {
       const productKey = p.data.product_key?.trim() || makeProductKey(p.data.brand, p.data.name);
       const categoryId = db.categories.find((c) => c.slug === p.data.category || c.name === p.data.category)?.id ?? null;
       const existing   = db.products.find((pr) => pr.product_key === productKey);
-      const data = { product_key: productKey, slug: v.resolveDisplaySlug(p.data.slug, productKey), name: p.data.name, brand: p.data.brand || null, category_id: categoryId, volume_ml: p.data.volume_ml, hwahae_url: p.data.hwahae_url || null, image_url: resolveImageUrl(p.data.image_url, resolvedImages), features: p.data.features || null, skin_types: p.data.skin_types, official_info_url: null, viewty_score: 0, source: 'sheet', is_active: !p.data.is_disabled };
+      const data = { product_key: productKey, slug: v.resolveDisplaySlug(p.data.slug, productKey), name: p.data.name, brand: p.data.brand || null, category_id: categoryId, volume_ml: p.data.volume_ml, hwahae_url: p.data.hwahae_url || null, image_url: resolveImageUrl(p.data.image_url, p.data.brand || null, p.data.name, resolvedImages), features: p.data.features || null, skin_types: p.data.skin_types, official_info_url: null, viewty_score: 0, source: 'sheet', is_active: !p.data.is_disabled };
       if (existing) { Object.assign(existing, data); }
       else { db.products.push({ id: (db.products.length ? Math.max(...db.products.map((pr) => pr.id)) + 1 : 1), ...data }); }
       nameToKey.set(p.data.name.trim(), productKey);
