@@ -11,6 +11,9 @@ const HEADERS: Record<string, string[]> = {
   seo_pages:          ['slug', 'page_type', 'title', 'h1', 'description', 'category', 'skin_type', 'badge_type', 'is_active'],
   // Inspection OX tab — crawler pre-fills held (warning) prices; operator types O/X.
   inspection:         ['product_key', 'product_name', 'seller', '추정가격', '출처', '사유', '링크', '승인'],
+  // link_only tab — crawler auto-lists crawl-target links that got NO price
+  // (no_offer / data_error / 이종세트 보류) with cause + recommended action.
+  link_only:          ['판매처', '브랜드', '제품명', 'productId', '원인', '권장 액션', 'URL', '상태', '갱신일'],
 };
 
 /** Create any tabs in HEADERS that do not yet exist (addSheet; ignore "exists"). */
