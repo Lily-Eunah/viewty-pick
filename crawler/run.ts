@@ -31,6 +31,19 @@ export function resolveCrawlTarget(env: Record<string, string | undefined>, supa
   return { mockMode, useSupabase, projectRef, refused };
 }
 
+/**
+ * The seller→adapter registry. A seller whose slug is NOT a key here (zigzag/
+ * ably) has no price adapter: the crawl loop skips it as link-only rather than
+ * counting it as a failure. Exported so the registry is unit-testable.
+ */
+export function buildAdapters(): Record<string, RetailerAdapter> {
+  return {
+    oliveyoung: new OliveYoungAdapter(),
+    coupang: new CoupangAdapter(),
+    naver: new NaverAdapter(),
+  };
+}
+
 export async function crawlPipeline(): Promise<void> {
   // Set test/mock environment override if --test flag is passed
   if (typeof process !== 'undefined' && process.argv && process.argv.includes('--test')) {
@@ -199,17 +212,18 @@ export async function crawlPipeline(): Promise<void> {
   }
 
   // Step 3: Initialize Adapters
-  const adapters: Record<string, RetailerAdapter> = {
-    oliveyoung: new OliveYoungAdapter(),
-    coupang: new CoupangAdapter(),
-    naver: new NaverAdapter(),
-  };
+  const adapters: Record<string, RetailerAdapter> = buildAdapters();
 
   const newSnapshots: PriceSnapshot[] = [];
   const updatedListings: Listing[] = [...listings];
   let successCount = 0;
   let warningCount = 0;
   let failureCount = 0;
+  // SKIPPED (link-only, no adapter) — sellers with no registered price adapter
+  // (zigzag/ably; is_price_comparison_enabled=false). They are intentionally not
+  // crawled, so they are NOT failures: no fail_count change, no Failed count.
+  // Informational only and excluded from the success-rate denominator.
+  let skippedNoAdapter = 0;
   // OK_NO_OFFER bookkeeping — informational only (NOT failures). disappeared =
   // listings that had a real price last run and now legitimately have no offer.
   let noOfferCount = 0;
@@ -228,6 +242,9 @@ export async function crawlPipeline(): Promise<void> {
     const seller = sellers.find((s) => s.id === listing.seller_id);
 
     if (!product || !seller) {
+      // Genuine data integrity anomaly: an active listing points at a product/
+      // seller that isn't loaded. Kept as a real failure (visible in Failed) —
+      // unlike the link-only no-adapter case below, which is intended.
       console.warn(`[Pipeline] Product ID ${listing.product_id} or Seller ID ${listing.seller_id} not found for listing. Skipping.`);
       failureCount++;
       continue;
@@ -235,8 +252,11 @@ export async function crawlPipeline(): Promise<void> {
 
     const adapter = adapters[seller.slug];
     if (!adapter) {
-      console.warn(`[Pipeline] No adapter found for seller slug: ${seller.slug}. Skipping.`);
-      failureCount++;
+      // Intended link-only seller (zigzag/ably): no price adapter, so nothing to
+      // crawl. NOT a failure — fail_count untouched (already via continue) and it
+      // does not advance the §4.4 staircase. Counted separately for the summary.
+      console.log(`[Pipeline] No adapter for seller slug: ${seller.slug} — link-only, skipping (not a failure).`);
+      skippedNoAdapter++;
       continue;
     }
 
@@ -704,6 +724,7 @@ export async function crawlPipeline(): Promise<void> {
       failureCount,
       durationSeconds: duration,
       noOfferCount,
+      skippedNoAdapterCount: skippedNoAdapter,
       disappearedOffers,
       dataErrors,
       pendingInspectionCount: pendingInspection,
@@ -711,9 +732,14 @@ export async function crawlPipeline(): Promise<void> {
     });
   }
 
+  // Success rate is measured against CRAWLABLE links only — link-only sellers
+  // with no adapter (zigzag/ably) can never be "successful", so counting them in
+  // the denominator understates the real crawl health.
+  const crawlableLinks = Math.max(0, listings.length - skippedNoAdapter);
+  const successRate = crawlableLinks > 0 ? Math.round((successCount / crawlableLinks) * 100) : 0;
   console.log(
-    `[Pipeline] Sync complete! Success rate: ${Math.round((successCount / listings.length) * 100)}% ` +
-    `(no-offer/link-only: ${noOfferCount}, disappeared: ${disappearedOffers.length})`
+    `[Pipeline] Sync complete! Success rate: ${successRate}% (of ${crawlableLinks} crawlable; ` +
+    `skipped link-only/no-adapter: ${skippedNoAdapter}, no-offer: ${noOfferCount}, disappeared: ${disappearedOffers.length})`
   );
 }
 

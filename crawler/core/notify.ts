@@ -37,10 +37,7 @@ export async function sendCriticalAlarm(subject: string, details: string): Promi
   return sendDiscordMessage(message);
 }
 
-/**
- * Sends the daily pipeline run summary.
- */
-export async function sendDailySummary(stats: {
+export interface DailySummaryStats {
   totalLinks: number;
   successCount: number;
   warningCount: number;
@@ -49,6 +46,10 @@ export async function sendDailySummary(stats: {
   // OK_NO_OFFER coverage info — NOT failures. A legitimate "no qualified offer"
   // (link-only listing) does not increment fail_count; reported here as info.
   noOfferCount?: number;
+  // Link-only sellers with no registered price adapter (zigzag/ably). They are
+  // intentionally not crawled (is_price_comparison_enabled=false) — NOT failures.
+  // Reported as info and excluded from the success-rate denominator.
+  skippedNoAdapterCount?: number;
   // Listings that had a real price last run and now have no offer (price dropped
   // to link-only). Operator-facing info line, not a per-item alert.
   disappearedOffers?: string[];
@@ -59,8 +60,15 @@ export async function sendDailySummary(stats: {
   // Held (warning) prices awaiting an O/X decision in the inspection tab.
   pendingInspectionCount?: number;
   inspectionItems?: string[];
-}): Promise<boolean> {
+}
+
+/**
+ * Builds the daily run summary message. Pure (stats in, string out) so the
+ * Failed/Skipped accounting can be unit-tested without a Discord webhook.
+ */
+export function buildDailySummaryMessage(stats: DailySummaryStats): string {
   const noOffer = stats.noOfferCount ?? 0;
+  const skippedNoAdapter = stats.skippedNoAdapterCount ?? 0;
   const disappeared = stats.disappearedOffers ?? [];
   const dataErrors = stats.dataErrors ?? [];
   const pendingInspection = stats.pendingInspectionCount ?? 0;
@@ -73,6 +81,7 @@ export async function sendDailySummary(stats: {
 - **경고 대상 (Warning)**: ${stats.warningCount}개
 - **실패 제외 (Failed)**: ${stats.failureCount}개
 - **오퍼 없음 (No offer · 정보)**: ${noOffer}개 — 정상(link-only), fail_count 미반영
+- **수집 제외 (Skipped · link-only, 어댑터 없음)**: ${skippedNoAdapter}개 — zigzag/ably 등, 실패 아님
 - **소요 시간**: ${stats.durationSeconds.toFixed(1)}초
 - 가격 동기화 및 캐시 재생성(ISR)이 트리거되었습니다.`;
 
@@ -94,5 +103,12 @@ export async function sendDailySummary(stats: {
     message += `\n📝 **검수 대기 (inspection 탭에서 O 노출 / X 거부)**: ${pendingInspection}건${more}\n${shown.map((d) => `  • ${d}`).join('\n')}`;
   }
 
-  return sendDiscordMessage(message);
+  return message;
+}
+
+/**
+ * Sends the daily pipeline run summary.
+ */
+export async function sendDailySummary(stats: DailySummaryStats): Promise<boolean> {
+  return sendDiscordMessage(buildDailySummaryMessage(stats));
 }
