@@ -320,13 +320,14 @@ it('looksLikeImageUrl false for a product-page URL', () => {
 // ---------------------------------------------------------------------------
 console.log('\n--- [Fixture 12] pickCoupangImage (identity-gated) ---');
 const NAME = '엑설런트 선크림';
+const BRAND = '몽디에스';
 
 it('uses the anchored productId row image when present (identity not required)', () => {
   const data: CoupangApiItem[] = [
     item({ productId: 111, productName: '이니스프리 데일리 선크림 50ml', productImage: 'https://img/wrong.jpg' }),
     item({ productId: 7654321, productName: '몽디에스 엑설런트 선크림 50ml', productImage: 'https://img/anchor.jpg' }),
   ];
-  expect(pickCoupangImage(data, '7654321', NAME)).toBe('https://img/anchor.jpg');
+  expect(pickCoupangImage(data, '7654321', NAME, BRAND)).toBe('https://img/anchor.jpg');
 });
 
 it('anchor missing → uses the SAME product (identity passes), skipping a wrong top-hit', () => {
@@ -336,7 +337,7 @@ it('anchor missing → uses the SAME product (identity passes), skipping a wrong
     // same product, different seller listing → identity passes
     item({ productId: 222, productName: '몽디에스 엑설런트 선크림 75ml', productImage: 'https://img/right.jpg' }),
   ];
-  expect(pickCoupangImage(data, '999', NAME)).toBe('https://img/right.jpg');
+  expect(pickCoupangImage(data, '999', NAME, BRAND)).toBe('https://img/right.jpg');
 });
 
 it('anchor missing + only DIFFERENT products → null (no wrong-product image) [엑설런트 regression]', () => {
@@ -344,23 +345,73 @@ it('anchor missing + only DIFFERENT products → null (no wrong-product image) [
     item({ productId: 111, productName: '이니스프리 데일리 선크림 50ml', productImage: 'https://img/a.jpg' }),
     item({ productId: 222, productName: '조선미녀 맑은쌀 토너 150ml', productImage: 'https://img/b.jpg' }),
   ];
-  expect(pickCoupangImage(data, '999', NAME)).toBeNull();
+  expect(pickCoupangImage(data, '999', NAME, BRAND)).toBeNull();
 });
 
-it('bundle/set of the SAME product is NOT adopted even though identity tokens match', () => {
+it('bundle/set of the SAME product IS adopted for the image (본품+리필/기획세트 = same photo)', () => {
   const data: CoupangApiItem[] = [
     item({ productId: 222, productName: '몽디에스 엑설런트 선크림 50ml 1+1 기획세트', productImage: 'https://img/set.jpg' }),
   ];
-  expect(pickCoupangImage(data, '999', NAME)).toBeNull();
+  expect(pickCoupangImage(data, '999', NAME, BRAND)).toBe('https://img/set.jpg');
 });
 
 it('returns null when the same-product result carries no image', () => {
   const data: CoupangApiItem[] = [item({ productId: 222, productName: '몽디에스 엑설런트 선크림 50ml', productImage: undefined })];
-  expect(pickCoupangImage(data, '999', NAME)).toBeNull();
+  expect(pickCoupangImage(data, '999', NAME, BRAND)).toBeNull();
 });
 
 it('returns null for empty search results', () => {
-  expect(pickCoupangImage([], '999', NAME)).toBeNull();
+  expect(pickCoupangImage([], '999', NAME, BRAND)).toBeNull();
+});
+
+// ---------------------------------------------------------------------------
+// Fixture 12b: brand is REQUIRED on the fallback — a different brand's same-category
+// listing (대라/DAERA cushion for an 아이소이 cushion) must be rejected even when the
+// generic tokens (스킨케어·쿠션) overlap and it is the top hit. The real 아이소이
+// 본품+리필 listing passes (brand match + composition ignored for images). [DAERA bug]
+// ---------------------------------------------------------------------------
+const ISOI_NAME = '스킨케어 비건 쿠션';
+const ISOI_BRAND = '아이소이';
+
+it('rejects a DIFFERENT brand (대라/DAERA) and adopts the real 아이소이 본품+리필 image', () => {
+  const data: CoupangApiItem[] = [
+    // top hit, generic-token overlap, but a different brand → rejected
+    item({ productId: 111, productName: '대라(DAERA) 스킨케어링 쿠션 본품', productImage: 'https://img/daera.jpg' }),
+    // real product, set composition (본품+리필) — same photo, brand matches → adopted
+    item({ productId: 222, productName: '아이소이 스킨케어 비건 쿠션 21호 본품+리필', productImage: 'https://img/isoi.jpg' }),
+  ];
+  expect(pickCoupangImage(data, '999', ISOI_NAME, ISOI_BRAND)).toBe('https://img/isoi.jpg');
+});
+
+it('rejects a different brand even when it is the ONLY result → null (placeholder)', () => {
+  const data: CoupangApiItem[] = [
+    item({ productId: 111, productName: '대라(DAERA) 스킨케어링 쿠션 본품', productImage: 'https://img/daera.jpg' }),
+  ];
+  expect(pickCoupangImage(data, '999', ISOI_NAME, ISOI_BRAND)).toBeNull();
+});
+
+it('empty brand can never pass the fallback → null (safe side)', () => {
+  const data: CoupangApiItem[] = [
+    item({ productId: 222, productName: '아이소이 스킨케어 비건 쿠션 21호', productImage: 'https://img/isoi.jpg' }),
+  ];
+  expect(pickCoupangImage(data, '999', ISOI_NAME, null)).toBeNull();
+  expect(pickCoupangImage(data, '999', ISOI_NAME, '')).toBeNull();
+});
+
+it('matches a parenthetical English brand alias in the title (아이소이(isoi))', () => {
+  const data: CoupangApiItem[] = [
+    item({ productId: 222, productName: 'isoi 스킨케어 비건 쿠션 21호', productImage: 'https://img/isoi.jpg' }),
+  ];
+  expect(pickCoupangImage(data, '999', ISOI_NAME, '아이소이(isoi)')).toBe('https://img/isoi.jpg');
+});
+
+it('hasFormConflict (토너 ↔ 패드) is still rejected even with a brand + identity match', () => {
+  const data: CoupangApiItem[] = [
+    // brand matches, distinctive tokens (스테이/프레쉬) overlap → identity passes,
+    // but the FORM differs (curated 토너 vs candidate 패드) → a different photo → rejected
+    item({ productId: 222, productName: '라운드랩 스테이 프레쉬 패드 100매', productImage: 'https://img/pad.jpg' }),
+  ];
+  expect(pickCoupangImage(data, '999', '스테이 프레쉬 토너', '라운드랩')).toBeNull();
 });
 
 // ---------------------------------------------------------------------------
