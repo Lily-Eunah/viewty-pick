@@ -10,7 +10,7 @@ interface Props {
   minors?: Category[]; // 소분류 sub-filter chips (present on 대분류 pages)
 }
 
-const SKIN_TYPES = ['민감성', '지성', '건성', '수부지'] as const;
+const SKIN_TYPES = ['지성', '건성', '수부지', '민감성'] as const;
 const SORT_OPTIONS = [
   { key: 'recommend', label: '추천순' },
   { key: 'price_asc', label: '최저가순' },
@@ -44,29 +44,38 @@ export default function CategoryProductList({ initialProducts, minors }: Props) 
   return (
     <>
       {/* Filter chips — sticky */}
-      <section className="bg-bg py-2.5 flex flex-col gap-2 border-b border-line sticky top-14 z-30 shadow-[0_2px_4px_rgba(0,0,0,0.01)]">
+      <section className="bg-bg pt-3 pb-2.5 flex flex-col gap-3 border-b border-line sticky top-14 z-30 shadow-[0_2px_4px_rgba(0,0,0,0.01)]">
         {minors && minors.length > 0 && (
-          <div className="w-full overflow-x-auto no-scrollbar flex gap-2 px-4 pb-2 border-b border-[#F8F6EE]">
-            <Chip label="전체" selected={selectedMinor === null} onClick={() => setSelectedMinor(null)} />
+          <div className="w-full overflow-x-auto no-scrollbar flex gap-5 px-4 border-b border-[#F8F6EE]">
+            <Chip
+              label="전체"
+              selected={selectedMinor === null}
+              variant="tab"
+              onClick={() => setSelectedMinor(null)}
+            />
             {minors.map((m) => (
               <Chip
                 key={m.slug}
                 label={m.name}
                 selected={selectedMinor === m.slug}
+                variant="tab"
                 onClick={() => setSelectedMinor(selectedMinor === m.slug ? null : m.slug)}
               />
             ))}
           </div>
         )}
-        <div className="w-full overflow-x-auto no-scrollbar flex gap-2 px-4">
-          {SKIN_TYPES.map((skin) => (
-            <Chip
-              key={skin}
-              label={skin}
-              selected={selectedSkin === skin}
-              onClick={() => setSelectedSkin(selectedSkin === skin ? null : skin)}
-            />
-          ))}
+        <div className="w-full overflow-x-auto no-scrollbar flex items-center gap-2 px-4">
+          <span className="text-[12px] font-bold text-sub shrink-0 mr-1">피부타입</span>
+          <div className="flex gap-2">
+            {SKIN_TYPES.map((skin) => (
+              <Chip
+                key={skin}
+                label={skin}
+                selected={selectedSkin === skin}
+                onClick={() => setSelectedSkin(selectedSkin === skin ? null : skin)}
+              />
+            ))}
+          </div>
         </div>
         <div className="w-full overflow-x-auto no-scrollbar flex gap-2 px-4 mt-0.5 border-t border-[#F8F6EE] pt-2">
           {SORT_OPTIONS.map((opt) => (
