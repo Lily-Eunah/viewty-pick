@@ -1,6 +1,7 @@
 ﻿import { runSheetImport } from './sheets/import';
 import { CoupangAdapter, NaverAdapter, OliveYoungAdapter, RetailerAdapter, PriceOffer, FetchOutcome } from './adapters/index';
 import { clearNaverSearchCache } from './adapters/naver';
+import { readInspectionRows, upsertInspection, approvalOverrides, InspectionItem } from './sheets/inspection';
 import { applyManualOverrides, normalizePrice } from './core/normalize';
 import { runHealthCheck, resolveListingOutcome } from './core/healthcheck';
 import { recalculateViewtyScores } from './core/score';
@@ -176,6 +177,25 @@ export async function crawlPipeline(): Promise<void> {
     const missing = onlyKeys.filter((k) => !products.some((p) => p.product_key === k));
     if (missing.length) console.warn(`[Pipeline] --only keys not found among active products: ${missing.join(', ')}`);
     console.log(`[Pipeline] Limited to ${products.length} products / ${listings.length} listings.`);
+  }
+
+  // Step 2.6: Inspection OX approvals → synthesized price overrides.
+  // The operator approves a held (warning) price with O in the `inspection` tab;
+  // here we read those approvals and apply each as a price manual_override so the
+  // (possibly operator-edited) estimated price promotes to a displayable 'ok'.
+  // Candidates written back to the tab are collected during the crawl loop below.
+  const inspectionCandidates: InspectionItem[] = [];
+  if (!mockMode) {
+    try {
+      const rows = await readInspectionRows();
+      const oOverrides = approvalOverrides(rows, products, sellers);
+      if (oOverrides.length > 0) {
+        manualOverrides.push(...oOverrides);
+        console.log(`[Pipeline] Applied ${oOverrides.length} inspection O-approval(s) as price overrides.`);
+      }
+    } catch (e) {
+      console.warn('[Pipeline] Inspection approvals read failed (continuing):', (e as Error).message);
+    }
   }
 
   // Step 3: Initialize Adapters
@@ -398,6 +418,20 @@ export async function crawlPipeline(): Promise<void> {
         // Validation succeeded
         successCount++;
         if (check.status === 'warning') warningCount++;
+
+        // A held (warning) price with a value → inspection candidate: the crawler
+        // pre-fills it into the OX tab so the operator can approve (O) / reject (X).
+        if (check.status === 'warning' && snapshot.sale_price != null) {
+          inspectionCandidates.push({
+            product_key: product.product_key,
+            product_name: product.name,
+            seller: seller.slug,
+            estimated_price: snapshot.sale_price,
+            source: offer.matchedMallName ?? offer.storeName ?? '',
+            reason: (check.message ?? offer.inspectionWarning ?? '').slice(0, 300),
+            link: offer.matchedUrl ?? listing.affiliate_url ?? listing.url ?? '',
+          });
+        }
 
         // Reset fail count
         const listIdx = updatedListings.findIndex((l) => l.id === listing.id);
@@ -643,6 +677,23 @@ export async function crawlPipeline(): Promise<void> {
     console.error('[Pipeline] Route revalidation failed', e);
   }
 
+  // Step 8.5: Upsert held (warning) prices into the inspection OX tab (preserving
+  // the operator's existing O/X). Best-effort; never blocks the run.
+  let pendingInspection = 0;
+  const inspectionPending: string[] = [];
+  if (!mockMode) {
+    try {
+      const res = await upsertInspection(inspectionCandidates);
+      pendingInspection = res.pending;
+      for (const c of inspectionCandidates) {
+        inspectionPending.push(`${c.product_name} @ ${c.seller} ≈${c.estimated_price?.toLocaleString('ko-KR') ?? '-'}원 (${c.source || '?'})`);
+      }
+      console.log(`[Pipeline] Inspection tab upserted: ${res.written} row(s), ${res.pending} pending O/X.`);
+    } catch (e) {
+      console.warn('[Pipeline] Inspection tab write failed (continuing):', (e as Error).message);
+    }
+  }
+
   // Step 9: Send Daily Alerting Summary
   const duration = (Date.now() - startTime) / 1000;
   if (notifyEnabled) {
@@ -655,6 +706,8 @@ export async function crawlPipeline(): Promise<void> {
       noOfferCount,
       disappearedOffers,
       dataErrors,
+      pendingInspectionCount: pendingInspection,
+      inspectionItems: inspectionPending,
     });
   }
 

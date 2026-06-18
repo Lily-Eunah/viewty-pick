@@ -56,10 +56,15 @@ export async function sendDailySummary(stats: {
   // short-link with no productId). Not failures — the operator must fix the
   // sheet URL. Surfaced here for action.
   dataErrors?: string[];
+  // Held (warning) prices awaiting an O/X decision in the inspection tab.
+  pendingInspectionCount?: number;
+  inspectionItems?: string[];
 }): Promise<boolean> {
   const noOffer = stats.noOfferCount ?? 0;
   const disappeared = stats.disappearedOffers ?? [];
   const dataErrors = stats.dataErrors ?? [];
+  const pendingInspection = stats.pendingInspectionCount ?? 0;
+  const inspectionItems = stats.inspectionItems ?? [];
 
   let message = `📊 **[ViewtyPick Crawl Run Summary]**
 - **시작/종료 상태**: 완료 (Success)
@@ -81,6 +86,12 @@ export async function sendDailySummary(stats: {
     const shown = dataErrors.slice(0, 10);
     const more = dataErrors.length > shown.length ? ` 외 ${dataErrors.length - shown.length}건` : '';
     message += `\n⚠️ **데이터 오류 (시트 URL 수정 필요, fail_count 미반영)**: ${dataErrors.length}건${more}\n${shown.map((d) => `  • ${d}`).join('\n')}`;
+  }
+
+  if (pendingInspection > 0) {
+    const shown = inspectionItems.slice(0, 10);
+    const more = inspectionItems.length > shown.length ? ` 외 ${inspectionItems.length - shown.length}건` : '';
+    message += `\n📝 **검수 대기 (inspection 탭에서 O 노출 / X 거부)**: ${pendingInspection}건${more}\n${shown.map((d) => `  • ${d}`).join('\n')}`;
   }
 
   return sendDiscordMessage(message);

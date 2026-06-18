@@ -57,6 +57,9 @@ export function applyManualOverrides(
         updated.inStock = true;
         updated.matchExcluded = false;
         updated.outcome = 'ok';
+        // An approved price (incl. an inspection O) is no longer "held": clear the
+        // inspection flag so healthcheck does not re-downgrade it to warning.
+        updated.inspectionWarning = null;
         updated.sourceText = `[manual_override price] ${updated.sourceText ?? ''}`.trim();
       }
     } else if (o.override_type === 'promo_type') {
