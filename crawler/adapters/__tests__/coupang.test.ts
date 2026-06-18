@@ -16,6 +16,9 @@ import {
   isCoupangShortLink,
   buildSearchKeyword,
   pickCoupangMatch,
+  isCoupangProductPageUrl,
+  looksLikeImageUrl,
+  pickCoupangImage,
   CoupangApiItem,
 } from '../coupang';
 
@@ -273,6 +276,70 @@ it('picks the lowest-price row among same-productId options (single, not bulk)',
 it('returns null when no row matches the anchored productId', () => {
   const data: CoupangApiItem[] = [item({ productId: 111 }), item({ productId: 222 })];
   expect(pickCoupangMatch(data, '333')).toBeNull();
+});
+
+// ---------------------------------------------------------------------------
+// Fixture 11: products.image_url = Coupang product-page URL → image SOURCE
+// (resolved to productImage), vs a direct image URL (used as-is).
+// ---------------------------------------------------------------------------
+console.log('\n--- [Fixture 11] image_url classification ---');
+it('Coupang product-page URL is an image source (not a usable image)', () => {
+  expect(isCoupangProductPageUrl('https://www.coupang.com/vp/products/7654321?itemId=1')).toBe(true);
+});
+
+it('direct .jpg URL is NOT an image source (used as-is)', () => {
+  expect(isCoupangProductPageUrl('https://cdn.example.com/a/b.jpg')).toBe(false);
+});
+
+it('ads-partners.coupang.com productImage host is NOT an image source (used as-is)', () => {
+  expect(isCoupangProductPageUrl('https://ads-partners.coupang.com/image1/abc')).toBe(false);
+});
+
+it('non-coupang page URL is NOT treated as a Coupang image source', () => {
+  expect(isCoupangProductPageUrl('https://brand.naver.com/store/products/123')).toBe(false);
+});
+
+it('empty image_url is not an image source', () => {
+  expect(isCoupangProductPageUrl('')).toBe(false);
+});
+
+it('looksLikeImageUrl true for image extensions and ads-partners host', () => {
+  expect(looksLikeImageUrl('https://x/y.png')).toBe(true);
+  expect(looksLikeImageUrl('https://x/y.webp?v=2')).toBe(true);
+  expect(looksLikeImageUrl('https://ads-partners.coupang.com/image1/abc')).toBe(true);
+});
+
+it('looksLikeImageUrl false for a product-page URL', () => {
+  expect(looksLikeImageUrl('https://www.coupang.com/vp/products/7654321')).toBe(false);
+});
+
+// ---------------------------------------------------------------------------
+// Fixture 12: pickCoupangImage — anchored productImage, top-hit fallback, miss
+// ---------------------------------------------------------------------------
+console.log('\n--- [Fixture 12] pickCoupangImage ---');
+it('uses the anchored productId row image when present', () => {
+  const data: CoupangApiItem[] = [
+    item({ productId: 111, productImage: 'https://img/top.jpg' }),
+    item({ productId: 7654321, productImage: 'https://img/anchor.jpg' }),
+  ];
+  expect(pickCoupangImage(data, '7654321')).toBe('https://img/anchor.jpg');
+});
+
+it('falls back to the top result image when productId not in results (lenient identity)', () => {
+  const data: CoupangApiItem[] = [
+    item({ productId: 111, productImage: 'https://img/top.jpg' }),
+    item({ productId: 222, productImage: 'https://img/second.jpg' }),
+  ];
+  expect(pickCoupangImage(data, '999')).toBe('https://img/top.jpg');
+});
+
+it('returns null when search yields no images at all (→ placeholder)', () => {
+  const data: CoupangApiItem[] = [item({ productId: 111, productImage: undefined })];
+  expect(pickCoupangImage(data, '999')).toBeNull();
+});
+
+it('returns null for empty search results', () => {
+  expect(pickCoupangImage([], '999')).toBeNull();
 });
 
 // ---------------------------------------------------------------------------
