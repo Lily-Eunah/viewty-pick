@@ -22,6 +22,7 @@ import {
   distinctiveTokens,
   isNaverHostedStore,
   isOfficialBrandStoreOffer,
+  mallNameHasBrandWord,
   isNaverAffiliate,
   fallbackPolicy,
   pickOfficialStoreFallback,
@@ -367,6 +368,39 @@ it('isOfficialBrandStoreOffer: mallName MUST contain the brand (necessary); else
   assert(isOfficialBrandStoreOffer(noBrand, null, '코스알엑스') === false, 'brand NOT in mallName → excluded');
   assert(isOfficialBrandStoreOffer(external, null, '코스알엑스') === false, 'non-naver-hosted excluded');
 });
+console.log('\n--- mallNameHasBrandWord (whole-word, not substring) ---');
+it('brand 올리브: whole-word matches, substring does NOT', () => {
+  assert(mallNameHasBrandWord('올리브', '올리브') === true, '올리브 exact');
+  assert(mallNameHasBrandWord('올리브 공식', '올리브') === true, '올리브 공식');
+  assert(mallNameHasBrandWord('올리브 공식몰', '올리브') === true, '올리브 공식몰');
+  assert(mallNameHasBrandWord('공식 올리브', '올리브') === true, '공식 올리브');
+  assert(mallNameHasBrandWord('올리브영', '올리브') === false, '올리브영 substring rejected');
+  assert(mallNameHasBrandWord('콩올리브', '올리브') === false, '콩올리브 substring rejected');
+});
+it('real cases: whole-word brand match holds', () => {
+  assert(mallNameHasBrandWord('에뛰드 본사직영샵', '에뛰드') === true, '에뛰드 본사직영샵');
+  assert(mallNameHasBrandWord('코스알엑스', '코스알엑스') === true, '코스알엑스 exact');
+  assert(mallNameHasBrandWord('동화약품 후시다인', '동화약품') === true, '동화약품 후시다인');
+  assert(mallNameHasBrandWord('바이오힐보 BOH', '바이오힐보') === true, '바이오힐보 BOH');
+  assert(mallNameHasBrandWord('토리든', '토리든') === true, '토리든 exact');
+  assert(mallNameHasBrandWord('미라클 뷰', '코스알엑스') === false, 'no brand → reject');
+});
+it('English brand is case-insensitive (VDL=vdl)', () => {
+  assert(mallNameHasBrandWord('vdl 공식', 'VDL') === true, 'vdl 공식 / VDL');
+  assert(mallNameHasBrandWord('VDL official', 'vdl') === true, 'VDL official / vdl');
+  assert(mallNameHasBrandWord('vdleather', 'VDL') === false, 'vdleather substring rejected');
+});
+it('empty/parenthetical brand handled', () => {
+  assert(mallNameHasBrandWord('올리브 공식', '') === false, 'empty brand → false');
+  assert(mallNameHasBrandWord('조선미녀 공식스토어', '조선미녀 (Beauty of Joseon)') === true, 'parenthetical stripped');
+});
+it('isOfficialBrandStoreOffer uses whole-word: 올리브영 store with brand 올리브 → excluded', () => {
+  const oyStore = item({ mallName: '올리브영', link: 'https://smartstore.naver.com/oliveyoung/products/9', productType: '2' });
+  const olive = item({ mallName: '올리브 공식몰', link: 'https://smartstore.naver.com/olive/products/9', productType: '2' });
+  assert(isOfficialBrandStoreOffer(oyStore, null, '올리브') === false, '올리브영 must not match brand 올리브');
+  assert(isOfficialBrandStoreOffer(olive, null, '올리브') === true, '올리브 공식몰 matches brand 올리브');
+});
+
 it('isOfficialBrandStoreOffer: allowlist mallName is authoritative', () => {
   const off = item({ mallName: '에뛰드 본사직영샵', link: 'https://brand.naver.com/etude/products/7', productType: '2' });
   assert(isOfficialBrandStoreOffer(off, '에뛰드 본사직영샵', '에뛰드') === true, 'allowlist match');

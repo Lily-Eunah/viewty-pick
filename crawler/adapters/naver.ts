@@ -455,9 +455,26 @@ export function isNaverHostedStore(link?: string | null): boolean {
 }
 
 /**
+ * WHOLE-WORD brand match: the brand must appear in the mallName at a space/string
+ * boundary — `(^|space) brand (space|$)` — NOT as a substring. This stops a short
+ * brand from false-matching a longer name (브랜드 `올리브` must NOT match `올리브영`
+ * or `콩올리브`, but DOES match `올리브 공식몰` / `공식 올리브`). Normalization: strip
+ * parentheticals, collapse whitespace, case-insensitive (English: VDL=vdl). Uses a
+ * SPACE-preserving normalize (NOT normalizeMallName, which removes spaces).
+ */
+export function mallNameHasBrandWord(mallName: string | null | undefined, brand: string | null | undefined): boolean {
+  const norm = (s: string) => (s || '').replace(/\s*\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+  const b = norm(brand || '');
+  const m = norm(mallName || '');
+  if (!b || !m) return false;
+  const esc = b.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // escape regex specials in the brand
+  return new RegExp(`(?:^|\\s)${esc}(?:\\s|$)`).test(m);
+}
+
+/**
  * Official-mall gate (operator-confirmed, strict): an individual Naver-hosted store
- * whose mallName CONTAINS the product brand name (a NECESSARY condition — a mall
- * that does not carry the brand in its name is a reseller/other mall and is
+ * whose mallName carries the product brand as a WHOLE WORD (a NECESSARY condition —
+ * a mall that does not carry the brand in its name is a reseller/other mall and is
  * excluded). retailer_allowlist mallName, when present, is authoritative. The
  * remaining confidence (single-product, right size) comes from the strict identity
  * gate applied by the pickers, plus the always-warning/operator-review of every
@@ -477,9 +494,8 @@ export function isOfficialBrandStoreOffer(
     return na.length > 0 && (nm.includes(na) || na.includes(nm));
   }
   if (!brand) return false;
-  // mallName must contain the brand (necessary condition).
-  const nb = normalizeMallName(brand.replace(/\s*\([^)]*\)/g, '').split(' ')[0]);
-  return nb.length >= 2 && nm.includes(nb);
+  // mallName must carry the brand as a whole word (space/boundary), not a substring.
+  return mallNameHasBrandWord(item.mallName, brand);
 }
 
 /** Affiliate (monetized) Naver link = a naver.me short link ONLY (operator rule). */
