@@ -60,6 +60,10 @@ export interface DailySummaryStats {
   // Held (warning) prices awaiting an O/X decision in the inspection tab.
   pendingInspectionCount?: number;
   inspectionItems?: string[];
+  // Crawl-target links that produced NO price this run (no_offer / data_error /
+  // 이종세트 보류) and are listed in the link_only tab for operator action. Distinct
+  // from inspection (those DO have a held price); reported separately.
+  linkOnlyUnmatchedCount?: number;
 }
 
 /**
@@ -73,6 +77,7 @@ export function buildDailySummaryMessage(stats: DailySummaryStats): string {
   const dataErrors = stats.dataErrors ?? [];
   const pendingInspection = stats.pendingInspectionCount ?? 0;
   const inspectionItems = stats.inspectionItems ?? [];
+  const linkOnlyUnmatched = stats.linkOnlyUnmatchedCount ?? 0;
 
   let message = `📊 **[ViewtyPick Crawl Run Summary]**
 - **시작/종료 상태**: 완료 (Success)
@@ -101,6 +106,10 @@ export function buildDailySummaryMessage(stats: DailySummaryStats): string {
     const shown = inspectionItems.slice(0, 10);
     const more = inspectionItems.length > shown.length ? ` 외 ${inspectionItems.length - shown.length}건` : '';
     message += `\n📝 **검수 대기 (inspection 탭에서 O 노출 / X 거부)**: ${pendingInspection}건${more}\n${shown.map((d) => `  • ${d}`).join('\n')}`;
+  }
+
+  if (linkOnlyUnmatched > 0) {
+    message += `\n🔗 **가격 미매칭 link-only (link_only 탭에서 원인·액션 확인)**: ${linkOnlyUnmatched}건 — 가격 자체가 없는 링크(쿠팡 URL 교체·네이버/올영 확인)`;
   }
 
   return message;

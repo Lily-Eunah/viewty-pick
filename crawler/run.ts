@@ -2,6 +2,7 @@
 import { CoupangAdapter, NaverAdapter, OliveYoungAdapter, RetailerAdapter, PriceOffer, FetchOutcome } from './adapters/index';
 import { clearNaverSearchCache } from './adapters/naver';
 import { readInspectionRows, upsertInspection, approvalOverrides, InspectionItem } from './sheets/inspection';
+import { upsertLinkOnly, classifyLinkOnly, LinkOnlyItem } from './sheets/linkOnly';
 import { applyManualOverrides, normalizePrice } from './core/normalize';
 import { runHealthCheck, resolveListingOutcome } from './core/healthcheck';
 import { recalculateViewtyScores } from './core/score';
@@ -198,6 +199,10 @@ export async function crawlPipeline(): Promise<void> {
   // (possibly operator-edited) estimated price promotes to a displayable 'ok'.
   // Candidates written back to the tab are collected during the crawl loop below.
   const inspectionCandidates: InspectionItem[] = [];
+  // Unmatched (no-price) crawl-target links collected during the crawl loop →
+  // auto-maintained into the link_only sheet tab (Step 8.6). Only adapter-having
+  // sellers reach the loop body that pushes here, so zigzag/ably are excluded.
+  const linkOnlyCandidates: LinkOnlyItem[] = [];
   if (!mockMode) {
     try {
       const rows = await readInspectionRows();
@@ -303,6 +308,21 @@ export async function crawlPipeline(): Promise<void> {
         } else {
           noOfferCount++;
         }
+
+        // This crawl-target link produced no price → record it for the link_only
+        // tab. Cause/action are mapped from the adapter's known outcome + reason
+        // (no new inference). The operator acts on the source (URL/단품/set split);
+        // when a price returns next run the link drops out of the regenerated tab.
+        const { cause, action } = classifyLinkOnly(seller.slug, outcome, offer.sourceText);
+        linkOnlyCandidates.push({
+          seller: seller.slug,
+          brand: product.brand ?? '',
+          product_name: product.name,
+          product_key: product.product_key,
+          cause,
+          action,
+          url: listing.url || listing.affiliate_url || '',
+        });
 
         // Trust-first: if this listing had a real price last run, drop it (no
         // stale carry-over) and surface the transition as a daily-summary INFO
@@ -714,6 +734,20 @@ export async function crawlPipeline(): Promise<void> {
     }
   }
 
+  // Step 8.6: Regenerate the link_only tab from this run's unmatched (no-price)
+  // crawl-target links. Best-effort; never blocks the run. Resolved links drop
+  // out automatically (absent from the current set).
+  let linkOnlyTotal = 0;
+  if (!mockMode) {
+    try {
+      const res = await upsertLinkOnly(linkOnlyCandidates);
+      linkOnlyTotal = res.written;
+      console.log(`[Pipeline] link_only tab written: ${res.written} unmatched (no-price) link(s).`);
+    } catch (e) {
+      console.warn('[Pipeline] link_only tab write failed (continuing):', (e as Error).message);
+    }
+  }
+
   // Step 9: Send Daily Alerting Summary
   const duration = (Date.now() - startTime) / 1000;
   if (notifyEnabled) {
@@ -729,6 +763,7 @@ export async function crawlPipeline(): Promise<void> {
       dataErrors,
       pendingInspectionCount: pendingInspection,
       inspectionItems: inspectionPending,
+      linkOnlyUnmatchedCount: linkOnlyTotal,
     });
   }
 
