@@ -9,7 +9,22 @@ const HEADERS: Record<string, string[]> = {
   retailer_allowlist: ['seller', 'brand', 'allowed_store_name'],
   manual_overrides:   ['product_name', 'seller', 'override_type', 'value', 'reason', 'expires_at', 'product_key'],
   seo_pages:          ['slug', 'page_type', 'title', 'h1', 'description', 'category', 'skin_type', 'badge_type', 'is_active'],
+  // Inspection OX tab — crawler pre-fills held (warning) prices; operator types O/X.
+  inspection:         ['product_key', 'product_name', 'seller', '추정가격', '출처', '사유', '링크', '승인'],
 };
+
+/** Create any tabs in HEADERS that do not yet exist (addSheet; ignore "exists"). */
+async function ensureTabs(sheets: ReturnType<typeof google.sheets>, spreadsheetId: string): Promise<void> {
+  const meta = await sheets.spreadsheets.get({ spreadsheetId });
+  const have = new Set((meta.data.sheets ?? []).map((s) => s.properties?.title));
+  const missing = Object.keys(HEADERS).filter((t) => !have.has(t));
+  if (missing.length === 0) return;
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: { requests: missing.map((title) => ({ addSheet: { properties: { title } } })) },
+  });
+  console.log(`✓ created missing tab(s): ${missing.join(', ')}`);
+}
 
 async function setupHeaders() {
   const credsRaw      = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
@@ -22,6 +37,8 @@ async function setupHeaders() {
   const creds = JSON.parse(credsRaw);
   const auth  = new google.auth.GoogleAuth({ credentials: creds, scopes: ['https://www.googleapis.com/auth/spreadsheets'] });
   const sheets = google.sheets({ version: 'v4', auth });
+
+  await ensureTabs(sheets, spreadsheetId);
 
   for (const [tab, headers] of Object.entries(HEADERS)) {
     try {
