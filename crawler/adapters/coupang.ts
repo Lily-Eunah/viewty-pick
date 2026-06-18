@@ -158,6 +158,48 @@ export function isCoupangShortLink(url: string): boolean {
 }
 
 /**
+ * Distinguish a value that is ALREADY a usable image from a Coupang product-page
+ * URL that must be resolved. A direct image URL (an .jpg/.png/… asset, or the
+ * Coupang Partners productImage host `ads-partners.coupang.com`) is rendered as-is.
+ */
+export function looksLikeImageUrl(url: string): boolean {
+  if (!url) return false;
+  if (/\.(jpe?g|png|webp|gif|avif)(\?|#|$)/i.test(url)) return true;
+  // Partners productImage assets live on this host (an image CDN, not a product page).
+  if (/(^|\/\/)ads-partners\.coupang\.com\//i.test(url)) return true;
+  return false;
+}
+
+/**
+ * True when an operator-supplied products.image_url is a Coupang PRODUCT-PAGE URL
+ * (coupang.com/.../products/{id}) rather than an actual image. Such a value is an
+ * image SOURCE — it carries a productId we resolve to the product's productImage
+ * via the search API. The page URL itself is NOT an image and would render broken
+ * if stored verbatim, so it must never reach an <img>. A direct image URL (incl.
+ * the ads-partners image host) is excluded — it is used as-is.
+ */
+export function isCoupangProductPageUrl(url: string): boolean {
+  if (!url) return false;
+  if (looksLikeImageUrl(url)) return false;
+  return /(^|\/\/|\.)coupang\.com\//i.test(url) && extractCoupangProductId(url) !== null;
+}
+
+/**
+ * Resolve the productImage for an anchored Coupang productId from search results.
+ * Prefer the exact-productId row (the lowest single-unit option, via pickCoupangMatch);
+ * else fall back to the top result's productImage. For IMAGE purposes identity can be
+ * lenient — the same product surfaced under a different productId still shows the same
+ * image, so an approximate top-hit image is acceptable (unlike PRICE, which is strictly
+ * anchored). Returns null when no result carries an image (→ caller leaves it empty).
+ */
+export function pickCoupangImage(items: CoupangApiItem[], productId: string): string | null {
+  const anchored = pickCoupangMatch(items, productId);
+  if (anchored?.productImage) return anchored.productImage;
+  const topWithImage = items.find((it) => it.productImage);
+  return topWithImage?.productImage ?? null;
+}
+
+/**
  * Pick the offer for an anchored Coupang productId. A single product page exposes
  * several purchase options (1개 / 묶음 / 벌크) as separate search rows that SHARE the
  * same productId — the earlier `.find()` grabbed the first, which is often a bulk
@@ -216,6 +258,51 @@ async function searchCoupang(
 
   const json = await res.json();
   return (json?.data?.productData ?? []) as CoupangApiItem[];
+}
+
+/**
+ * Resolve a Coupang product-page URL placed in products.image_url to a displayable
+ * productImage via the Partners SEARCH API (the page URL itself is not an image).
+ * Reuses the same rate-limited, HMAC-signed search path as price fetching: search
+ * by brand+name, then pickCoupangImage (anchored productId → top-hit fallback).
+ *
+ * Returns null when unresolved — search miss, no image in results, no productId, a
+ * thrown HTTP/timeout, or mock/test mode — so the caller stores an EMPTY image and
+ * the UI falls back to the placeholder, NEVER the broken product-page URL. Same
+ * search-visibility limitation as price matching: a product absent from the search
+ * top-10 cannot be resolved.
+ */
+export async function resolveCoupangImageFromUrl(
+  productUrl: string,
+  brand: string | null,
+  name: string
+): Promise<string | null> {
+  const productId = extractCoupangProductId(productUrl);
+  if (!productId) return null;
+
+  const accessKey = process.env.COUPANG_ACCESS_KEY ?? '';
+  const secretKey = process.env.COUPANG_SECRET_KEY ?? '';
+  const isMock =
+    process.env.VIEWTYPICK_MOCK_MODE === 'true' ||
+    process.env.CRAWLER_MODE === 'mock' ||
+    process.env.NODE_ENV === 'test' ||
+    isPlaceholderKey(accessKey) ||
+    isPlaceholderKey(secretKey);
+  // No network in mock/test: leave the image unresolved → placeholder fallback.
+  if (isMock) return null;
+
+  const keyword = buildSearchKeyword(brand, name);
+  try {
+    const items = await searchCoupang(keyword, accessKey, secretKey);
+    const image = pickCoupangImage(items, productId);
+    console.log(
+      `[Coupang Image] "${keyword}" (productId ${productId}) → ${image ? image : 'unresolved (no image in search)'}`
+    );
+    return image;
+  } catch (e: unknown) {
+    console.warn(`[Coupang Image] resolve failed for ${productUrl}: ${(e as Error).message}`);
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------

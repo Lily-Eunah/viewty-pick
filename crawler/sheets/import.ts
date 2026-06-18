@@ -4,6 +4,7 @@ import { loadMockDB, saveMockDB } from '../../lib/supabase/mockDb';
 import * as v from './validate';
 import * as mockSheets from './mock_sheets_data';
 import { ProductBadge } from '../../lib/types';
+import { isCoupangProductPageUrl, resolveCoupangImageFromUrl } from '../adapters/coupang';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -105,6 +106,54 @@ const BADGE_NAMES: Record<string, string> = {
 };
 
 // ---------------------------------------------------------------------------
+// Coupang product-URL → image resolution.
+//
+// An operator may put a Coupang PRODUCT-PAGE URL (coupang.com/.../products/{id})
+// in products.image_url as an image SOURCE for a product whose representative
+// image we otherwise lack (e.g. Coupang is not its official seller). Stored
+// verbatim that page URL renders broken (→ placeholder). Here we resolve such a
+// value to the product's real productImage via the Partners search API and store
+// THAT. The sheet value is never written back — every import re-resolves, which
+// keeps the (rotation-prone) Coupang image URL fresh. Direct image URLs pass
+// through unchanged; an unresolved Coupang URL becomes '' (placeholder fallback),
+// so a broken product-page URL never reaches an <img>.
+// ---------------------------------------------------------------------------
+
+/**
+ * Pre-resolve every distinct products.image_url. Keyed by the raw sheet value:
+ *   - direct image URL          → itself (pass-through, used as-is),
+ *   - Coupang product-page URL   → resolved productImage, or '' when unresolved,
+ *   - empty / anything else      → as-is (operator's value; '' stays '').
+ * Best-effort and rate-limited via the shared Coupang adapter; never aborts import.
+ */
+async function resolveProductImages(rawProducts: Record<string, string>[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  let resolvedCount = 0;
+  for (const row of rawProducts) {
+    const raw = (row.image_url ?? '').trim();
+    if (!raw || out.has(raw)) continue;
+    if (!isCoupangProductPageUrl(raw)) { out.set(raw, raw); continue; }
+    const image = await resolveCoupangImageFromUrl(raw, (row.brand ?? '').trim() || null, (row.name ?? '').trim());
+    out.set(raw, image ?? '');
+    if (image) resolvedCount++;
+  }
+  if (out.size) console.log(`[Sheet Import] Coupang image_url resolution: ${resolvedCount} resolved.`);
+  return out;
+}
+
+/**
+ * Final products.image_url to store, given the raw sheet value and the pre-resolved
+ * map. A Coupang product-page URL collapses to its resolved image or null (never the
+ * page URL); a direct image URL passes through; empty → null.
+ */
+function resolveImageUrl(rawImageUrl: string | undefined, resolved: Map<string, string>): string | null {
+  const raw = (rawImageUrl ?? '').trim();
+  if (!raw) return null;
+  const value = resolved.has(raw) ? resolved.get(raw)! : raw;
+  return value || null;
+}
+
+// ---------------------------------------------------------------------------
 
 interface ImportStats {
   productsCount: number;
@@ -191,6 +240,10 @@ export async function runSheetImport(): Promise<ImportStats> {
   const nameToKey = v.buildNameToKey(rawProducts);
   const flatListings = v.expandListings(rawLinks, nameToKey);
 
+  // ── Resolve Coupang product-page URLs in products.image_url → productImage ──
+  // Shared by both paths; mock/test mode resolves to '' (no network).
+  const resolvedImages = await resolveProductImages(rawProducts);
+
   // ==========================================================================
   // PATH A — Supabase
   // ==========================================================================
@@ -244,7 +297,7 @@ export async function runSheetImport(): Promise<ImportStats> {
           category_id: categoryId,
           volume_ml:   p.data.volume_ml,
           hwahae_url:  p.data.hwahae_url  || null,
-          image_url:   p.data.image_url   || null,
+          image_url:   resolveImageUrl(p.data.image_url, resolvedImages),
           features:    p.data.features    || null,
           skin_types:  p.data.skin_types,
           is_active:   !p.data.is_disabled,
@@ -452,7 +505,7 @@ export async function runSheetImport(): Promise<ImportStats> {
       const productKey = p.data.product_key?.trim() || makeProductKey(p.data.brand, p.data.name);
       const categoryId = db.categories.find((c) => c.slug === p.data.category || c.name === p.data.category)?.id ?? null;
       const existing   = db.products.find((pr) => pr.product_key === productKey);
-      const data = { product_key: productKey, slug: v.resolveDisplaySlug(p.data.slug, productKey), name: p.data.name, brand: p.data.brand || null, category_id: categoryId, volume_ml: p.data.volume_ml, hwahae_url: p.data.hwahae_url || null, image_url: p.data.image_url || null, features: p.data.features || null, skin_types: p.data.skin_types, official_info_url: null, viewty_score: 0, source: 'sheet', is_active: !p.data.is_disabled };
+      const data = { product_key: productKey, slug: v.resolveDisplaySlug(p.data.slug, productKey), name: p.data.name, brand: p.data.brand || null, category_id: categoryId, volume_ml: p.data.volume_ml, hwahae_url: p.data.hwahae_url || null, image_url: resolveImageUrl(p.data.image_url, resolvedImages), features: p.data.features || null, skin_types: p.data.skin_types, official_info_url: null, viewty_score: 0, source: 'sheet', is_active: !p.data.is_disabled };
       if (existing) { Object.assign(existing, data); }
       else { db.products.push({ id: (db.products.length ? Math.max(...db.products.map((pr) => pr.id)) + 1 : 1), ...data }); }
       nameToKey.set(p.data.name.trim(), productKey);
