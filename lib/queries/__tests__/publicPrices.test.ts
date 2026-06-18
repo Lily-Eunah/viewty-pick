@@ -5,7 +5,7 @@
  * listing instead of resurrecting the stale ok price behind the no_offer.
  */
 import { snapshotsToPublicPrices, resolveDisplayImage } from '../index';
-import { Listing, PriceSnapshot, PublicListingPrice } from '../../types';
+import { Listing, PriceSnapshot } from '../../types';
 
 // ---------------------------------------------------------------------------
 function listing(over: Partial<Listing> = {}): Listing {
@@ -81,35 +81,44 @@ it('image_url passes through snapshotsToPublicPrices', () => {
 });
 
 // ---------------------------------------------------------------------------
-console.log('\n--- resolveDisplayImage precedence (operator → coupang → placeholder) ---');
+console.log('\n--- resolveDisplayImage precedence (operator → coupang listing image → placeholder) ---');
 
+// Image is read from the LISTING row's latest_image_url (status-independent), not
+// the ok-only price view — a warning/inspection-held Coupang price still shows its image.
 const sellers = [{ id: 2, slug: 'naver' }, { id: 3, slug: 'coupang' }];
-function lp(over: Partial<PublicListingPrice> = {}): PublicListingPrice {
-  return {
-    listing_id: 1, product_id: 1, seller_id: 3, sale_price: 1000, base_unit_price: 1000,
-    effective_unit_price: 1000, unit_price: null, promo_type: 'none', promo_text: null,
-    in_stock: true, shipping_note: null, matched_mall_name: null, image_url: null,
-    crawled_at: '2026-06-01T00:00:00Z', ...over,
-  };
+function clisting(over: Partial<Listing> = {}): Listing {
+  return listing({ seller_id: 3, latest_image_url: 'https://ads-partners.coupang.com/c.jpg', ...over });
 }
 
 it('operator image wins over coupang', () => {
-  const img = resolveDisplayImage('https://op/img.jpg', 1, [lp({ image_url: 'https://ads-partners.coupang.com/c.jpg' })], sellers);
+  const img = resolveDisplayImage('https://op/img.jpg', 1, [clisting()], sellers);
   expect(img).toBe('https://op/img.jpg');
 });
 
-it('coupang image used when operator image is empty', () => {
-  const img = resolveDisplayImage('', 1, [lp({ image_url: 'https://ads-partners.coupang.com/c.jpg' })], sellers);
+it('coupang listing image used when operator image is empty', () => {
+  const img = resolveDisplayImage('', 1, [clisting()], sellers);
   expect(img).toBe('https://ads-partners.coupang.com/c.jpg');
 });
 
-it('non-coupang image is NOT used as fallback', () => {
-  const img = resolveDisplayImage(null, 1, [lp({ seller_id: 2, image_url: 'https://naver/x.jpg' })], sellers);
+it('coupang listing image shows even when its price is warning/inspection (decoupled from price status)', () => {
+  // No price view involved: resolveDisplayImage reads latest_image_url straight off
+  // the listing row, so a held (non-ok) price never hides the image.
+  const img = resolveDisplayImage(null, 1, [clisting()], sellers);
+  expect(img).toBe('https://ads-partners.coupang.com/c.jpg');
+});
+
+it('non-coupang listing image is NOT used as fallback', () => {
+  const img = resolveDisplayImage(null, 1, [clisting({ seller_id: 2, latest_image_url: 'https://naver/x.jpg' })], sellers);
   expect(img).toBe('');
 });
 
-it('placeholder ("") when no operator and no coupang image', () => {
-  const img = resolveDisplayImage(null, 1, [lp({ image_url: null })], sellers);
+it('inactive coupang listing image is NOT used', () => {
+  const img = resolveDisplayImage(null, 1, [clisting({ is_active: false })], sellers);
+  expect(img).toBe('');
+});
+
+it('placeholder ("") when no operator and no coupang listing image', () => {
+  const img = resolveDisplayImage(null, 1, [clisting({ latest_image_url: null })], sellers);
   expect(img).toBe('');
 });
 

@@ -59,22 +59,32 @@ export function snapshotsToPublicPrices(
 
 /**
  * Display image precedence (sheet = source of truth):
- *   operator products.image_url → crawler-sourced Coupang productImage → placeholder ('').
+ *   operator products.image_url → crawler-sourced Coupang image → placeholder ('').
  * products.image_url is NEVER overwritten by the crawler — this is a read-time
- * fallback only. The Coupang image comes from the public view's image_url for the
- * product's active Coupang listing.
+ * fallback only.
+ *
+ * The Coupang image is read straight off the listing row's latest_image_url
+ * (cached by the crawler at match time, see crawler/run.ts), NOT from the ok-only
+ * public price view. Image is DECOUPLED from price status: a Coupang listing whose
+ * price is held in warning/inspection (e.g. ml mismatch) is dropped from the public
+ * price view, but its image must still show. Price exposure stays ok-only elsewhere;
+ * this fallback never resurrects a non-ok price, only the image.
  */
 export function resolveDisplayImage(
   operatorImageUrl: string | null | undefined,
   productId: number,
-  listingPrices: PublicListingPrice[],
+  listings: Listing[],
   sellers: { id: number; slug: string }[]
 ): string {
   if (operatorImageUrl) return operatorImageUrl;
   const coupangSellerId = sellers.find((s) => s.slug === 'coupang')?.id;
-  const coupangImage = listingPrices.find(
-    (lp) => lp.product_id === productId && lp.seller_id === coupangSellerId && lp.image_url
-  )?.image_url;
+  const coupangImage = listings.find(
+    (l) =>
+      l.product_id === productId &&
+      l.seller_id === coupangSellerId &&
+      l.is_active &&
+      l.latest_image_url
+  )?.latest_image_url;
   return coupangImage || '';
 }
 
@@ -129,8 +139,10 @@ function mapToUIProduct(
     ? 'hwahae'
     : 'oliveyoung';
 
-  // Display image precedence: operator → Coupang → placeholder (see resolveDisplayImage).
-  const displayImage = resolveDisplayImage(prod.image_url, prod.id, dbListingPrices, dbSellers);
+  // Display image precedence: operator → Coupang listing image → placeholder
+  // (see resolveDisplayImage). Sourced from the listing row's latest_image_url so a
+  // warning/inspection-held Coupang price still shows its image (image ⟂ price status).
+  const displayImage = resolveDisplayImage(prod.image_url, prod.id, dbListings, dbSellers);
 
   // Build stores: a priced row when the listing has a displayable price, else a
   // link-only row (tier-4: still show the seller with a "보기" link, no price).
