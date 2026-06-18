@@ -314,32 +314,53 @@ it('looksLikeImageUrl false for a product-page URL', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Fixture 12: pickCoupangImage — anchored productImage, top-hit fallback, miss
+// Fixture 12: pickCoupangImage — anchored → STRICT identity fallback → null.
+// The fallback must never adopt a DIFFERENT product's image (the live-QA bug:
+// 엑설런트 선크림 anchor-missed → a different sunscreen's top-hit image).
 // ---------------------------------------------------------------------------
-console.log('\n--- [Fixture 12] pickCoupangImage ---');
-it('uses the anchored productId row image when present', () => {
+console.log('\n--- [Fixture 12] pickCoupangImage (identity-gated) ---');
+const NAME = '엑설런트 선크림';
+
+it('uses the anchored productId row image when present (identity not required)', () => {
   const data: CoupangApiItem[] = [
-    item({ productId: 111, productImage: 'https://img/top.jpg' }),
-    item({ productId: 7654321, productImage: 'https://img/anchor.jpg' }),
+    item({ productId: 111, productName: '이니스프리 데일리 선크림 50ml', productImage: 'https://img/wrong.jpg' }),
+    item({ productId: 7654321, productName: '몽디에스 엑설런트 선크림 50ml', productImage: 'https://img/anchor.jpg' }),
   ];
-  expect(pickCoupangImage(data, '7654321')).toBe('https://img/anchor.jpg');
+  expect(pickCoupangImage(data, '7654321', NAME)).toBe('https://img/anchor.jpg');
 });
 
-it('falls back to the top result image when productId not in results (lenient identity)', () => {
+it('anchor missing → uses the SAME product (identity passes), skipping a wrong top-hit', () => {
   const data: CoupangApiItem[] = [
-    item({ productId: 111, productImage: 'https://img/top.jpg' }),
-    item({ productId: 222, productImage: 'https://img/second.jpg' }),
+    // higher-ranked but a DIFFERENT product → must be skipped
+    item({ productId: 111, productName: '이니스프리 데일리 선크림 50ml', productImage: 'https://img/wrong.jpg' }),
+    // same product, different seller listing → identity passes
+    item({ productId: 222, productName: '몽디에스 엑설런트 선크림 75ml', productImage: 'https://img/right.jpg' }),
   ];
-  expect(pickCoupangImage(data, '999')).toBe('https://img/top.jpg');
+  expect(pickCoupangImage(data, '999', NAME)).toBe('https://img/right.jpg');
 });
 
-it('returns null when search yields no images at all (→ placeholder)', () => {
-  const data: CoupangApiItem[] = [item({ productId: 111, productImage: undefined })];
-  expect(pickCoupangImage(data, '999')).toBeNull();
+it('anchor missing + only DIFFERENT products → null (no wrong-product image) [엑설런트 regression]', () => {
+  const data: CoupangApiItem[] = [
+    item({ productId: 111, productName: '이니스프리 데일리 선크림 50ml', productImage: 'https://img/a.jpg' }),
+    item({ productId: 222, productName: '조선미녀 맑은쌀 토너 150ml', productImage: 'https://img/b.jpg' }),
+  ];
+  expect(pickCoupangImage(data, '999', NAME)).toBeNull();
+});
+
+it('bundle/set of the SAME product is NOT adopted even though identity tokens match', () => {
+  const data: CoupangApiItem[] = [
+    item({ productId: 222, productName: '몽디에스 엑설런트 선크림 50ml 1+1 기획세트', productImage: 'https://img/set.jpg' }),
+  ];
+  expect(pickCoupangImage(data, '999', NAME)).toBeNull();
+});
+
+it('returns null when the same-product result carries no image', () => {
+  const data: CoupangApiItem[] = [item({ productId: 222, productName: '몽디에스 엑설런트 선크림 50ml', productImage: undefined })];
+  expect(pickCoupangImage(data, '999', NAME)).toBeNull();
 });
 
 it('returns null for empty search results', () => {
-  expect(pickCoupangImage([], '999')).toBeNull();
+  expect(pickCoupangImage([], '999', NAME)).toBeNull();
 });
 
 // ---------------------------------------------------------------------------

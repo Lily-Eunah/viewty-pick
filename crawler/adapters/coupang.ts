@@ -3,6 +3,8 @@ import { Listing, Product, PromoType } from '../../lib/types';
 import { PriceOffer, RetailerAdapter } from './index';
 import { isSupabaseServerConfigured, supabaseServer } from '../../lib/supabase/server';
 import { loadMockDB } from '../../lib/supabase/mockDb';
+import { productIdentityScore, hasFormConflict, distinctiveTokens, classifyOfferComposition, stripHtml } from './naver';
+import { stripPromoGifts } from '../core/packageExtractor';
 
 // ---------------------------------------------------------------------------
 // Coupang Partners Open API — product price via the SEARCH endpoint.
@@ -184,19 +186,53 @@ export function isCoupangProductPageUrl(url: string): boolean {
   return /(^|\/\/|\.)coupang\.com\//i.test(url) && extractCoupangProductId(url) !== null;
 }
 
+// Image-fallback identity threshold — the same 0.6 HIGH band as Naver/OY auto-price
+// (OY_AUTO_PRICE_SIMILARITY). The Partners API is search-only (no productId/URL
+// lookup), so an anchor miss is structural; the fallback must be gated so a
+// DIFFERENT product's photo can never slip in.
+const IMAGE_IDENTITY_SIMILARITY = 0.6;
+
+/**
+ * Strict product-identity gate for an image fallback, reusing the SAME pure gates as
+ * price matching: title-token similarity ≥ 0.6, a distinctive core token present, no
+ * form conflict, and not a bundle/set/multipack/gift (classifyOfferComposition). The
+ * only relaxation vs price is VOLUME — the same product's other sizes show the same
+ * photo, so volume is not checked here. A non-passing (= different) product is rejected.
+ */
+function passesImageIdentity(title: string, name: string): boolean {
+  const t = stripPromoGifts(stripHtml(title || ''));
+  if (productIdentityScore(t, name) < IMAGE_IDENTITY_SIMILARITY) return false;
+  if (hasFormConflict(name, t)) return false;
+  const distinct = distinctiveTokens(name);
+  const tn = t.toLowerCase().replace(/\s+/g, '');
+  if (distinct.length > 0 && !distinct.some((d) => tn.includes(d))) return false;
+  if (classifyOfferComposition(t).kind !== 'single') return false; // exclude bundle/set/gift
+  return true;
+}
+
 /**
  * Resolve the productImage for an anchored Coupang productId from search results.
- * Prefer the exact-productId row (the lowest single-unit option, via pickCoupangMatch);
- * else fall back to the top result's productImage. For IMAGE purposes identity can be
- * lenient — the same product surfaced under a different productId still shows the same
- * image, so an approximate top-hit image is acceptable (unlike PRICE, which is strictly
- * anchored). Returns null when no result carries an image (→ caller leaves it empty).
+ *   1. anchored  — the exact-productId row's image (via pickCoupangMatch).
+ *   2. strict-identity fallback — when the anchor is missing from search (structural,
+ *      Partners being search-only), the TOP result whose productName passes
+ *      passesImageIdentity (= verifiably the same product, e.g. another seller's
+ *      listing of it). Identity is lenient on volume but NEVER on product identity.
+ *   3. otherwise null → caller stores '' → placeholder. A DIFFERENT product's image
+ *      (the earlier blind top-hit bug) is never used.
+ * `productName` is the operator-curated name used for the identity gate.
  */
-export function pickCoupangImage(items: CoupangApiItem[], productId: string): string | null {
-  const anchored = pickCoupangMatch(items, productId);
+export function pickCoupangImage(
+  items: CoupangApiItem[],
+  anchorProductId: string,
+  productName: string
+): string | null {
+  const anchored = pickCoupangMatch(items, anchorProductId);
   if (anchored?.productImage) return anchored.productImage;
-  const topWithImage = items.find((it) => it.productImage);
-  return topWithImage?.productImage ?? null;
+  // Results arrive in relevance order — first identity-passing one with an image wins.
+  const sameProduct = items.find(
+    (it) => it.productImage && passesImageIdentity(it.productName, productName)
+  );
+  return sameProduct?.productImage ?? null;
 }
 
 /**
@@ -264,9 +300,9 @@ async function searchCoupang(
  * Resolve a Coupang product-page URL placed in products.image_url to a displayable
  * productImage via the Partners SEARCH API (the page URL itself is not an image).
  * Reuses the same rate-limited, HMAC-signed search path as price fetching: search
- * by brand+name, then pickCoupangImage (anchored productId → top-hit fallback).
+ * by brand+name, then pickCoupangImage (anchored productId → strict-identity fallback).
  *
- * Returns null when unresolved — search miss, no image in results, no productId, a
+ * Returns null when unresolved — search miss, no same-product image, no productId, a
  * thrown HTTP/timeout, or mock/test mode — so the caller stores an EMPTY image and
  * the UI falls back to the placeholder, NEVER the broken product-page URL. Same
  * search-visibility limitation as price matching: a product absent from the search
@@ -294,7 +330,7 @@ export async function resolveCoupangImageFromUrl(
   const keyword = buildSearchKeyword(brand, name);
   try {
     const items = await searchCoupang(keyword, accessKey, secretKey);
-    const image = pickCoupangImage(items, productId);
+    const image = pickCoupangImage(items, productId, name);
     console.log(
       `[Coupang Image] "${keyword}" (productId ${productId}) → ${image ? image : 'unresolved (no image in search)'}`
     );
