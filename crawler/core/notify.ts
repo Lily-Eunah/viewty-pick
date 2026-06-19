@@ -64,9 +64,10 @@ export interface DailySummaryStats {
   // 이종세트 보류) and are listed in the link_only tab for operator action. Distinct
   // from inspection (those DO have a held price); reported separately.
   linkOnlyUnmatchedCount?: number;
-  // Priced offers whose title carries a BARE "N종" (e.g. "쿠션 2종") — usually an
-  // "N종 중 택1" option-select page (priced as a single), but possibly a real set.
-  // Informational only (price IS shown); operator confirms set-vs-option from this list.
+  // Priced offers to verify for set/구성 — a BARE "N종" (e.g. "쿠션 2종") option-select
+  // page, OR a 본품+소량 부스트 that was add-on-stripped (case C). Usually correct
+  // (priced as a single/본품), but possibly a real set. Informational only (price IS
+  // shown); operator confirms set-vs-단품 from this list.
   nJongVerifyItems?: string[];
 }
 
@@ -120,7 +121,7 @@ export function buildDailySummaryMessage(stats: DailySummaryStats): string {
   if (nJongVerify.length > 0) {
     const shown = nJongVerify.slice(0, 10);
     const more = nJongVerify.length > shown.length ? ` 외 ${nJongVerify.length - shown.length}건` : '';
-    message += `\n🔎 **N종 옵션 링크 — 세트 여부 확인 (정보, 가격 노출 유지)**: ${nJongVerify.length}건${more} — 대개 'N종 중 택1' 옵션선택(단품), 진짜 세트면 조치\n${shown.map((d) => `  • ${d}`).join('\n')}`;
+    message += `\n🔎 **세트/구성 확인 (N종 옵션·본품+부스트, 정보·가격 노출 유지)**: ${nJongVerify.length}건${more} — 대개 'N종 중 택1' 옵션선택(단품) 또는 본품+소량 부스트, 진짜 세트면 조치\n${shown.map((d) => `  • ${d}`).join('\n')}`;
   }
 
   return message;
