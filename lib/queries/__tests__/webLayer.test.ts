@@ -2,7 +2,7 @@
  * Web-layer pure-helper tests: composition labels (구성) + updatedAt formatting.
  * Run: tsx lib/queries/__tests__/webLayer.test.ts
  */
-import { compositionLabel, isSellerDisplayed } from '../index';
+import { compositionLabel, isSellerDisplayed, discountVsRegular } from '../index';
 import { updatedAt, pricedStoreNames } from '../../format';
 import { UIProduct, UIStorePrice } from '../../types';
 
@@ -25,6 +25,33 @@ it('multipack quantity → N개', () => {
 });
 it('plain single → null', () => {
   assert(compositionLabel('none', null, 1) === null, 'single has no composition');
+});
+
+console.log('--- discountVsRegular (정가 대비, ml당 정규화) ---');
+it('same volume: 30000/100ml vs 24000(100ml ⇒ ml당 240) → 20%', () => {
+  // 정가 ml당 = 300, listing ml당 = 240 ⇒ round((300-240)/300×100) = 20
+  assert(discountVsRegular(30000, 100, 240) === 20, `got ${discountVsRegular(30000, 100, 240)}`);
+});
+it('different volume normalized by ml당: 80ml listing at ml당 240 → still 20%', () => {
+  // a 80ml seller priced 19200 ⇒ ml당 240; 정가 ml당 (DB 100ml) = 300 ⇒ 20%
+  assert(discountVsRegular(30000, 100, 240) === 20, 'ml당 basis is size-independent');
+});
+it('regular_price blank/null → null (discount hidden)', () => {
+  assert(discountVsRegular(null, 100, 240) === null, 'null 정가');
+  assert(discountVsRegular(undefined, 100, 240) === null, 'undefined 정가');
+  assert(discountVsRegular(0, 100, 240) === null, 'zero 정가');
+});
+it('volume missing/≤0 → null', () => {
+  assert(discountVsRegular(30000, 0, 240) === null, 'zero volume');
+  assert(discountVsRegular(30000, null, 240) === null, 'null volume');
+});
+it('listing ml당 unknown/unreliable → null', () => {
+  assert(discountVsRegular(30000, 100, null) === null, 'null unit price');
+  assert(discountVsRegular(30000, 100, 0) === null, 'zero unit price');
+});
+it('sale ≥ 정가 (stale MSRP) → 0, never negative', () => {
+  assert(discountVsRegular(30000, 100, 300) === 0, 'equal → 0');
+  assert(discountVsRegular(30000, 100, 360) === 0, 'above 정가 → 0 not negative');
 });
 
 console.log('--- updatedAt (KST) ---');

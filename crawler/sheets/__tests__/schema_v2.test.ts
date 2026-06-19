@@ -18,6 +18,7 @@ import {
   makeProductKey,
   detectSheetDuplicates,
   hasDuplicates,
+  simpleProductRowSchema,
 } from '../validate';
 
 let failed = false;
@@ -117,6 +118,29 @@ it('explicit slug wins; blank falls back to product_key', () => {
   assert(resolveDisplaySlug('mild-sun', 'pabc') === 'mild-sun', 'explicit slug');
   assert(resolveDisplaySlug('  ', 'pabc') === 'pabc', 'blank → key');
   assert(resolveDisplaySlug(undefined, 'pabc') === 'pabc', 'undefined → key');
+});
+
+// ---------------------------------------------------------------------------
+console.log('\n--- regular_price (정가) parsing ---');
+
+const baseProd = { name: 'P', brand: 'B', category: 'sunscreen', volume_ml: '50' };
+it('numeric string → number', () => {
+  const p = simpleProductRowSchema.safeParse({ ...baseProd, regular_price: '30000' });
+  assert(p.success && p.data.regular_price === 30000, `expected 30000, got ${JSON.stringify(p)}`);
+});
+it('blank → null (discount hidden, no error)', () => {
+  const p = simpleProductRowSchema.safeParse({ ...baseProd, regular_price: '' });
+  assert(p.success && p.data.regular_price === null, `expected null, got ${JSON.stringify(p)}`);
+});
+it('missing column → null (default)', () => {
+  const p = simpleProductRowSchema.safeParse(baseProd);
+  assert(p.success && p.data.regular_price === null, `expected null, got ${JSON.stringify(p)}`);
+});
+it('zero / negative / non-numeric → null (never a bogus discount)', () => {
+  for (const v of ['0', '-100', 'N/A']) {
+    const p = simpleProductRowSchema.safeParse({ ...baseProd, regular_price: v });
+    assert(p.success && p.data.regular_price === null, `"${v}" should → null, got ${JSON.stringify(p)}`);
+  }
 });
 
 // ---------------------------------------------------------------------------
