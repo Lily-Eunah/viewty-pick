@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
 import SearchBar from '../common/SearchBar';
+import CurationCarousel from './CurationCarousel';
 import { SkinTypeAndCategorySection } from './SkinTypeAndCategorySection';
 import ProductCarousel from '../product/ProductCarousel';
 import ProductListCard from '../product/ProductListCard';
@@ -38,53 +39,8 @@ export default function HomeInteractiveSection({ allProducts, recommended, offic
         <SearchBar onClick={handleSearchRedirect} readOnly />
       </section>
 
-      {/* Hero Banner (Figma UI §1) */}
-      <section className="px-4 py-4 bg-bg">
-        <Link
-          href="/pick/directorpi/sunscreen"
-          className="relative block w-full rounded-card-lg p-5 flex flex-col justify-between hover:opacity-98 active:scale-[0.99] transition-all shadow-[0_8px_24px_rgba(65,0,22,0.04)] overflow-hidden border border-line"
-          style={{ background: 'linear-gradient(135deg, #F6E7EC 0%, #FBF7F1 52%, #F7EFE7 100%)' }}
-        >
-          <div className="flex flex-col gap-2 z-10 max-w-[65%]">
-            <h2 className="text-[20px] font-black text-primary leading-tight tracking-tight">
-              피부에 밸런스를,<br />
-              가격에는 합리성을
-            </h2>
-            <p className="text-[12px] text-text-secondary font-bold leading-relaxed mt-1">
-              매일 똑똑하게 뷰티 쇼핑하세요
-            </p>
-            
-            <div className="mt-4">
-              <span className="inline-flex items-center gap-1.5 px-4.5 py-2.5 bg-primary text-white text-[12px] font-extrabold rounded-full shadow-sm hover:bg-primary-hover transition-colors">
-                <span>추천 선크림 보기</span>
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-3 h-3">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
-                </svg>
-              </span>
-            </div>
-          </div>
-
-          {/* Right decoration (mock image of sunscreen bottles) */}
-          <div className="absolute right-2 bottom-4 w-[110px] h-[110px] opacity-90 pointer-events-none select-none flex items-end justify-center">
-            <span className="text-[72px] leading-none">🧴</span>
-          </div>
-
-          {/* Page Indicators (Bottom Left / Bottom Right) */}
-          <div className="mt-8 flex items-center justify-between z-10">
-            {/* Dots */}
-            <div className="flex gap-1.5 items-center">
-              <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-              <span className="w-1.5 h-1.5 rounded-full bg-[#D9C8C9]" />
-              <span className="w-1.5 h-1.5 rounded-full bg-[#D9C8C9]" />
-            </div>
-            
-            {/* Badge */}
-            <span className="px-2 py-0.5 bg-[rgba(41,39,42,0.55)] text-white text-[10px] font-bold rounded-full">
-              1/5
-            </span>
-          </div>
-        </Link>
-      </section>
+      {/* Curation Carousel Banners */}
+      <CurationCarousel />
 
       {/* Skin Type and Category Section */}
       <SkinTypeAndCategorySection selectedSkin={selectedSkin} onSkinSelect={handleSkinFilter} />

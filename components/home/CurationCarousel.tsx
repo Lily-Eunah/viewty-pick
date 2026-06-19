@@ -1,0 +1,151 @@
+'use client';
+
+import React, { useRef, useState, useEffect } from 'react';
+import Link from 'next/link';
+
+interface CurationItem {
+  id: string;
+  badge: string;
+  category: string;
+  title: string;
+  subtitle: string;
+  emoji: string;
+  gradient: string;
+}
+
+const curations: CurationItem[] = [
+  {
+    id: 'directorpi-sunscreen',
+    badge: 'directorpi',
+    category: 'sunscreen',
+    title: '피부에 밸런스를,\n가격에는 합리성을',
+    subtitle: '화장품 성분 전문가 안심 오리지널 픽',
+    emoji: '🧴',
+    gradient: 'linear-gradient(135deg, #F6E7EC 0%, #FBF7F1 52%, #F7EFE7 100%)',
+  },
+  {
+    id: 'hwahae-sunscreen',
+    badge: 'hwahae',
+    category: 'sunscreen',
+    title: '랭킹과 성분으로\n검증된 선케어 비교',
+    subtitle: '광고 제로! 진짜 평점 순위와 최저가',
+    emoji: '☀️',
+    gradient: 'linear-gradient(135deg, #EAF0F3 0%, #FBF7F1 52%, #FFFDF9 100%)',
+  },
+  {
+    id: 'directorpi-skincare',
+    badge: 'directorpi',
+    category: 'skincare',
+    title: '피부 장벽 탄탄,\n수분 집중 안심 케어',
+    subtitle: '민감 피부 탈출을 위한 솔루션 픽',
+    emoji: '💦',
+    gradient: 'linear-gradient(135deg, #F6E7EC 0%, #FFFDF9 50%, #EAF0F3 100%)',
+  },
+  {
+    id: 'directorpi-cleansing-care',
+    badge: 'directorpi',
+    category: 'cleansing-care',
+    title: '자극 없이 깨끗하게,\n촉촉한 안심 세안',
+    subtitle: '유해성분 없는 순한 세안제 추천 리스트',
+    emoji: '🧼',
+    gradient: 'linear-gradient(135deg, #F7EFE7 0%, #FBF7F1 52%, #FAEEF2 100%)',
+  },
+];
+
+export default function CurationCarousel() {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  const handleScroll = () => {
+    if (!containerRef.current) return;
+    const { scrollLeft, clientWidth } = containerRef.current;
+    if (clientWidth === 0) return;
+    const newIndex = Math.round(scrollLeft / clientWidth);
+    setActiveIndex(newIndex);
+  };
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (container) {
+      container.addEventListener('scroll', handleScroll, { passive: true });
+    }
+    return () => {
+      if (container) {
+        container.removeEventListener('scroll', handleScroll);
+      }
+    };
+  }, []);
+
+  return (
+    <section className="px-4 py-4 bg-bg relative">
+      {/* Scrollable snap container */}
+      <div
+        ref={containerRef}
+        className="flex w-full overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar rounded-card-lg border border-line shadow-[0_8px_24px_rgba(65,0,22,0.04)]"
+      >
+        {curations.map((item) => (
+          <div
+            key={item.id}
+            className="w-full shrink-0 snap-center select-none"
+            style={{ contentVisibility: 'auto' }}
+          >
+            <Link
+              href={`/pick/${item.badge}/${item.category}`}
+              className="relative block w-full p-5 flex flex-col justify-between hover:opacity-98 active:scale-[0.99] transition-all overflow-hidden min-h-[190px]"
+              style={{ background: item.gradient }}
+            >
+              <div className="flex flex-col gap-2 z-10 max-w-[65%]">
+                <h2 className="text-[20px] font-black text-primary leading-tight tracking-tight whitespace-pre-line">
+                  {item.title}
+                </h2>
+                <p className="text-[12px] text-text-secondary font-bold leading-relaxed mt-1">
+                  {item.subtitle}
+                </p>
+                
+                <div className="mt-4">
+                  <span className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-white text-[11px] font-extrabold rounded-full shadow-sm hover:bg-primary-hover transition-colors">
+                    <span>추천 제품 보기</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-2.5 h-2.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
+                    </svg>
+                  </span>
+                </div>
+              </div>
+
+              {/* Right decoration */}
+              <div className="absolute right-4 bottom-5 w-[100px] h-[100px] opacity-90 pointer-events-none select-none flex items-end justify-center">
+                <span className="text-[72px] leading-none">{item.emoji}</span>
+              </div>
+            </Link>
+          </div>
+        ))}
+      </div>
+
+      {/* Page indicators and '+' redirect to /pick */}
+      <div className="absolute bottom-9 right-8 flex items-center gap-2 z-10">
+        {/* Visual Dots */}
+        <div className="flex gap-1 items-center bg-black/15 px-2 py-1 rounded-full backdrop-blur-[2px]">
+          {curations.map((_, idx) => (
+            <span
+              key={idx}
+              className={`w-1.5 h-1.5 rounded-full transition-colors duration-200 ${
+                activeIndex === idx ? 'bg-primary' : 'bg-white/60'
+              }`}
+            />
+          ))}
+        </div>
+
+        {/* Counter Badge + Link */}
+        <Link
+          href="/pick"
+          className="inline-flex items-center gap-1 px-2.5 py-1 bg-black/55 hover:bg-black/70 text-white text-[10px] font-black rounded-full shadow-sm backdrop-blur-[2px] transition-colors border border-white/10"
+        >
+          <span>{activeIndex + 1}/{curations.length}</span>
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3.5} stroke="currentColor" className="w-2.5 h-2.5 text-white/95">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+          </svg>
+        </Link>
+      </div>
+    </section>
+  );
+}
