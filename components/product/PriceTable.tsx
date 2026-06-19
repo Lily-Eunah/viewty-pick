@@ -30,7 +30,7 @@ export default function PriceTable({ stores }: PriceTableProps) {
             const isMultipack = qty > 1 && store.effectiveUnitPrice != null;
             return (
               <tr key={idx} className={`transition-colors hover:bg-bg ${store.isBest ? 'bg-accent-soft/40 font-extrabold' : ''}`}>
-                {/* 판매처 */}
+                {/* 판매처 (+ 판매처별 용량 — 사이즈가 판매처마다 다를 수 있음) */}
                 <td className="py-3 px-3">
                   <span className="font-extrabold text-title flex items-center gap-1 flex-wrap">
                     {store.isBest && '🏆'} {store.name}
@@ -38,6 +38,9 @@ export default function PriceTable({ stores }: PriceTableProps) {
                       <span className="text-[8px] bg-primary-soft text-primary font-extrabold px-1 py-0.5 rounded-[2px] leading-none">공식</span>
                     )}
                   </span>
+                  {store.volumeMl != null && store.volumeMl > 0 && (
+                    <span className="block text-[9px] text-sub font-semibold leading-none mt-0.5">{store.volumeMl}ml</span>
+                  )}
                 </td>
 
                 {/* 가격 (pack total for multipacks) */}

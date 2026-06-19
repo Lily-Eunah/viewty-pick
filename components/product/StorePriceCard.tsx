@@ -1,6 +1,6 @@
 import React from 'react';
 import { UIStorePrice } from '../../lib/types';
-import { won } from '../../lib/format';
+import { won, perMl } from '../../lib/format';
 
 interface StorePriceCardProps {
   store: UIStorePrice;
@@ -33,11 +33,14 @@ export default function StorePriceCard({ store, rank }: StorePriceCardProps) {
           )}
         </div>
 
-        {/* Store Name & Official/Rocket tag */}
+        {/* Store Name & Official/Rocket tag (+ 판매처별 용량) */}
         <div className="flex items-center gap-1.5">
           <span className="text-[14px] font-extrabold text-text-primary">
             {store.name}
           </span>
+          {store.volumeMl != null && store.volumeMl > 0 && (
+            <span className="text-[10px] font-bold text-text-secondary shrink-0">{store.volumeMl}ml</span>
+          )}
           {store.isRocket && (
             <span className="text-[9px] bg-sky-100 text-sky-700 font-extrabold px-1.5 py-0.5 rounded-[2px] leading-none shrink-0">
               로켓
@@ -69,6 +72,10 @@ export default function StorePriceCard({ store, rank }: StorePriceCardProps) {
               ) : store.composition ? (
                 <span className="text-[10px] text-discount font-bold leading-none mt-0.5">{store.composition}</span>
               ) : null}
+              {/* ml당 — representative ranking metric when sizes differ per retailer */}
+              {store.unitPrice != null && store.unitPrice > 0 && (
+                <span className="text-[10px] text-text-secondary font-bold leading-none mt-0.5">{perMl(store.unitPrice)}</span>
+              )}
             </>
           )}
         </div>
