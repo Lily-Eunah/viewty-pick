@@ -210,9 +210,23 @@ export default async function ProductDetailPage({ params }: PageProps) {
                   </div>
                 </div>
               ) : product.discountVsOfficial && product.discountVsOfficial > 0 ? (
-                <span className="text-[12px] text-discount bg-accent-soft font-extrabold px-2.5 py-1 rounded-full">
-                  공식몰 대비 {product.discountVsOfficial}% 저렴
-                </span>
+                <div className="flex flex-col">
+                  {product.officialPrice ? (
+                    <>
+                      <span className="text-[10px] text-sub font-bold leading-none">정가</span>
+                      <div className="flex items-baseline gap-1.5 mt-1">
+                        <span className="text-[13px] font-bold text-sub line-through">{won(product.officialPrice)}</span>
+                        <span className="text-[12px] text-discount bg-accent-soft font-extrabold px-2.5 py-1 rounded-full">
+                          정가 대비 {product.discountVsOfficial}% 할인
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    <span className="text-[12px] text-discount bg-accent-soft font-extrabold px-2.5 py-1 rounded-full">
+                      정가 대비 {product.discountVsOfficial}% 할인
+                    </span>
+                  )}
+                </div>
               ) : null}
             </div>
           )}

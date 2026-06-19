@@ -497,14 +497,15 @@ export async function getRecommendedProducts(limit = 10): Promise<UIProduct[]> {
 }
 
 /**
- * 공식몰 대비 최저가 픽: products where a verified seller beats the official
- * brand-store per-unit price, ranked by the discount %.
+ * 정가 대비 최저가 픽: products where a verified seller beats the regular price
+ * (or official store price as fallback), ranked by the discount %.
  */
 export async function getOfficialPickProducts(limit = 6): Promise<UIProduct[]> {
   const products = await getProducts();
+  const disc = (p: UIProduct) => p.discountVsRegular ?? p.discountVsOfficial ?? 0;
   return products
-    .filter((p) => (p.discountVsOfficial || 0) > 0)
-    .sort(byPriceThen((a, b) => (b.discountVsOfficial || 0) - (a.discountVsOfficial || 0)))
+    .filter((p) => disc(p) > 0)
+    .sort(byPriceThen((a, b) => disc(b) - disc(a)))
     .slice(0, limit);
 }
 
@@ -514,12 +515,13 @@ export async function getOfficialPickProducts(limit = 6): Promise<UIProduct[]> {
 
 export async function getHomePageData() {
   const allProducts = await getProducts();
+  const disc = (p: UIProduct) => p.discountVsRegular ?? p.discountVsOfficial ?? 0;
   return {
     allProducts,
     recommended: [...allProducts].sort(byPriceThen((a, b) => b.viewtyScore - a.viewtyScore)).slice(0, 8),
     officialPicks: allProducts
-      .filter((p) => (p.discountVsOfficial || 0) > 0)
-      .sort(byPriceThen((a, b) => (b.discountVsOfficial || 0) - (a.discountVsOfficial || 0)))
+      .filter((p) => disc(p) > 0)
+      .sort(byPriceThen((a, b) => disc(b) - disc(a)))
       .slice(0, 6),
   };
 }
