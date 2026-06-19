@@ -5,6 +5,7 @@ import Badge from '../common/Badge';
 import PriceText from '../common/PriceText';
 import { UIProduct } from '../../lib/types';
 import { pricedStoreNames } from '../../lib/format';
+import FavoriteButton from './FavoriteButton';
 
 interface ProductListCardProps {
   product: UIProduct;
@@ -17,10 +18,11 @@ export default function ProductListCard({ product, rank }: ProductListCardProps)
   const storeNames = pricedStoreNames(product);
 
   return (
-    <Link
-      href={`/p/${product.slug}`}
-      className="flex items-center gap-3.5 bg-surface border border-line rounded-card p-3 shadow-[0_8px_24px_rgba(65,0,22,0.06)] active:scale-[0.99] transition-transform duration-200"
-    >
+    <div className="relative w-full">
+      <Link
+        href={`/p/${product.slug}`}
+        className="flex items-center gap-3.5 bg-surface border border-line rounded-card p-3 shadow-[0_8px_24px_rgba(65,0,22,0.06)] active:scale-[0.99] transition-transform duration-200"
+      >
       {/* 1. Rank Label (optional) */}
       {rank !== undefined && (
         <div className={`flex justify-center items-center w-6 h-6 rounded-md text-[12px] font-black shrink-0 ${
@@ -43,7 +45,7 @@ export default function ProductListCard({ product, rank }: ProductListCardProps)
       />
 
       {/* 3. Right Details */}
-      <div className="flex-grow flex flex-col justify-between py-0.5 min-h-[92px] overflow-hidden">
+      <div className="flex-grow flex flex-col justify-between py-0.5 min-h-[92px] overflow-hidden pr-10">
         <div className="flex flex-col gap-0.5">
           {/* Badge & Tags */}
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -99,5 +101,7 @@ export default function ProductListCard({ product, rank }: ProductListCardProps)
         </div>
       </div>
     </Link>
+    <FavoriteButton slug={product.slug} className="absolute top-3 right-3 z-10" />
+  </div>
   );
 }

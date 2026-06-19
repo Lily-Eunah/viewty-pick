@@ -11,6 +11,7 @@ import ProductCard from '../../../components/product/ProductCard';
 import ProductStickyFooter from '../../../components/product/ProductStickyFooter';
 import AffiliateDisclosure from '../../../components/common/AffiliateDisclosure';
 import HistoryTracker from '../../../components/product/HistoryTracker';
+import FavoriteButton from '../../../components/product/FavoriteButton';
 import { getProductDetailPageData } from '../../../lib/queries';
 import { won, updatedAt } from '../../../lib/format';
 
@@ -156,15 +157,18 @@ export default async function ProductDetailPage({ params }: PageProps) {
           )}
         </div>
 
-        <div className="flex flex-col mt-1">
-          <span className="text-[12px] font-black text-sub">{product.brand}</span>
-          <h2 className="text-[19px] font-black text-title leading-tight tracking-tight mt-0.5">
-            {product.name}
-          </h2>
-          <span className="text-[13px] text-body opacity-80 mt-1 font-semibold">
-            용량/규격: {product.volume}
-          </span>
+        <div className="flex justify-between items-start gap-4 mt-1">
+          <div className="flex flex-col">
+            <span className="text-[12px] font-black text-sub">{product.brand}</span>
+            <h2 className="text-[19px] font-black text-title leading-tight tracking-tight mt-0.5">
+              {product.name}
+            </h2>
+          </div>
+          <FavoriteButton slug={product.slug} size={22} className="shrink-0 mt-0.5" />
         </div>
+        <span className="text-[13px] text-body opacity-80 mt-1 font-semibold">
+          용량/규격: {product.volume}
+        </span>
 
         {/* Pricing area */}
         <div className="flex flex-col gap-1 mt-4 pt-4 border-t border-[#F8F6EE]">

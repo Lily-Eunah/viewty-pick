@@ -4,6 +4,7 @@ import ProductImage from '../common/ProductImage';
 import Badge from '../common/Badge';
 import PriceText from '../common/PriceText';
 import { UIProduct } from '../../lib/types';
+import FavoriteButton from './FavoriteButton';
 
 interface ProductCardProps {
   product: UIProduct;
@@ -11,17 +12,18 @@ interface ProductCardProps {
 
 export default function ProductCard({ product }: ProductCardProps) {
   return (
-    <Link
-      href={`/p/${product.slug}`}
-      className="flex flex-col w-[170px] bg-surface border border-line rounded-card overflow-hidden shadow-[0_8px_24px_rgba(65,0,22,0.06)] active:scale-[0.98] transition-transform duration-200"
-    >
-      {/* 1. Product Image */}
-      <ProductImage
-        src={product.image}
-        alt={product.name}
-        brand={product.brand}
-        className="w-full"
-      />
+    <div className="relative w-[170px] shrink-0">
+      <Link
+        href={`/p/${product.slug}`}
+        className="flex flex-col w-full h-full bg-surface border border-line rounded-card overflow-hidden shadow-[0_8px_24px_rgba(65,0,22,0.06)] active:scale-[0.98] transition-transform duration-200"
+      >
+        {/* 1. Product Image */}
+        <ProductImage
+          src={product.image}
+          alt={product.name}
+          brand={product.brand}
+          className="w-full"
+        />
 
       {/* 2. Content Info */}
       <div className="p-3 flex flex-col flex-grow justify-between gap-1 bg-surface">
@@ -69,5 +71,7 @@ export default function ProductCard({ product }: ProductCardProps) {
         </div>
       </div>
     </Link>
+    <FavoriteButton slug={product.slug} className="absolute top-2 right-2 z-10" />
+  </div>
   );
 }
