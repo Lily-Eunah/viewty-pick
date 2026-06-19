@@ -100,6 +100,23 @@ export default function CurationCarousel() {
 
   return (
     <section className="px-4 py-4 bg-bg relative group">
+      {/* Curation Section Header */}
+      <div className="flex justify-between items-center mb-3 px-1">
+        <h3 className="text-[15px] font-black text-title tracking-tight">
+          뷰티 PICK 추천 가이드
+        </h3>
+        <Link
+          href="/pick"
+          className="text-[11px] text-[#A8A0A0] hover:text-primary font-black transition-colors flex items-center gap-0.5"
+          aria-label="추천 가이드 전체보기"
+        >
+          <span>전체보기</span>
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-2.5 h-2.5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+          </svg>
+        </Link>
+      </div>
+
       {/* Scrollable snap container */}
       <div
         ref={containerRef}
@@ -147,7 +164,7 @@ export default function CurationCarousel() {
       <button
         onClick={() => slide('left')}
         disabled={activeIndex === 0}
-        className={`absolute left-7 top-[52%] -translate-y-1/2 bg-black/25 hover:bg-black/55 text-white p-2 rounded-full backdrop-blur-[2px] transition-all duration-200 cursor-pointer shadow-sm z-20 ${
+        className={`absolute left-7 top-[58%] -translate-y-1/2 bg-black/25 hover:bg-black/55 text-white p-2 rounded-full backdrop-blur-[2px] transition-all duration-200 cursor-pointer shadow-sm z-20 ${
           activeIndex === 0 ? 'opacity-0 pointer-events-none' : 'opacity-0 group-hover:opacity-100'
         }`}
         aria-label="이전 큐레이션 보기"
@@ -160,7 +177,7 @@ export default function CurationCarousel() {
       <button
         onClick={() => slide('right')}
         disabled={activeIndex === curations.length - 1}
-        className={`absolute right-7 top-[52%] -translate-y-1/2 bg-black/25 hover:bg-black/55 text-white p-2 rounded-full backdrop-blur-[2px] transition-all duration-200 cursor-pointer shadow-sm z-20 ${
+        className={`absolute right-7 top-[58%] -translate-y-1/2 bg-black/25 hover:bg-black/55 text-white p-2 rounded-full backdrop-blur-[2px] transition-all duration-200 cursor-pointer shadow-sm z-20 ${
           activeIndex === curations.length - 1 ? 'opacity-0 pointer-events-none' : 'opacity-0 group-hover:opacity-100'
         }`}
         aria-label="다음 큐레이션 보기"
@@ -170,9 +187,8 @@ export default function CurationCarousel() {
         </svg>
       </button>
 
-      {/* Page indicators and '+' redirect to /pick */}
-      <div className="absolute bottom-9 right-8 flex items-center gap-2 z-10">
-        {/* Clickable Dots */}
+      {/* Interactive Dots indicator */}
+      <div className="absolute bottom-9 right-8 z-10">
         <div className="flex gap-1.5 items-center bg-black/15 px-2.5 py-1.5 rounded-full backdrop-blur-[2px]">
           {curations.map((_, idx) => (
             <button
@@ -185,17 +201,6 @@ export default function CurationCarousel() {
             />
           ))}
         </div>
-
-        {/* Counter Badge + Link */}
-        <Link
-          href="/pick"
-          className="inline-flex items-center gap-1 px-2.5 py-1 bg-black/55 hover:bg-black/70 text-white text-[10px] font-black rounded-full shadow-sm backdrop-blur-[2px] transition-colors border border-white/10"
-        >
-          <span>{activeIndex + 1}/{curations.length}</span>
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3.5} stroke="currentColor" className="w-2.5 h-2.5 text-white/95">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-          </svg>
-        </Link>
       </div>
     </section>
   );
