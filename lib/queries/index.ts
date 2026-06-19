@@ -322,6 +322,30 @@ export function compositionLabel(promoType: string, promoText: string | null, qu
   return null;
 }
 
+/**
+ * List-visibility gate: a product surfaces in a list ONLY when it has at least one
+ * displayed-seller link. `stores` is already filtered to display-enabled sellers
+ * (네이버/쿠팡/올영) in mapToUIProduct, so `stores.length === 0` means no 3-사 link
+ * exists — zigzag/ably-only products and link-less products drop out of every list.
+ * NOTE: a product WITH a link but no price (hasAnyPrice=false) is NOT hidden here —
+ * it stays visible and is sorted to the bottom instead (see byPriceThen).
+ * Detail pages (/p/[slug]) are out of scope: direct-URL access stays unchanged.
+ */
+export function hasDisplayedSellerLink(p: UIProduct): boolean {
+  return p.stores.length > 0;
+}
+
+/**
+ * Sort wrapper: price-less products (hasAnyPrice=false) always sink to the bottom
+ * regardless of the active sort (viewtyScore / price / discount …); products that
+ * share the same hasAnyPrice keep the provided 2차 comparator among themselves.
+ */
+export function byPriceThen(
+  cmp: (a: UIProduct, b: UIProduct) => number
+): (a: UIProduct, b: UIProduct) => number {
+  return (a, b) => (a.hasAnyPrice !== b.hasAnyPrice ? (a.hasAnyPrice ? -1 : 1) : cmp(a, b));
+}
+
 // ---------------------------------------------------------------------------
 // Raw data fetch — parallelized and deduplicated per server render via cache()
 // ---------------------------------------------------------------------------
@@ -413,10 +437,14 @@ export async function getProducts(filters?: {
   const { dbProducts, dbListings, dbPrices, dbCategories, dbProductBadges, dbBadges, dbListingPrices, dbSellers } =
     await fetchAllData();
 
-  // Convert to UI structure
-  let uiProducts = dbProducts.map((p) =>
-    mapToUIProduct(p, dbListings, dbPrices, dbCategories, dbProductBadges, dbBadges, dbListingPrices, dbSellers)
-  );
+  // Convert to UI structure. Single common filter for ALL list consumers (every
+  // page helper below routes through getProducts): drop products with no displayed-
+  // seller link (네이버/쿠팡/올영) so they never appear in any list.
+  let uiProducts = dbProducts
+    .map((p) =>
+      mapToUIProduct(p, dbListings, dbPrices, dbCategories, dbProductBadges, dbBadges, dbListingPrices, dbSellers)
+    )
+    .filter(hasDisplayedSellerLink);
 
   // Apply filters — category matches a minor (소분류) slug OR a major (대분류) slug
   // (a major page aggregates all of its minors' products).
@@ -432,16 +460,18 @@ export async function getProducts(filters?: {
   const sortBy = filters?.sortBy || 'recommend';
   // Missing/0 price sorts to the BACK in price sorts (it is not "cheapest").
   const askPrice = (p: UIProduct) => (p.lowestPrice > 0 ? p.lowestPrice : Number.POSITIVE_INFINITY);
+  // Every branch is wrapped in byPriceThen so price-less products sink to the bottom
+  // (1차 키 = hasAnyPrice), then the chosen criterion ranks the rest.
   if (sortBy === 'recommend' || sortBy === 'popularity') {
-    uiProducts.sort((a, b) => b.viewtyScore - a.viewtyScore);
+    uiProducts.sort(byPriceThen((a, b) => b.viewtyScore - a.viewtyScore));
   } else if (sortBy === 'price_asc') {
-    uiProducts.sort((a, b) => askPrice(a) - askPrice(b));
+    uiProducts.sort(byPriceThen((a, b) => askPrice(a) - askPrice(b)));
   } else if (sortBy === 'price_desc') {
-    uiProducts.sort((a, b) => (b.lowestPrice || 0) - (a.lowestPrice || 0));
+    uiProducts.sort(byPriceThen((a, b) => (b.lowestPrice || 0) - (a.lowestPrice || 0)));
   } else if (sortBy === 'discount') {
     // Prefer 정가 대비 (when a 정가 exists), else fall back to 공식몰 대비.
     const disc = (p: UIProduct) => p.discountVsRegular ?? p.discountVsOfficial ?? 0;
-    uiProducts.sort((a, b) => disc(b) - disc(a));
+    uiProducts.sort(byPriceThen((a, b) => disc(b) - disc(a)));
   }
 
   return uiProducts;
@@ -463,7 +493,7 @@ export async function getProductBySlug(slug: string): Promise<UIProduct | null> 
  */
 export async function getRecommendedProducts(limit = 10): Promise<UIProduct[]> {
   const products = await getProducts();
-  return [...products].sort((a, b) => b.viewtyScore - a.viewtyScore).slice(0, limit);
+  return [...products].sort(byPriceThen((a, b) => b.viewtyScore - a.viewtyScore)).slice(0, limit);
 }
 
 /**
@@ -474,7 +504,7 @@ export async function getOfficialPickProducts(limit = 6): Promise<UIProduct[]> {
   const products = await getProducts();
   return products
     .filter((p) => (p.discountVsOfficial || 0) > 0)
-    .sort((a, b) => (b.discountVsOfficial || 0) - (a.discountVsOfficial || 0))
+    .sort(byPriceThen((a, b) => (b.discountVsOfficial || 0) - (a.discountVsOfficial || 0)))
     .slice(0, limit);
 }
 
@@ -486,10 +516,10 @@ export async function getHomePageData() {
   const allProducts = await getProducts();
   return {
     allProducts,
-    recommended: [...allProducts].sort((a, b) => b.viewtyScore - a.viewtyScore).slice(0, 8),
+    recommended: [...allProducts].sort(byPriceThen((a, b) => b.viewtyScore - a.viewtyScore)).slice(0, 8),
     officialPicks: allProducts
       .filter((p) => (p.discountVsOfficial || 0) > 0)
-      .sort((a, b) => (b.discountVsOfficial || 0) - (a.discountVsOfficial || 0))
+      .sort(byPriceThen((a, b) => (b.discountVsOfficial || 0) - (a.discountVsOfficial || 0)))
       .slice(0, 6),
   };
 }
@@ -577,14 +607,17 @@ export const getProductDetailPageData = cache(async (slug: string): Promise<{ pr
       const { data: relLpData } = relListingIds.length > 0
         ? await supabase.from('listing_prices_public').select('*').in('listing_id', relListingIds)
         : { data: [] };
-      related = (relRows as Product[]).map((p) =>
-        mapToUIProduct(
-          p, (relListRes.data ?? []) as Listing[], [],
-          (catRes.data ?? []) as Category[], (relPbRes.data ?? []) as ProductBadge[],
-          (badgeRes.data ?? []) as Badge[], (relLpData ?? []) as PublicListingPrice[],
-          (selRes.data ?? []) as DbSeller[],
+      related = (relRows as Product[])
+        .map((p) =>
+          mapToUIProduct(
+            p, (relListRes.data ?? []) as Listing[], [],
+            (catRes.data ?? []) as Category[], (relPbRes.data ?? []) as ProductBadge[],
+            (badgeRes.data ?? []) as Badge[], (relLpData ?? []) as PublicListingPrice[],
+            (selRes.data ?? []) as DbSeller[],
+          )
         )
-      );
+        .filter(hasDisplayedSellerLink)
+        .sort(byPriceThen((a, b) => b.viewtyScore - a.viewtyScore));
     }
 
     return { product, related };
@@ -597,7 +630,9 @@ export const getProductDetailPageData = cache(async (slug: string): Promise<{ pr
   const product = mapToUIProduct(prod, raw.dbListings, raw.dbPrices, raw.dbCategories, raw.dbProductBadges, raw.dbBadges, raw.dbListingPrices, raw.dbSellers);
   const related = raw.dbProducts
     .filter((p) => p.category_id === prod.category_id && p.id !== prod.id && p.is_active)
-    .slice(0, 6)
-    .map((p) => mapToUIProduct(p, raw.dbListings, raw.dbPrices, raw.dbCategories, raw.dbProductBadges, raw.dbBadges, raw.dbListingPrices, raw.dbSellers));
+    .map((p) => mapToUIProduct(p, raw.dbListings, raw.dbPrices, raw.dbCategories, raw.dbProductBadges, raw.dbBadges, raw.dbListingPrices, raw.dbSellers))
+    .filter(hasDisplayedSellerLink)
+    .sort(byPriceThen((a, b) => b.viewtyScore - a.viewtyScore))
+    .slice(0, 6);
   return { product, related };
 });
