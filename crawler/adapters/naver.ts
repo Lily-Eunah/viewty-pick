@@ -54,6 +54,10 @@ export interface OfferMatchResult {
   // True when an anchored/matched SKU combines two DIFFERENT products (heterogeneous
   // set) → per-unit price not computable → excluded for operator inspection.
   needsInspection?: boolean;
+  // Price hint for a needsInspection candidate (e.g. the low-confidence band's
+  // lprice). null/absent when no price is derivable (heterogeneous set price) →
+  // the inspection tab row is left blank for the operator to fill before O.
+  inspectionEstimatedPrice?: number | null;
   // Set when this match came from a NON-ANCHORED anchor-miss fallback (not the
   // curated SKU): 'official-store' = an official Naver brand-store offer matched by
   // mallName; 'catalog' = a 가격비교 catalog lprice. Such prices are always surfaced
@@ -906,12 +910,17 @@ export function pickOliveYoungOffer(
   // candidate's reason (heterogeneous set, or below band / no core token).
   const top = candidates[0];
   if (extractPackageFromTitle(top.t).heterogeneous) {
-    return { matched: null, parsedVolumeRaw: null, identityScore: top.s, reason: '올리브영 offer is a heterogeneous set — hold/inspection', needsInspection: true };
+    // A heterogeneous set price is not a per-unit price → no hint; operator fills it.
+    return { matched: null, parsedVolumeRaw: null, identityScore: top.s, reason: '올리브영 offer is a heterogeneous set — hold/inspection', needsInspection: true, inspectionEstimatedPrice: null };
   }
+  // Low-confidence band: the top candidate's lprice is a usable price hint for the
+  // operator (it just falls below the auto-price band / lacks a core token).
+  const topPrice = parseInt(top.it.lprice, 10);
   return {
     matched: null, parsedVolumeRaw: null, identityScore: top.s,
     reason: `올리브영 below auto-price band (sim ${top.s.toFixed(2)}${top.s >= OY_AUTO_PRICE_SIMILARITY ? ', no core token' : ''}) — hold/inspection`,
     needsInspection: true,
+    inspectionEstimatedPrice: Number.isFinite(topPrice) && topPrice > 0 ? topPrice : null,
   };
 }
 
@@ -1067,6 +1076,11 @@ export class NaverAdapter implements RetailerAdapter {
         matchExcluded: true,
         // Search SUCCEEDED but no official-mall offer exists → not a failure.
         outcome: 'no_offer',
+        // A suspected set (id-anchored heterogeneous 2-product set) → route to the
+        // inspection O/X tab instead of link_only. A plain anchor-miss leaves these
+        // false → stays link_only.
+        needsInspection: result.needsInspection ?? false,
+        inspectionEstimatedPrice: result.inspectionEstimatedPrice ?? null,
       };
     }
 

@@ -42,6 +42,16 @@ export interface PriceOffer {
   // only (does NOT block the price); run.ts collects these into a Discord verify line
   // so the operator can confirm it is an option-select page and not a real set.
   nJongVerify?: boolean;
+  // True → the matcher found a candidate it could NOT auto-price because it is a
+  // SUSPECTED set (heterogeneous N-product bundle) or a low-confidence band match.
+  // There is no qualified offer (outcome stays no_offer), but unlike a plain
+  // anchor-miss this is routed to the inspection O/X tab — NOT link_only — so the
+  // operator can confirm it is a single (단품), fill a price, and approve (O).
+  needsInspection?: boolean;
+  // Optional price HINT for an inspection candidate (e.g. the low-confidence
+  // band's lprice). null when no per-unit price is derivable (e.g. a heterogeneous
+  // set price) — the operator types the price in the tab before approving.
+  inspectionEstimatedPrice?: number | null;
   // Explicit fetch outcome. Absent ⇒ treated as 'ok' (priced). A successful
   // fetch with no qualified offer MUST set 'no_offer' so it does not increment
   // fail_count. (Technical failures throw instead → run.ts classifies 'failed'.)

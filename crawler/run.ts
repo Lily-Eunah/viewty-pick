@@ -2,7 +2,8 @@
 import { CoupangAdapter, NaverAdapter, OliveYoungAdapter, RetailerAdapter, PriceOffer, FetchOutcome } from './adapters/index';
 import { clearNaverSearchCache } from './adapters/naver';
 import { readInspectionRows, upsertInspection, approvalOverrides, InspectionItem } from './sheets/inspection';
-import { upsertLinkOnly, classifyLinkOnly, LinkOnlyItem } from './sheets/linkOnly';
+import { upsertLinkOnly, LinkOnlyItem } from './sheets/linkOnly';
+import { routeNoOffer } from './core/routeNoOffer';
 import { applyManualOverrides, normalizePrice } from './core/normalize';
 import { runHealthCheck, resolveListingOutcome } from './core/healthcheck';
 import { recalculateViewtyScores } from './core/score';
@@ -314,20 +315,22 @@ export async function crawlPipeline(): Promise<void> {
           noOfferCount++;
         }
 
-        // This crawl-target link produced no price → record it for the link_only
-        // tab. Cause/action are mapped from the adapter's known outcome + reason
-        // (no new inference). The operator acts on the source (URL/단품/set split);
-        // when a price returns next run the link drops out of the regenerated tab.
-        const { cause, action } = classifyLinkOnly(seller.slug, outcome, offer.sourceText);
-        linkOnlyCandidates.push({
-          seller: seller.slug,
-          brand: product.brand ?? '',
-          product_name: product.name,
-          product_key: product.product_key,
-          cause,
-          action,
-          url: listing.url || listing.affiliate_url || '',
+        // Route this no-price link. A matcher-flagged needsInspection (suspected
+        // heterogeneous set / low-confidence band) goes to the inspection O/X tab so
+        // the operator can confirm 단품, fill a price, and approve (O); everything
+        // else (anchor-miss, no Coupang match, data_error) → link_only. The two
+        // destinations are mutually exclusive (routeNoOffer decides; pure/testable).
+        const route = routeNoOffer(outcome, offer, {
+          sellerSlug: seller.slug,
+          sellerName: seller.name,
+          productKey: product.product_key,
+          productName: product.name,
+          brand: product.brand ?? null,
+          url: listing.url ?? null,
+          affiliateUrl: listing.affiliate_url ?? null,
         });
+        if (route.kind === 'inspection') inspectionCandidates.push(route.item);
+        else linkOnlyCandidates.push(route.item);
 
         // Trust-first: if this listing had a real price last run, drop it (no
         // stale carry-over) and surface the transition as a daily-summary INFO
