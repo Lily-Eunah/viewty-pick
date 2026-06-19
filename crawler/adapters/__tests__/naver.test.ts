@@ -188,11 +188,21 @@ it('bare 2종 (option-select) → single', () => {
   assert(classifyOfferComposition('롬앤 글래스팅 워터 틴트 쿠션 2종').kind === 'single', 'bare 2종 is an option-select single');
   assert(classifyOfferComposition('에스쁘아 프로테일러 비글로우 쿠션 3종 택1').kind === 'single', 'bare 3종 (택1) is single');
 });
-it('N종 + set-context word → set', () => {
-  assert(classifyOfferComposition('제니피끄 세럼 2종 세트').kind === 'set', '2종 세트 is a set');
-  assert(classifyOfferComposition('토리든 다이브인 기획 3종 구성').kind === 'set', '기획 3종 구성 is a set');
+// fix/set-classification-evidence-based: a "N종" is a set ONLY with an explicit set
+// COMPOUND (세트/패키지/콜렉션 via SET_KEYWORDS). An ambiguous "기획 N종"/"선물 N종"
+// (no compound) is a single — only a true compound (선물세트/기획세트/세트구성/패키지)
+// is a set.
+it('N종 with an explicit set COMPOUND → set', () => {
+  assert(classifyOfferComposition('제니피끄 세럼 2종 세트').kind === 'set', '2종 세트 (bare 세트) is a set');
   assert(classifyOfferComposition('에뛰드 픽싱 틴트 3종 패키지').kind === 'set', '3종 패키지 is a set');
-  assert(classifyOfferComposition('웜톤 선물 2종').kind === 'set', '선물 N종 (context before) is a set');
+});
+it('§A: ambiguous 기획/선물 (no set compound) → single, but explicit compound → set', () => {
+  assert(classifyOfferComposition('닥터지 더모이스처 배리어 D 인텐스 크림 100ml 기획 3종').kind === 'single', '100ml 기획 3종 is a single (link-only 탈출)');
+  assert(classifyOfferComposition('토리든 다이브인 기획 3종 구성').kind === 'single', '기획 3종 구성 (no 세트 compound) is a single');
+  assert(classifyOfferComposition('웜톤 선물 2종').kind === 'single', '선물 2종 (no compound) is a single');
+  assert(classifyOfferComposition('제니피끄 세럼 50ml 기획세트').kind === 'set', '기획세트 (compound) is a set');
+  assert(classifyOfferComposition('제니피끄 세럼 50ml 선물세트').kind === 'set', '선물세트 (compound) is a set');
+  assert(classifyOfferComposition('큐레이션 토너 100ml + 세럼 30ml').kind === 'set', 'plus-combined two products is a set');
 });
 
 console.log('\n--- containsBareNJong (Discord verify flag) ---');
@@ -277,6 +287,30 @@ it('anchored HETEROGENEOUS 2-product set → needsInspection (no price)', () => 
 it('anchor number not in results → null (caller → link-only)', () => {
   const r = pickAnchoredOffer([item({ link: 'https://smartstore.naver.com/x/products/111' })], '999');
   assert(r === null, 'no matching link → null');
+});
+
+console.log('\n--- §C: anchored 본품 + 소량 부스트 strip (DB-volume main) ---');
+it('anchored 본품(DB vol) + 소량 부스트 → priced as 본품 (add-on stripped)', () => {
+  const boost = item({ title: '[아벤느] 히알루론 액티브 B3 안티에이징 세럼 30ml +부스트 10ml', link: 'https://brand.naver.com/avene/products/777', lprice: '45000' });
+  const r = pickAnchoredOffer([boost], '777', 30, '아벤느 히알루론 액티브 B3 세럼');
+  assert(r !== null && r.matched !== null && r.matched.lprice === '45000', `본품+부스트 should price the 본품, got ${JSON.stringify(r)}`);
+  assert(r!.parsedVolumeRaw === 30, `본품 volume = DB 30ml, got ${r!.parsedVolumeRaw}`);
+  assert(r!.nJongVerify === true, 'stripped offer routed to Discord set/구성 verify');
+});
+it('anchored 본품 + add-on ≥ 본품 → still heterogeneous (inspection, no strip)', () => {
+  const big = item({ title: '세럼 30ml + 토너 100ml', link: 'https://brand.naver.com/x/products/778', lprice: '50000' });
+  const r = pickAnchoredOffer([big], '778', 30, '세럼');
+  assert(r !== null && r.matched === null && r.needsInspection === true, 'add-on bigger than 본품 → set (no strip)');
+});
+it('anchored heterogeneous + DB volume not among detected → heterogeneous (no strip)', () => {
+  const het = item({ title: '세럼 21ml + 토너 100ml', link: 'https://brand.naver.com/x/products/779', lprice: '50000' });
+  const r = pickAnchoredOffer([het], '779', 50, '세럼'); // DB 50 ∉ {21,100}
+  assert(r !== null && r.matched === null && r.needsInspection === true, 'no DB-volume match → set (no strip)');
+});
+it('anchored heterogeneous WITHOUT a DB volume → heterogeneous (back-compat)', () => {
+  const het = item({ title: '랑콤 제니피끄 세럼 21ml + 토너 100ml', link: 'https://brand.naver.com/lancome/products/780', lprice: '282200' });
+  const r = pickAnchoredOffer([het], '780'); // no volume/name args
+  assert(r !== null && r.matched === null && r.needsInspection === true, 'no DB volume passed → unchanged inspection');
 });
 
 console.log('\n--- multi-query anchor recall ---');
