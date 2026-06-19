@@ -10,7 +10,7 @@ interface Props {
   minors?: Category[]; // 소분류 sub-filter chips (present on 대분류 pages)
 }
 
-const SKIN_TYPES = ['지성', '건성', '수부지', '민감성'] as const;
+const SKIN_TYPES = ['지성', '건성', '수부지', '민감성', '복합성'] as const;
 const SORT_OPTIONS = [
   { key: 'recommend', label: '추천순' },
   { key: 'price_asc', label: '최저가순' },
