@@ -21,7 +21,7 @@ import { Listing, Product, RetailerAllowlist } from '../../lib/types';
 import { PriceOffer, RetailerAdapter } from './index';
 import { isSupabaseServerConfigured, supabaseServer } from '../../lib/supabase/server';
 import { loadMockDB } from '../../lib/supabase/mockDb';
-import { extractPackageFromTitle, stripPromoGifts } from '../core/packageExtractor';
+import { extractPackageFromTitle, stripPromoGifts, isBareNJong, N_JONG_SET_RE } from '../core/packageExtractor';
 import { crawlNaverPagePrice, isNaverStorefrontUrl } from '../core/naverPageCrawl';
 
 // ---------------------------------------------------------------------------
@@ -131,8 +131,25 @@ export function productIdentityScore(title: string, name: string): number {
 // to classify each offer and PREFER a comparable single, EXCLUDING sets/multipacks
 // from price comparison (trust-first: show no price rather than a wrong one).
 // ---------------------------------------------------------------------------
-const SET_KEYWORDS = /(선물\s*세트|기획\s*세트|세트\s*구성|더블\s*기획|더블팩|2종|3종|4종|콜렉션|컬렉션|패키지|한정|리필|세트|디바이스|기기|업소용|도매|벌크)/;
+const SET_KEYWORDS = /(선물\s*세트|기획\s*세트|세트\s*구성|더블\s*기획|더블팩|콜렉션|컬렉션|패키지|한정|리필|세트|디바이스|기기|업소용|도매|벌크)/;
 const MULTIPACK_COUNT = /(\d+)\s*(?:개|팩|병|입|매)/; // \b不可: 한글은 \w가 아님
+
+// "N종" (2종/3종/4종) is, on its own, almost always an OPTION-SELECT page ("N종 중
+// 택1" → 단품 구매), NOT a physical set — so a BARE "N종" stays a comparable single
+// (옵션선택 → 정상 가격). It counts as a set ONLY with an adjacent set-context word
+// (N종 세트/구성/기획/패키지/콜렉션/컬렉션 …) — see N_JONG_SET_RE / isBareNJong in
+// packageExtractor (single source, also drives the heterogeneous gate there).
+
+/**
+ * True when an offer title carries a BARE "N종" — i.e. an "N종 중 택1" option-select
+ * marker NOT accompanied by a set-context word. Such offers ARE priced (single), but
+ * are surfaced to Discord for a manual set-vs-option check in case a genuine set
+ * slipped through as 단독 "N종". A "N종 세트/구성/기획…" returns false here (already
+ * classified as a set / heterogeneous upstream, never priced).
+ */
+export function containsBareNJong(title: string): boolean {
+  return isBareNJong(stripHtml(title || ''));
+}
 
 // Product form/type nouns. Used to reject same-line cross-product matches: if the
 // curated name's form noun (e.g. 올인원/선스틱/로션) is ABSENT from the candidate
@@ -185,6 +202,9 @@ export function classifyOfferComposition(title: string): OfferComposition {
   if (/[x×*]\s*\d+\b/i.test(t)) return { kind: 'set', reason: '×N multiplier' };
   const cnt = t.match(MULTIPACK_COUNT);
   if (cnt && parseInt(cnt[1], 10) >= 2) return { kind: 'set', reason: `${cnt[1]}-count multipack` };
+  // "N종" only when a set-context word is adjacent; a bare "N종" is an option-select
+  // single (handled below by falling through to SET_KEYWORDS/single).
+  if (N_JONG_SET_RE.test(t)) return { kind: 'set', reason: 'N종 with set-context word (세트/구성/기획/패키지/콜렉션)' };
   if (SET_KEYWORDS.test(t)) return { kind: 'set', reason: 'set/bundle keyword' };
   return { kind: 'single', reason: 'single unit' };
 }
@@ -962,6 +982,7 @@ export class NaverAdapter implements RetailerAdapter {
             parsedVolumeRaw,
             matchedUrl: listing.url || null,
             matchedMallName: allowedStoreName || null,
+            nJongVerify: containsBareNJong(titleClean),
             outcome: 'ok',
           };
         }
@@ -1048,6 +1069,7 @@ export class NaverAdapter implements RetailerAdapter {
         matchedUrl,
         matchedMallName,
         inspectionWarning,
+        nJongVerify: containsBareNJong(item.title),
         outcome: 'ok', // priced; healthcheck downgrades to warning when inspectionWarning set
       };
     }
@@ -1065,6 +1087,7 @@ export class NaverAdapter implements RetailerAdapter {
       parsedVolumeRaw: result.parsedVolumeRaw,
       matchedUrl: isAffiliate ? null : item.link || null,
       matchedMallName: item.mallName || null,
+      nJongVerify: containsBareNJong(item.title),
       outcome: 'ok',
     };
   }

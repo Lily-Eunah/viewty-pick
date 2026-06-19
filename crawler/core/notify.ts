@@ -64,6 +64,10 @@ export interface DailySummaryStats {
   // 이종세트 보류) and are listed in the link_only tab for operator action. Distinct
   // from inspection (those DO have a held price); reported separately.
   linkOnlyUnmatchedCount?: number;
+  // Priced offers whose title carries a BARE "N종" (e.g. "쿠션 2종") — usually an
+  // "N종 중 택1" option-select page (priced as a single), but possibly a real set.
+  // Informational only (price IS shown); operator confirms set-vs-option from this list.
+  nJongVerifyItems?: string[];
 }
 
 /**
@@ -78,6 +82,7 @@ export function buildDailySummaryMessage(stats: DailySummaryStats): string {
   const pendingInspection = stats.pendingInspectionCount ?? 0;
   const inspectionItems = stats.inspectionItems ?? [];
   const linkOnlyUnmatched = stats.linkOnlyUnmatchedCount ?? 0;
+  const nJongVerify = stats.nJongVerifyItems ?? [];
 
   let message = `📊 **[ViewtyPick Crawl Run Summary]**
 - **시작/종료 상태**: 완료 (Success)
@@ -110,6 +115,12 @@ export function buildDailySummaryMessage(stats: DailySummaryStats): string {
 
   if (linkOnlyUnmatched > 0) {
     message += `\n🔗 **가격 미매칭 link-only (link_only 탭에서 원인·액션 확인)**: ${linkOnlyUnmatched}건 — 가격 자체가 없는 링크(쿠팡 URL 교체·네이버/올영 확인)`;
+  }
+
+  if (nJongVerify.length > 0) {
+    const shown = nJongVerify.slice(0, 10);
+    const more = nJongVerify.length > shown.length ? ` 외 ${nJongVerify.length - shown.length}건` : '';
+    message += `\n🔎 **N종 옵션 링크 — 세트 여부 확인 (정보, 가격 노출 유지)**: ${nJongVerify.length}건${more} — 대개 'N종 중 택1' 옵션선택(단품), 진짜 세트면 조치\n${shown.map((d) => `  • ${d}`).join('\n')}`;
   }
 
   return message;

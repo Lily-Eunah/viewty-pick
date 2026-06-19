@@ -37,6 +37,11 @@ export interface PriceOffer {
   // price is kept but flagged: healthcheck forces status='warning' (inspection)
   // and normalize marks the ml unit_price unreliable (identity is unverified).
   inspectionWarning?: string | null;
+  // True → the matched (priced) offer's title carries a BARE "N종" (e.g. "쿠션 2종"),
+  // i.e. an "N종 중 택1" option-select page that is priced as a single. Informational
+  // only (does NOT block the price); run.ts collects these into a Discord verify line
+  // so the operator can confirm it is an option-select page and not a real set.
+  nJongVerify?: boolean;
   // Explicit fetch outcome. Absent ⇒ treated as 'ok' (priced). A successful
   // fetch with no qualified offer MUST set 'no_offer' so it does not increment
   // fail_count. (Technical failures throw instead → run.ts classifies 'failed'.)
