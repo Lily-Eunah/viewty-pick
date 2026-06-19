@@ -30,7 +30,7 @@ export default function BottomTabBar({ activeTab }: BottomTabBarProps) {
 
       {/* 2. 카테고리 */}
       <Link
-        href="/c/sunscreen"
+        href="/c"
         className={`flex flex-col items-center justify-center gap-0.5 w-[68px] py-1.5 rounded-xl transition-all duration-200 ${
           activeTab === 'category' ? 'text-primary bg-accent-soft font-black shadow-[0_2px_8px_rgba(65,0,22,0.03)]' : 'text-[#A8A0A0] hover:text-[#29272A]'
         }`}

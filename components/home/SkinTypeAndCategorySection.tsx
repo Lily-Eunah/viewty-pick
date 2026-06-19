@@ -1,19 +1,12 @@
 "use client";
 
 import React from 'react';
-import Link from 'next/link';
 import {
   DrySkinIcon,
   OilySkinIcon,
   CombinationSkinIcon,
   SensitiveSkinIcon,
   DehydratedOilyIcon,
-  SunscreenIcon,
-  TonerIcon,
-  LotionIcon,
-  CreamIcon,
-  CleansingIcon,
-  MaskIcon,
 } from "./BeautyIcons";
 
 interface SkinTypeAndCategorySectionProps {
@@ -29,22 +22,12 @@ const skinTypes = [
   { id: "dehydrated-oily", label: "수부지", icon: DehydratedOilyIcon },
 ];
 
-// 대분류(major) entry points — each opens /c/[major] with 소분류 sub-filter chips.
-const categories = [
-  { id: "suncare", label: "선케어", icon: SunscreenIcon, path: "/c/suncare" },
-  { id: "skincare", label: "스킨케어", icon: TonerIcon, path: "/c/skincare" },
-  { id: "cleansing-care", label: "클렌징", icon: CleansingIcon, path: "/c/cleansing-care" },
-  { id: "maskpack", label: "마스크팩", icon: MaskIcon, path: "/c/maskpack" },
-  { id: "bodycare", label: "바디케어", icon: LotionIcon, path: "/c/bodycare" },
-  { id: "base-makeup", label: "베이스 메이크업", icon: CreamIcon, path: "/c/base-makeup" },
-];
-
 export function SkinTypeAndCategorySection({
   selectedSkin,
   onSkinSelect,
 }: SkinTypeAndCategorySectionProps) {
   return (
-    <section className="space-y-7 px-4 py-3 bg-bg">
+    <section className="px-4 py-3 bg-bg">
       {/* 1. 피부 타입 */}
       <div>
         <div className="mb-3 flex items-center justify-between px-1">
@@ -97,33 +80,7 @@ export function SkinTypeAndCategorySection({
           </div>
         </div>
       </div>
-
-      {/* 2. 카테고리 */}
-      <div>
-        <div className="mb-3 px-1">
-          <h2 className="text-[14px] font-black text-title">카테고리</h2>
-        </div>
-
-        <div className="grid grid-cols-4 gap-2.5">
-          {categories.map((item) => {
-            const Icon = item.icon;
-
-            return (
-              <Link
-                key={item.id}
-                href={item.path}
-                aria-label={`${item.label} 카테고리 보기`}
-                className="group flex min-h-[96px] flex-col items-center justify-center rounded-[18px] border border-line bg-surface px-2 py-3 shadow-[0_8px_24px_rgba(65,0,22,0.06)] transition-all duration-200 hover:-translate-y-0.5 hover:border-accent hover:bg-accent-soft/10 active:scale-[0.96] text-center"
-              >
-                <Icon className="h-[48px] w-[48px] transition-transform duration-200 group-hover:scale-105" />
-                <span className="mt-2 text-[12px] font-black leading-none text-text-secondary group-hover:text-primary transition-colors duration-150 truncate w-full">
-                  {item.label}
-                </span>
-              </Link>
-            );
-          })}
-        </div>
-      </div>
     </section>
   );
 }
+
