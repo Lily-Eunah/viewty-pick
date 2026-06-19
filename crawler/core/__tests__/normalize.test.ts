@@ -172,26 +172,29 @@ describe('Bundle (더블기획 / N개입)', () => {
   });
 });
 
-describe('Volume mismatch (§1 compromise: price kept, unit_price disabled)', () => {
-  it('parsedVolumeRaw ≠ product.volume_ml → price kept (confidence=high), unit_price null, reliable=false', () => {
-    const product200ml: Product = { ...BASE_PRODUCT, volume_ml: 50 };
-    const result = normalizePrice(product200ml, offer({
+describe('Per-retailer volume (operator: size differs per seller → price ml당 from listing size)', () => {
+  it('parsedVolumeRaw ≠ DB → use the listing volume, ml당 computed + reliable (mismatch informational only)', () => {
+    const product50ml: Product = { ...BASE_PRODUCT, volume_ml: 50 };
+    const result = normalizePrice(product50ml, offer({
       salePrice: 25000,
       promoType: 'none',
       promoText: null,
-      parsedVolumeRaw: 150, // different from 50ml
+      parsedVolumeRaw: 150, // different from 50ml → priced as 150ml
     }));
-    // §1: do NOT gate the price — base/effective stay, confidence stays high
-    expect(result.volume_mismatch).toBe(true);
-    expect(result.parse_confidence).toBe('high');
+    // Price stays; confidence high
     expect(result.base_unit_price).toBe(25000);
     expect(result.effective_unit_price).toBe(25000);
-    // ml-based price is the only thing disabled
-    expect(result.unit_price).toBeNull();
-    expect(result.unit_price_reliable).toBe(false);
+    expect(result.parse_confidence).toBe('high');
+    // ml당 from the listing's OWN size (25000 / 150), reliable
+    expect(result.unit_price).toBe(166.6667);
+    expect(result.unit_price_reliable).toBe(true);
+    expect(result.total_ml).toBe(150);
+    // difference recorded informationally (does not gate)
+    expect(result.volume_mismatch).toBe(true);
+    expect(result.volume_mismatch_detail !== null).toBe(true);
   });
 
-  it('parsedVolumeRaw matches product.volume_ml → no mismatch, unit_price reliable', () => {
+  it('parsedVolumeRaw matches DB → no difference flag, unit_price reliable', () => {
     const result = normalizePrice(BASE_PRODUCT, offer({
       salePrice: 20000,
       promoType: 'none',
@@ -203,24 +206,24 @@ describe('Volume mismatch (§1 compromise: price kept, unit_price disabled)', ()
     expect(result.unit_price).toBe(400); // 20000 / 50
   });
 
-  it('volume mismatch from title (no parsedVolumeRaw) → price kept, unit_price null, reliable=false', () => {
+  it('different volume parsed from title (no parsedVolumeRaw) → use title volume, ml당 reliable', () => {
     const product50ml: Product = { ...BASE_PRODUCT, volume_ml: 50 };
     const result = normalizePrice(product50ml, offer({
       salePrice: 20000,
       promoType: 'none',
       promoText: null,
-      sourceText: '선크림 150ml', // 150 ≠ 50
+      sourceText: '선크림 150ml', // 150 ≠ 50 → priced as 150ml
     }));
     expect(result.volume_mismatch).toBe(true);
     expect(result.parse_confidence).toBe('high');
     expect(result.base_unit_price).toBe(20000);
-    expect(result.unit_price).toBeNull();
-    expect(result.unit_price_reliable).toBe(false);
+    expect(result.unit_price).toBe(133.3333); // 20000 / 150
+    expect(result.unit_price_reliable).toBe(true);
   });
 });
 
-describe('Volume unverified (§1b: LLM-seeded default → ml disabled, price kept)', () => {
-  it('volume_verified=false → unit_price null + reliable=false, base price kept, confidence high', () => {
+describe('Volume unverified (§1b: LLM-seeded default → ml disabled ONLY when volume not read)', () => {
+  it('volume_verified=false & no listing volume → unit_price null + reliable=false, base price kept', () => {
     const unverified: Product = { ...BASE_PRODUCT, volume_verified: false };
     const result = normalizePrice(unverified, offer({ salePrice: 18000, promoType: 'none' }));
     expect(result.base_unit_price).toBe(18000);
@@ -228,6 +231,13 @@ describe('Volume unverified (§1b: LLM-seeded default → ml disabled, price kep
     expect(result.volume_mismatch).toBe(false); // unverified is not a mismatch
     expect(result.unit_price).toBeNull();
     expect(result.unit_price_reliable).toBe(false);
+  });
+
+  it('volume_verified=false BUT listing volume read → parsed size overrides, ml당 reliable', () => {
+    const unverified: Product = { ...BASE_PRODUCT, volume_verified: false, volume_ml: 50 };
+    const result = normalizePrice(unverified, offer({ salePrice: 18000, promoType: 'none', parsedVolumeRaw: 90 }));
+    expect(result.unit_price).toBe(200); // 18000 / 90
+    expect(result.unit_price_reliable).toBe(true);
   });
 
   it('volume_verified=true → ml comparison enabled', () => {
