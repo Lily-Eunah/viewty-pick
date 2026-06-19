@@ -64,6 +64,28 @@ export default function CurationCarousel() {
     setActiveIndex(newIndex);
   };
 
+  const scrollTo = (index: number) => {
+    if (!containerRef.current) return;
+    const { clientWidth } = containerRef.current;
+    containerRef.current.scrollTo({
+      left: index * clientWidth,
+      behavior: 'smooth',
+    });
+    setActiveIndex(index);
+  };
+
+  const slide = (direction: 'left' | 'right') => {
+    if (!containerRef.current) return;
+    const { clientWidth, scrollLeft } = containerRef.current;
+    const targetScroll = direction === 'left'
+      ? scrollLeft - clientWidth
+      : scrollLeft + clientWidth;
+    containerRef.current.scrollTo({
+      left: targetScroll,
+      behavior: 'smooth',
+    });
+  };
+
   useEffect(() => {
     const container = containerRef.current;
     if (container) {
@@ -77,7 +99,7 @@ export default function CurationCarousel() {
   }, []);
 
   return (
-    <section className="px-4 py-4 bg-bg relative">
+    <section className="px-4 py-4 bg-bg relative group">
       {/* Scrollable snap container */}
       <div
         ref={containerRef}
@@ -121,16 +143,45 @@ export default function CurationCarousel() {
         ))}
       </div>
 
+      {/* Subtle Navigation Arrows (Appear on hover) */}
+      <button
+        onClick={() => slide('left')}
+        disabled={activeIndex === 0}
+        className={`absolute left-7 top-[52%] -translate-y-1/2 bg-black/25 hover:bg-black/55 text-white p-2 rounded-full backdrop-blur-[2px] transition-all duration-200 cursor-pointer shadow-sm z-20 ${
+          activeIndex === 0 ? 'opacity-0 pointer-events-none' : 'opacity-0 group-hover:opacity-100'
+        }`}
+        aria-label="이전 큐레이션 보기"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3.5} stroke="currentColor" className="w-3.5 h-3.5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+        </svg>
+      </button>
+
+      <button
+        onClick={() => slide('right')}
+        disabled={activeIndex === curations.length - 1}
+        className={`absolute right-7 top-[52%] -translate-y-1/2 bg-black/25 hover:bg-black/55 text-white p-2 rounded-full backdrop-blur-[2px] transition-all duration-200 cursor-pointer shadow-sm z-20 ${
+          activeIndex === curations.length - 1 ? 'opacity-0 pointer-events-none' : 'opacity-0 group-hover:opacity-100'
+        }`}
+        aria-label="다음 큐레이션 보기"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3.5} stroke="currentColor" className="w-3.5 h-3.5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+        </svg>
+      </button>
+
       {/* Page indicators and '+' redirect to /pick */}
       <div className="absolute bottom-9 right-8 flex items-center gap-2 z-10">
-        {/* Visual Dots */}
-        <div className="flex gap-1 items-center bg-black/15 px-2 py-1 rounded-full backdrop-blur-[2px]">
+        {/* Clickable Dots */}
+        <div className="flex gap-1.5 items-center bg-black/15 px-2.5 py-1.5 rounded-full backdrop-blur-[2px]">
           {curations.map((_, idx) => (
-            <span
+            <button
               key={idx}
-              className={`w-1.5 h-1.5 rounded-full transition-colors duration-200 ${
-                activeIndex === idx ? 'bg-primary' : 'bg-white/60'
+              onClick={() => scrollTo(idx)}
+              className={`w-1.5 h-1.5 rounded-full transition-all duration-200 cursor-pointer ${
+                activeIndex === idx ? 'bg-primary scale-125' : 'bg-white/60 hover:bg-white/90'
               }`}
+              aria-label={`${idx + 1}번 큐레이션으로 이동`}
             />
           ))}
         </div>

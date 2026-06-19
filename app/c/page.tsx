@@ -14,12 +14,12 @@ import {
 } from '../../components/home/BeautyIcons';
 
 const categories = [
-  { id: "suncare", label: "선케어", icon: SunscreenIcon, path: "/c/suncare", desc: "선크림 / 선스틱 / 선쿠션" },
-  { id: "skincare", label: "스킨케어", icon: TonerIcon, path: "/c/skincare", desc: "스킨·토너 / 로션 / 에센스·세럼 / 올인원 / 크림" },
-  { id: "cleansing-care", label: "클렌징", icon: CleansingIcon, path: "/c/cleansing-care", desc: "클렌징폼·젤 / 오일·밤 / 워터·밀크" },
-  { id: "maskpack", label: "마스크팩", icon: MaskIcon, path: "/c/maskpack", desc: "시트팩 / 패드" },
-  { id: "bodycare", label: "바디케어", icon: LotionIcon, path: "/c/bodycare", desc: "샤워·입욕 / 바디로션·크림" },
-  { id: "base-makeup", label: "베이스 메이크업", icon: CreamIcon, path: "/c/base-makeup", desc: "쿠션" },
+  { id: "suncare", label: "선케어", icon: SunscreenIcon, path: "/c/suncare", desc: ["선크림", "선스틱", "선쿠션"] },
+  { id: "skincare", label: "스킨케어", icon: TonerIcon, path: "/c/skincare", desc: ["스킨·토너", "로션", "에센스·세럼", "올인원", "크림"] },
+  { id: "cleansing-care", label: "클렌징", icon: CleansingIcon, path: "/c/cleansing-care", desc: ["클렌징폼·젤", "오일·밤", "워터·밀크"] },
+  { id: "maskpack", label: "마스크팩", icon: MaskIcon, path: "/c/maskpack", desc: ["시트팩", "패드"] },
+  { id: "bodycare", label: "바디케어", icon: LotionIcon, path: "/c/bodycare", desc: ["샤워·입욕", "바디로션·크림"] },
+  { id: "base-makeup", label: "베이스 메이크업", icon: CreamIcon, path: "/c/base-makeup", desc: ["쿠션"] },
 ];
 
 export default function CategoriesExplorerPage() {
@@ -59,10 +59,21 @@ export default function CategoriesExplorerPage() {
                   </svg>
                 </div>
 
-                <div className="flex items-end justify-between mt-4">
-                  <span className="text-[10px] text-text-secondary font-bold leading-relaxed max-w-[70%]">
-                    {item.desc}
-                  </span>
+                <div className="flex items-end justify-between mt-4 gap-2">
+                  {/* Sub-category list with whitespace-nowrap wrapping units */}
+                  <div className="flex flex-wrap gap-x-1 gap-y-0.5 max-w-[70%]">
+                    {item.desc.map((sub, idx) => (
+                      <React.Fragment key={sub}>
+                        <span className="text-[10px] text-text-secondary font-bold whitespace-nowrap">
+                          {sub}
+                        </span>
+                        {idx < item.desc.length - 1 && (
+                          <span className="text-[9px] text-[#A8A0A0] select-none">·</span>
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </div>
+                  
                   <Icon className="h-12 w-12 transition-transform duration-200 group-hover:scale-105 shrink-0" />
                 </div>
               </Link>
