@@ -17,6 +17,7 @@ jobs:
       # Force offline/mock mode — no real external calls
       CRAWLER_MODE: mock
       VIEWTYPICK_MOCK_MODE: "true"
+      NODE_OPTIONS: --max-old-space-size=4096
 
       # Safe placeholder values so build/test succeed without real secrets
       NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
