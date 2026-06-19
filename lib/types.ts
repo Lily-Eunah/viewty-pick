@@ -148,6 +148,7 @@ export interface PublicListingPrice {
   base_unit_price: number | null;
   effective_unit_price: number | null;
   unit_price: number | null;
+  total_ml: number | null; // (listing volume) × pack qty — per-retailer size, for ml당 display/rank
   promo_type: PromoType;
   promo_text: string | null;
   in_stock: boolean;
@@ -264,6 +265,7 @@ export interface UIStorePrice {
   promoText?: string | null;
   effectiveUnitPrice?: number | null; // per-unit (개당) price; = price for singles
   unitPrice?: number | null; // per ml price — only when reliable
+  volumeMl?: number | null; // this seller's per-unit volume (size differs per retailer)
   // Web-layer additions (optional so the legacy static mock still compiles;
   // mapToUIProduct always sets them. Absent hasPrice ⇒ treated as priced).
   hasPrice?: boolean;          // false → link-only seller row ("○○에서 보기", no price)

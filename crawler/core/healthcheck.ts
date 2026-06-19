@@ -57,22 +57,19 @@ export function runHealthCheck(
   // Rule 4b: Non-anchored fallback match (Naver anchor-miss → official-store /
   // catalog lprice). The price is real but the SKU identity is unverified, so it
   // is surfaced as a warning for operator inspection. Placed AFTER the hard
-  // 'failed' price/math rules so a genuinely bad price still fails first; placed
-  // before the volume rule so its (more specific) message wins.
+  // 'failed' price/math rules so a genuinely bad price still fails first.
   if (offer.inspectionWarning) {
     return { status: 'warning', message: offer.inspectionWarning, severity: 'warning' };
   }
 
-  // Rule 5: Volume mismatch (§1 compromise) — the price is real, so we do NOT
-  // gate it. The listing surfaces base/effective prices normally; only the
-  // ml-based unit_price is nulled in normalize (unit_price_reliable=false). The
-  // mismatch is routed to the inspection queue / volume-audit (§1b) as a warning.
-  if (normalized.volume_mismatch) {
-    return {
-      status: 'warning',
-      message: `Volume mismatch → inspection queue (price kept, unit_price disabled): ${normalized.volume_mismatch_detail}`,
-      severity: 'warning',
-    };
+  // Per-retailer volume (operator decision): a listing volume that differs from
+  // the DB volume is NO LONGER a warning gate. The product is identity-confirmed
+  // upstream; we price ml당 from the listing's own size and auto-surface it.
+  // The difference is logged for post-hoc audit only — it does not hold the row.
+  if (normalized.volume_mismatch && normalized.volume_mismatch_detail) {
+    console.log(
+      `[Healthcheck] per-retailer volume (informational, price+ml당 kept): ${normalized.volume_mismatch_detail}`
+    );
   }
 
   // Rule 6: parse_confidence=low (ambiguous promo)

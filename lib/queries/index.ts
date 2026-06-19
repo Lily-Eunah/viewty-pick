@@ -45,6 +45,7 @@ export function snapshotsToPublicPrices(
       base_unit_price: s.base_unit_price,
       effective_unit_price: s.effective_unit_price,
       unit_price: s.unit_price_reliable ? s.unit_price : null,
+      total_ml: s.total_ml,
       promo_type: s.promo_type,
       promo_text: s.promo_text,
       in_stock: s.in_stock,
@@ -176,6 +177,8 @@ function mapToUIProduct(
     const eff = lp.effective_unit_price !== null ? lp.effective_unit_price : price;
     // Infer pack quantity from base vs per-unit (multipack: base = eff × N).
     const quantity = eff > 0 && price > eff ? Math.max(1, Math.round(price / eff)) : 1;
+    // Per-retailer per-unit volume = total_ml / pack qty (this seller's own size).
+    const volumeMl = lp.total_ml != null && quantity > 0 ? Math.round(lp.total_ml / quantity) : null;
     return {
       ...baseStore,
       price,
@@ -185,25 +188,40 @@ function mapToUIProduct(
       effectiveUnitPrice: eff,
       // Only show ml-unit price when the view deemed it reliable (NULL otherwise).
       unitPrice: lp.unit_price !== null ? Number(lp.unit_price) : null,
+      volumeMl,
       quantity: quantity > 1 ? quantity : undefined,
       composition: compositionLabel(lp.promo_type, lp.promo_text, quantity),
     };
   });
 
-  // Per-unit (개당) comparison: rank priced stores by effective unit price so a
-  // cheaper-per-unit multipack rises; link-only rows sort to the back.
-  const perUnit = (s: UIStorePrice) => s.effectiveUnitPrice ?? s.price;
+  // Ranking key (operator: per-retailer volume). When sellers carry DIFFERENT
+  // sizes, compare ml당 (unit_price) so a smaller, cheaper-looking pack does not
+  // win on total price alone. When sizes are uniform (the common case) ml당 ranks
+  // identically to 개당, so we keep the per-unit (개당) key — no behaviour change.
+  const pricedVolumes = new Set(
+    stores.filter((s) => s.hasPrice && s.volumeMl != null).map((s) => s.volumeMl)
+  );
+  const volumesDiffer = pricedVolumes.size > 1;
+  const allHaveUnitPrice = stores
+    .filter((s) => s.hasPrice)
+    .every((s) => s.unitPrice != null && s.unitPrice > 0);
+  const rankByMl = volumesDiffer && allHaveUnitPrice;
+  const perUnit = (s: UIStorePrice) => s.effectiveUnitPrice ?? s.price; // 개당 (₩), display + headline
+  const rankKey = (s: UIStorePrice) => (rankByMl ? s.unitPrice! : perUnit(s));
   stores.sort((a, b) => {
     if (a.hasPrice !== b.hasPrice) return a.hasPrice ? -1 : 1;
     if (!a.hasPrice) return 0;
-    return perUnit(a) - perUnit(b);
+    return rankKey(a) - rankKey(b);
   });
   const firstPriced = stores.find((s) => s.hasPrice);
   if (firstPriced) firstPriced.isBest = true;
 
   const priced = stores.filter((s) => s.hasPrice);
   const hasAnyPrice = priced.length > 0;
-  const lowestPrice = hasAnyPrice ? Math.min(...priced.map(perUnit)) : 0; // per-unit lowest
+  // Headline 최저가 stays a real per-개 (₩) price for cross-product comparability —
+  // it is the chosen best seller's 개당 price (= the ml당-cheapest when sizes differ,
+  // = the 개당-cheapest when sizes are uniform).
+  const lowestPrice = firstPriced ? perUnit(firstPriced) : 0;
   const lowestBasePrice = hasAnyPrice ? Math.min(...priced.map((s) => s.price)) : 0;
   const bestIsMultipack = !!(firstPriced && (firstPriced.quantity ?? 1) > 1);
 

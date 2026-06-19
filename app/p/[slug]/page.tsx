@@ -56,6 +56,13 @@ export default async function ProductDetailPage({ params }: PageProps) {
   // Get cheapest store to feed the sticky buy button
   const cheapestStore = product.stores.find((s) => s.isBest) || product.stores[0] || null;
 
+  // Per-retailer volume: when priced sellers carry different sizes, the headline /
+  // ranking is by ml당 (총가 비교는 작은 용량이 싸 보이는 착시). Surface a hint.
+  const pricedVolumes = new Set(
+    product.stores.filter((s) => s.hasPrice !== false && s.volumeMl != null && s.volumeMl > 0).map((s) => s.volumeMl)
+  );
+  const sizesDiffer = pricedVolumes.size > 1;
+
   // JSON-LD structured data (Product + AggregateOffer) — priced offers only.
   const displayableOffers = product.stores.filter((s) => s.hasPrice !== false && s.price > 0);
   const basePrices = displayableOffers.map((s) => s.price).filter((p) => p > 0);
@@ -178,6 +185,13 @@ export default async function ProductDetailPage({ params }: PageProps) {
                 </span>
               ) : null}
             </div>
+          )}
+
+          {/* 판매처별 용량이 다를 때: ml당 기준 비교 안내 */}
+          {sizesDiffer && (
+            <span className="text-[10px] text-primary font-bold mt-2 leading-relaxed">
+              판매처마다 용량이 달라요 · 최저가는 ml당 기준으로 비교했어요.
+            </span>
           )}
 
           {/* Freshness + 결제가 안내 */}

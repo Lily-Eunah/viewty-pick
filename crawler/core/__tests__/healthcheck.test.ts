@@ -156,16 +156,16 @@ it('price within ±49% → status=ok', () => {
   expect(result.status).toBe('ok');
 });
 
-console.log('\n--- volume_mismatch ---');
-it('volume_mismatch=true → status=warning (price kept, §1 compromise)', () => {
+console.log('\n--- per-retailer volume (informational, NOT gated) ---');
+it('volume differs from DB → status=ok (per-retailer size; price + ml당 kept)', () => {
   const result = runHealthCheck(
     PRODUCT, LISTING, baseOffer(),
-    // §1: price is real and not gated; unit_price disabled, mismatch → inspection queue
-    norm({ volume_mismatch: true, volume_mismatch_detail: 'Page 150ml ≠ DB 50ml', unit_price: null, unit_price_reliable: false }),
+    // Per-retailer volume: listing volume differs but is identity-confirmed → priced
+    // ml당 from its own size, reliable, surfaced as ok (no warning hold).
+    norm({ volume_mismatch: true, volume_mismatch_detail: '판매처 용량 150ml (DB 50ml와 다름)', unit_price: 166.6667, unit_price_reliable: true }),
     null, []
   );
-  expect(result.status).toBe('warning');
-  expect(result.message).toContain('mismatch');
+  expect(result.status).toBe('ok');
 });
 
 console.log('\n--- parse_confidence=low ---');

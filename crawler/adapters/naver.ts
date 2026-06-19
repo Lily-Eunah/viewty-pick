@@ -11,9 +11,9 @@
  *    is the all-sellers lowest and may be a reseller).
  *  - Official mall identified by `mallName` vs retailer_allowlist.allowed_store_name
  *    (operator-confirmed, one per brand), normalized + brand-contains fallback.
- *  - Same product verified by title token similarity (+ volume forwarded for the
- *    §1 volume-mismatch gate; volume is NOT a hard reject because DB volume is
- *    unverified per §1b).
+ *  - Same product verified by title token similarity. Volume is NEVER a reject
+ *    (per-retailer size allowed): a parsed volume is forwarded to normalize so
+ *    ml당 is computed from the listing's own size, not the DB volume.
  *  - Price (`lprice`) and `link` come from the SAME matched offer.
  *  - No match → exclude from comparison + inspection flag (NO reseller fallback).
  */
@@ -543,14 +543,22 @@ export function fallbackPolicy(
 /**
  * STRICT identity gate shared by both fallback tiers — same bar as OY auto-price.
  * On the gift-stripped title: similarity ≥ 0.6, a distinctive core token present,
- * no form conflict, not a heterogeneous set, and (when both known) volume agrees
- * with the curated DB volume (multi-size disambiguation, e.g. 500 vs 350ml).
+ * no form conflict, and not a heterogeneous set.
+ *
+ * Per-retailer volume (operator decision): a parsed volume that DIFFERS from the
+ * curated DB volume is NOT a reject — cosmetics are sold in different sizes per
+ * retailer (네이버 100ml / 올리브영 80ml …). Identity (sim + distinctive token + no
+ * form conflict + not a set) already guarantees "same product"; the size is just
+ * carried through (parsedVol) so normalize can price ml당 from the listing's own
+ * volume. chooseFallback still PREFERS a volume-exact match, but never drops a
+ * different size. (volumeMl is retained for that downstream tie-break.)
  */
 function passesStrictIdentity(
   title: string,
   name: string,
-  volumeMl: number | null
+  _volumeMl: number | null
 ): { ok: boolean; score: number; parsedVol: number | null; reason: string } {
+  void _volumeMl; // volume no longer gates identity (per-retailer size allowed)
   const t = stripPromoGifts(stripHtml(title));
   const score = productIdentityScore(t, name);
   if (score < OY_AUTO_PRICE_SIMILARITY) return { ok: false, score, parsedVol: null, reason: `sim ${score.toFixed(2)} < ${OY_AUTO_PRICE_SIMILARITY}` };
@@ -561,9 +569,6 @@ function passesStrictIdentity(
   const ext = extractPackageFromTitle(t);
   if (ext.heterogeneous) return { ok: false, score, parsedVol: null, reason: 'heterogeneous set' };
   const parsedVol = ext.detected && ext.unitType === 'ml' && ext.unitAmount !== null ? ext.unitAmount : null;
-  if (volumeMl != null && parsedVol != null && parsedVol !== volumeMl) {
-    return { ok: false, score, parsedVol, reason: `volume ${parsedVol}ml ≠ DB ${volumeMl}ml` };
-  }
   return { ok: true, score, parsedVol, reason: `sim ${score.toFixed(2)}` };
 }
 
@@ -604,7 +609,7 @@ export function pickOfficialStoreFallback(items: NaverShoppingItem[], input: Off
     .filter((x) => x.ok)
     .map(({ it, score, parsedVol }) => ({ it, score, parsedVol }));
   if (passing.length === 0) {
-    return { matched: null, parsedVolumeRaw: null, identityScore: null, reason: 'official store offer(s) failed strict identity/volume' };
+    return { matched: null, parsedVolumeRaw: null, identityScore: null, reason: 'official store offer(s) failed strict identity' };
   }
   const chosen = chooseFallback(passing, items, input.volumeMl);
   return {
@@ -627,7 +632,7 @@ export function pickCatalogFallback(items: NaverShoppingItem[], name: string, vo
     .filter((x) => x.ok)
     .map(({ it, score, parsedVol }) => ({ it, score, parsedVol }));
   if (passing.length === 0) {
-    return { matched: null, parsedVolumeRaw: null, identityScore: null, reason: 'catalog offer(s) failed strict identity/volume' };
+    return { matched: null, parsedVolumeRaw: null, identityScore: null, reason: 'catalog offer(s) failed strict identity' };
   }
   const chosen = chooseFallback(passing, items, volumeMl);
   return {
