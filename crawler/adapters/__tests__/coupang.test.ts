@@ -15,6 +15,7 @@ import {
   extractCoupangProductId,
   isCoupangShortLink,
   buildSearchKeyword,
+  extractCoupangQuery,
   pickCoupangMatch,
   isCoupangProductPageUrl,
   looksLikeImageUrl,
@@ -412,6 +413,44 @@ it('hasFormConflict (토너 ↔ 패드) is still rejected even with a brand + id
     item({ productId: 222, productName: '라운드랩 스테이 프레쉬 패드 100매', productImage: 'https://img/pad.jpg' }),
   ];
   expect(pickCoupangImage(data, '999', '스테이 프레쉬 토너', '라운드랩')).toBeNull();
+});
+
+// ---------------------------------------------------------------------------
+// Fixture 13: extractCoupangQuery — the operator's q= search term from the pasted
+// URL is the primary image-search keyword (often resolves the productId that
+// brand+name misses, e.g. 엑설런트: q="몽디에스 선크림").
+// ---------------------------------------------------------------------------
+console.log('\n--- [Fixture 13] extractCoupangQuery ---');
+it('extracts and URL-decodes q= from a product-page URL', () => {
+  expect(
+    extractCoupangQuery(
+      'https://www.coupang.com/vp/products/5529437152?q=%EB%AA%BD%EB%94%94%EC%97%90%EC%8A%A4+%EC%84%A0%ED%81%AC%EB%A6%BC&itemId=1'
+    )
+  ).toBe('몽디에스 선크림');
+});
+
+it('treats + as space and stops at the next & param', () => {
+  expect(extractCoupangQuery('https://www.coupang.com/np/search?q=독도+토너&channel=user')).toBe(
+    '독도 토너'
+  );
+});
+
+it('decodes %2B as a literal plus (not a space)', () => {
+  expect(extractCoupangQuery('https://www.coupang.com/vp/products/1?q=1%2B1+기획세트')).toBe(
+    '1+1 기획세트'
+  );
+});
+
+it('returns null when there is no q= param', () => {
+  expect(extractCoupangQuery('https://www.coupang.com/vp/products/7654321?itemId=1')).toBeNull();
+});
+
+it('returns null for an empty q= value', () => {
+  expect(extractCoupangQuery('https://www.coupang.com/vp/products/1?q=&itemId=1')).toBeNull();
+});
+
+it('returns null for an empty url', () => {
+  expect(extractCoupangQuery('')).toBeNull();
 });
 
 // ---------------------------------------------------------------------------
