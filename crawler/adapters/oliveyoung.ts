@@ -128,6 +128,11 @@ export class OliveYoungAdapter implements RetailerAdapter {
         // Naver search SUCCEEDED but no OliveYoung offer → link-only, not a failure.
         // (A manual_override applied in run.ts will flip this back to 'ok'.)
         outcome: 'no_offer',
+        // A suspected set (heterogeneous) / low-confidence band match → route to the
+        // inspection O/X tab instead of link_only so the operator can confirm 단품,
+        // fill a price, and approve (O). A plain no-offer leaves these false.
+        needsInspection: result.needsInspection ?? false,
+        inspectionEstimatedPrice: result.inspectionEstimatedPrice ?? null,
       };
     }
 

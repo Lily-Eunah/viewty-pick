@@ -330,10 +330,13 @@ it('distinctiveTokens drops form/category + promo words', () => {
   const d = distinctiveTokens('스테이 프레쉬 톤업 선크림 퍼플');
   assert(d.includes('스테이') && d.includes('퍼플') && !d.includes('선크림'), `got ${JSON.stringify(d)}`);
 });
-it('OY same-brand DIFFERENT product (below band) → hold, not auto-priced', () => {
+it('OY same-brand DIFFERENT product (below band) → hold + inspection price hint = lprice', () => {
   const wrong = oyItem({ title: '조선미녀 맑은쌀 선크림 아쿠아프레쉬 50ml', lprice: '25300', link: 'https://smartstore.naver.com/x/products/341' });
   const r = pickOliveYoungOffer([wrong], '조선미녀 스테이 프레쉬 톤업 선크림 퍼플');
   assert(r.matched === null, 'different product must not auto-price (#34 맑은쌀)');
+  // Routed to inspection (not link_only) with the candidate lprice as the operator hint.
+  assert(r.needsInspection === true, 'below-band hold → needsInspection');
+  assert(r.inspectionEstimatedPrice === 25300, `low-confidence band should carry lprice hint, got ${r.inspectionEstimatedPrice}`);
 });
 it('OY correct product (high sim + core token) → auto-priced', () => {
   const right = oyItem({ title: '조선미녀 스테이프레쉬 톤업 선크림 퍼플 50ml', lprice: '15300', link: 'https://smartstore.naver.com/x/products/342' });
@@ -361,6 +364,9 @@ it('OY "N종 세트" → still held (heterogeneous set)', () => {
   const r = pickOliveYoungOffer([set], '롬앤 글래스팅 워터 틴트');
   assert(r.matched === null, 'N종 세트 must remain a held set');
   assert(containsBareNJong(set.title) === false, 'N종 세트 must NOT be flagged as bare N종');
+  // A heterogeneous set price is not per-unit → no hint (operator fills it in inspection).
+  assert(r.needsInspection === true, 'N종 세트 → needsInspection');
+  assert(r.inspectionEstimatedPrice == null, `set price must NOT be used as a hint, got ${r.inspectionEstimatedPrice}`);
 });
 it('OY two close same-product candidates → adopt the lowest price', () => {
   const a = oyItem({ title: '토리든 다이브인 포맨 올인원 200ml', lprice: '19700', link: 'https://smartstore.naver.com/x/products/741' });
