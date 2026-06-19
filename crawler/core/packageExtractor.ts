@@ -23,9 +23,38 @@ export const N_JONG_RE = /\d+\s*종/;
 export const N_JONG_SET_RE =
   /\d+\s*종\s*(?:세트|구성|기획|패키지|콜렉션|컬렉션|기프트|선물)|(?:세트|기획|선물|패키지|콜렉션|컬렉션)\s*\d+\s*종/;
 
+// Explicit physical-SET compounds (fix/set-classification-evidence-based): a 세트/
+// 패키지/콜렉션/기프트 genuinely bundles multiple DIFFERENT items, so it is the only
+// KEYWORD evidence (besides ≥2 distinct non-multiple volumes / a device) that makes a
+// title heterogeneous. AMBIGUOUS marketing words (기획/선물/단독/구성/"N종") are NOT
+// here — a "100ml 기획 3종" / "선물 2종" with no real multi-item evidence is a single
+// (대개 'N종 중 택1' 옵션선택), not a set. (N_JONG_SET_RE stays only for isBareNJong.)
+export const SET_COMPOUND_RE = /세트|패키지|콜렉션|컬렉션|기프트/;
+
 /** True when a title carries a BARE "N종" (option-select), i.e. N종 with no set-context word. */
 export function isBareNJong(title: string): boolean {
   return N_JONG_RE.test(title || '') && !N_JONG_SET_RE.test(title || '');
+}
+
+/**
+ * Homogeneous multipack guard (fix/set-classification-evidence-based §B): distinct
+ * volumes that are integer MULTIPLES of the smallest unit AND accompanied by a
+ * count/×N signal (N개·N팩·×N·더블) are the SAME product in a larger pack — NOT a
+ * heterogeneous set — so they are priced per the smallest unit. Returns null when
+ * the sizes are not multiple-related or no count signal is present (→ the caller
+ * keeps the heterogeneous-set treatment for genuinely different products).
+ *   e.g. [30, 60] + "2개"/"×2" → { unit: 30, count: 2 };  [30, 50] → null (비배수).
+ */
+function homogeneousMultipackUnit(amts: number[], title: string): { unit: number; count: number } | null {
+  const distinct = [...new Set(amts)].sort((a, b) => a - b);
+  if (distinct.length < 2) return null;
+  const unit = distinct[0];
+  if (unit < 1) return null;
+  if (!distinct.every((v) => Number.isInteger(v / unit))) return null; // all multiples of the smallest
+  if (!/(\d+)\s*(?:개|팩|병|입|매)|[xX×*]\s*\d+|더블/.test(title)) return null; // need a count/배수 signal
+  const count = Math.round(distinct[distinct.length - 1] / unit);
+  if (count < 2 || count > 20) return null;
+  return { unit, count };
 }
 
 /**
@@ -91,20 +120,35 @@ export function extractPackageFromTitle(title: string): PackageExtractionResult 
 
     if (type1 === type2 && amt1 >= 1 && amt1 <= 1000 && amt2 >= 1 && amt2 <= 1000) {
       const isIdentical = amt1 === amt2;
-      const total = amt1 + amt2;
+      if (!isIdentical) {
+        // Differing volumes joined by "+": a homogeneous multipack ONLY when the
+        // sizes are integer-multiple related AND a count/×N signal is present
+        // (30ml + 60ml 2개 → 30ml ×2). Otherwise two DIFFERENT products combined
+        // (heterogeneous set), per-unit not computable.
+        const homo = homogeneousMultipackUnit([amt1, amt2], cleanTitle);
+        if (homo) {
+          return {
+            detected: true, unitType: type1, unitAmount: homo.unit, unitCount: homo.count,
+            totalAmount: homo.unit * homo.count, promoType: "bundle", confidence: "high",
+            evidence: `${addMatch[0]} (homogeneous ×${homo.count})`, method: "regex", heterogeneous: false,
+          };
+        }
+        return {
+          detected: true, unitType: type1, unitAmount: null, unitCount: 2, totalAmount: amt1 + amt2,
+          promoType: "set", confidence: "high", evidence: addMatch[0], method: "regex", heterogeneous: true,
+        };
+      }
       return {
         detected: true,
         unitType: type1,
-        unitAmount: isIdentical ? amt1 : null,
+        unitAmount: amt1,
         unitCount: 2,
-        totalAmount: total,
-        // identical → a 1+1 homogeneous bundle; differing volumes → two different
-        // products combined (heterogeneous set), per-unit not computable.
-        promoType: isIdentical ? "bundle" : "set",
+        totalAmount: amt1 + amt2,
+        promoType: "bundle", // identical volumes → a 1+1 homogeneous bundle
         confidence: "high",
         evidence: addMatch[0],
         method: "regex",
-        heterogeneous: !isIdentical,
+        heterogeneous: false,
       };
     }
   }
@@ -273,17 +317,33 @@ export function extractPackageFromTitle(title: string): PackageExtractionResult 
   }
 
   // 5b. Heterogeneous set: combines two DIFFERENT products → per-unit not computable
-  //     → flag so the caller excludes + flags for inspection. Signals:
-  //       - ≥2 DISTINCT main volumes (gift-stripped, non-additive): 토너100ml + 세럼30ml
-  //       - "N종 세트/구성/기획…" (a set-context "N종" = N different items). A BARE
-  //         "N종" is an option-select page (단품) → NOT heterogeneous (see N_JONG_SET_RE).
-  //       - a device/기기 bundle (세럼 + 슈링크 홈 디바이스)
-  const allVols = [...cleanTitle.matchAll(/(\d+(?:\.\d+)?)\s*(?:ml|g)\b/gi)].map((m) => parseFloat(m[1]));
-  const heteroSignal = new Set(allVols).size >= 2 || N_JONG_SET_RE.test(cleanTitle) || /디바이스|기기/.test(cleanTitle);
+  //     → flag so the caller excludes + flags for inspection. EVIDENCE-BASED signals
+  //     (fix/set-classification-evidence-based — no longer ambiguous 기획/선물/N종):
+  //       - ≥2 DISTINCT, NON-multiple main volumes (gift-stripped): 토너100ml + 세럼30ml.
+  //         (배수 용량 + 개수 신호 = 동종 멀티팩 → handled just above, NOT heterogeneous.)
+  //       - an explicit SET compound (세트/패키지/콜렉션/기프트 — SET_COMPOUND_RE). A
+  //         bare "N종" / "기획 N종" carries NO such word → NOT heterogeneous (option-select).
+  //       - a device/기기 bundle (세럼 + 슈링크 홈 디바이스).
+  const volTokens = [...cleanTitle.matchAll(/(\d+(?:\.\d+)?)\s*(ml|g)\b/gi)];
+  const allVols = volTokens.map((m) => parseFloat(m[1]));
+  const sameUnit = new Set(volTokens.map((m) => m[2].toLowerCase())).size <= 1;
+  // §B: homogeneous multipack (배수 용량 + 개수 신호) is the SAME product → per-unit price.
+  if (sameUnit && volTokens.length >= 2) {
+    const homo = homogeneousMultipackUnit(allVols, cleanTitle);
+    if (homo) {
+      const type = volTokens[0][2].toLowerCase() as "ml" | "g";
+      return {
+        detected: true, unitType: type, unitAmount: homo.unit, unitCount: homo.count,
+        totalAmount: homo.unit * homo.count, promoType: "bundle", confidence: "high",
+        evidence: `homogeneous multipack ×${homo.count}`, method: "regex", heterogeneous: false,
+      };
+    }
+  }
+  const heteroSignal = new Set(allVols).size >= 2 || SET_COMPOUND_RE.test(cleanTitle) || /디바이스|기기/.test(cleanTitle);
   if (heteroSignal) {
     return {
       detected: true, unitType: "unknown", unitAmount: null, unitCount: null, totalAmount: null,
-      promoType: "set", confidence: "low", evidence: 'heterogeneous (multi-volume / N종 / device)', method: "regex",
+      promoType: "set", confidence: "low", evidence: 'heterogeneous (multi-volume / set compound / device)', method: "regex",
       heterogeneous: true,
     };
   }
