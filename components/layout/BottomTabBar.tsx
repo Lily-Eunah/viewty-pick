@@ -8,11 +8,6 @@ interface BottomTabBarProps {
 }
 
 export default function BottomTabBar({ activeTab }: BottomTabBarProps) {
-  const handleUnderConstruction = (e: React.MouseEvent<HTMLAnchorElement>, label: string) => {
-    e.preventDefault();
-    alert(`"${label}" 기능은 준비 중입니다! (Phase 5 출시 예정)`);
-  };
-
   return (
     <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] h-[72px] bg-surface border-t border-line flex items-center justify-around px-4 z-40 shadow-[0_-4px_10px_rgba(65,0,22,0.03)]">
       {/* 1. 홈 */}
@@ -57,10 +52,9 @@ export default function BottomTabBar({ activeTab }: BottomTabBarProps) {
       {/* 4. 관심상품 */}
       <Link
         href="/wishlist"
-        onClick={(e) => handleUnderConstruction(e, '관심상품')}
         className={`flex flex-col items-center justify-center gap-0.5 w-[68px] py-1.5 rounded-xl transition-all duration-200 ${
           activeTab === 'wishlist' ? 'text-primary bg-accent-soft font-black shadow-[0_2px_8px_rgba(65,0,22,0.03)]' : 'text-[#A8A0A0] hover:text-[#29272A]'
-        } opacity-60`}
+        }`}
       >
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor" className="w-5.5 h-5.5">
           <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z" />
@@ -71,16 +65,16 @@ export default function BottomTabBar({ activeTab }: BottomTabBarProps) {
       {/* 5. 마이 */}
       <Link
         href="/my"
-        onClick={(e) => handleUnderConstruction(e, '마이')}
         className={`flex flex-col items-center justify-center gap-0.5 w-[68px] py-1.5 rounded-xl transition-all duration-200 ${
           activeTab === 'my' ? 'text-primary bg-accent-soft font-black shadow-[0_2px_8px_rgba(65,0,22,0.03)]' : 'text-[#A8A0A0] hover:text-[#29272A]'
-        } opacity-60`}
+        }`}
       >
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor" className="w-5.5 h-5.5">
           <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
         </svg>
         <span className="text-[11px] font-bold">마이</span>
       </Link>
+
     </nav>
   );
 }
