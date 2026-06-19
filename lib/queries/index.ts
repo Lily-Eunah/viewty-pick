@@ -145,6 +145,10 @@ function mapToUIProduct(
   // warning/inspection-held Coupang price still shows its image (image ⟂ price status).
   const displayImage = resolveDisplayImage(prod.image_url, prod.id, dbListings, dbSellers);
 
+  // 정가 (MSRP) for the DB representative volume — basis for the per-ml-normalized
+  // "정가 대비 N% 할인" headline. null → discount simply hidden (never mis-displayed).
+  const regularPrice = prod.regular_price != null && Number(prod.regular_price) > 0 ? Number(prod.regular_price) : null;
+
   // Build stores: a priced row when the listing has a displayable price, else a
   // link-only row (tier-4: still show the seller with a "보기" link, no price).
   // Single display gate (covers priced / link-only / lowest / 공식몰대비): only
@@ -179,6 +183,7 @@ function mapToUIProduct(
     const quantity = eff > 0 && price > eff ? Math.max(1, Math.round(price / eff)) : 1;
     // Per-retailer per-unit volume = total_ml / pack qty (this seller's own size).
     const volumeMl = lp.total_ml != null && quantity > 0 ? Math.round(lp.total_ml / quantity) : null;
+    const unitPrice = lp.unit_price !== null ? Number(lp.unit_price) : null;
     return {
       ...baseStore,
       price,
@@ -187,10 +192,12 @@ function mapToUIProduct(
       promoText: lp.promo_text,
       effectiveUnitPrice: eff,
       // Only show ml-unit price when the view deemed it reliable (NULL otherwise).
-      unitPrice: lp.unit_price !== null ? Number(lp.unit_price) : null,
+      unitPrice,
       volumeMl,
       quantity: quantity > 1 ? quantity : undefined,
       composition: compositionLabel(lp.promo_type, lp.promo_text, quantity),
+      // 정가 대비 할인률 (ml당-normalized). null when 정가/용량/ml당 missing.
+      discountVsRegular: discountVsRegular(regularPrice, prod.volume_ml, unitPrice),
     };
   });
 
@@ -270,6 +277,9 @@ function mapToUIProduct(
     hasAnyPrice,
     officialPrice,
     discountVsOfficial,
+    // 정가 대비: headline uses the best (최저가) store's ml당-normalized discount.
+    regularPrice,
+    discountVsRegular: firstPriced ? firstPriced.discountVsRegular ?? null : null,
     lastUpdated,
     source,
     reasonItems,
@@ -277,6 +287,30 @@ function mapToUIProduct(
     viewtyScore: Number(prod.viewty_score) || 80,
     features: prod.features ? prod.features.split(',').map((s) => s.trim()) : [],
   };
+}
+
+/**
+ * Discount vs 정가 (MSRP), normalized PER-ML so a per-retailer size difference does
+ * not distort it (consistent with migration 0014's per-retailer volume):
+ *   정가 ml당 = regularPrice / volumeMl
+ *   할인률    = round((정가ml당 − listingUnitPrice) / 정가ml당 × 100)
+ * Returns null (→ no discount shown) whenever it can't be computed truthfully:
+ *   - regularPrice missing/≤0, or volumeMl (DB 대표 용량) missing/≤0
+ *   - the listing's ml당 (unitPrice) is unknown/unreliable
+ * A sale at or above 정가 (stale MSRP) clamps to 0 — never a negative discount.
+ */
+export function discountVsRegular(
+  regularPrice: number | null | undefined,
+  volumeMl: number | null | undefined,
+  listingUnitPrice: number | null | undefined,
+): number | null {
+  const reg = Number(regularPrice);
+  const vol = Number(volumeMl);
+  const unit = Number(listingUnitPrice);
+  if (!(reg > 0) || !(vol > 0) || !(unit > 0)) return null;
+  const regularPerMl = reg / vol;
+  const pct = Math.round(((regularPerMl - unit) / regularPerMl) * 100);
+  return pct > 0 ? pct : 0;
 }
 
 /** 구성 label from promo info — what was actually scraped, never invented. */
@@ -405,7 +439,9 @@ export async function getProducts(filters?: {
   } else if (sortBy === 'price_desc') {
     uiProducts.sort((a, b) => (b.lowestPrice || 0) - (a.lowestPrice || 0));
   } else if (sortBy === 'discount') {
-    uiProducts.sort((a, b) => (b.discountVsOfficial || 0) - (a.discountVsOfficial || 0));
+    // Prefer 정가 대비 (when a 정가 exists), else fall back to 공식몰 대비.
+    const disc = (p: UIProduct) => p.discountVsRegular ?? p.discountVsOfficial ?? 0;
+    uiProducts.sort((a, b) => disc(b) - disc(a));
   }
 
   return uiProducts;

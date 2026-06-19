@@ -51,6 +51,14 @@ export const simpleProductRowSchema = z.object({
   brand:       z.string().default(''),
   category:    z.string().min(1),
   volume_ml:   z.number().or(z.string().transform((v) => parseFloat(v) || 0)).default(0),
+  // 정가 / MSRP for volume_ml. Blank → null (discount simply hidden). A non-positive
+  // value is coerced to null so a stray 0 never produces a bogus 100% discount.
+  regular_price: z
+    .number()
+    .or(z.string().transform((v) => parseFloat(v)))
+    .transform((v) => (Number.isFinite(v) && v > 0 ? v : null))
+    .nullable()
+    .default(null),
   skin_types:  z.string().transform((v) => v.split(',').map((s) => s.trim()).filter(Boolean)).default([]),
   features:    z.string().optional(),
   hwahae_url:  z.string().url().or(z.literal('')).optional(),

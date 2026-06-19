@@ -51,6 +51,16 @@ export default function ProductCard({ product }: ProductCardProps) {
               최저가
             </span>
             <PriceText price={product.lowestPrice} size="sm" className="mt-0.5" />
+            {/* 할인 배지: 정가 대비 우선, 없으면 공식몰 대비 폴백 */}
+            {product.regularPrice && product.discountVsRegular && product.discountVsRegular > 0 ? (
+              <span className="text-[10px] text-discount font-extrabold leading-none mt-0.5">
+                정가 대비 {product.discountVsRegular}% 할인
+              </span>
+            ) : product.discountVsOfficial && product.discountVsOfficial > 0 ? (
+              <span className="text-[10px] text-discount font-extrabold leading-none mt-0.5">
+                공식몰 대비 {product.discountVsOfficial}% 저렴
+              </span>
+            ) : null}
           </div>
           
           <div className="w-full text-center py-1.5 bg-surface border border-accent text-primary hover:bg-accent-soft hover:border-accent text-[11px] font-black rounded-md transition-all select-none duration-150">
