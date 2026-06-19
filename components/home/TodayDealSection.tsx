@@ -29,10 +29,10 @@ export default function TodayDealSection({ products, loading }: TodayDealSection
     <section className="px-4 py-4 bg-bg">
       <div className="mb-3.5 px-1 flex flex-col gap-0.5">
         <h3 className="text-[15px] font-black text-title tracking-tight flex items-center gap-1.5">
-          <span>🏆 공식몰 대비 최저가 픽</span>
+          <span>🏆 정가 대비 최저가 픽</span>
         </h3>
         <p className="text-[11px] text-text-secondary font-semibold">
-          공식 브랜드 스토어 가격 대비 할인폭이 큰 제품
+          정가 대비 할인폭이 큰 제품
         </p>
       </div>
 
@@ -82,18 +82,24 @@ export default function TodayDealSection({ products, loading }: TodayDealSection
                   </div>
 
                   <div className="flex flex-col gap-1 mt-1.5">
-                    {prod.discountVsOfficial != null && prod.discountVsOfficial > 0 && (
+                    {(prod.discountVsRegular != null && prod.discountVsRegular > 0) ? (
                       <span className="self-start text-[10px] font-black text-discount bg-accent-soft px-2 py-0.5 rounded-full leading-none">
-                        공식몰 대비 {prod.discountVsOfficial}% 저렴
+                        정가 대비 {prod.discountVsRegular}% 할인
                       </span>
-                    )}
+                    ) : (prod.discountVsOfficial != null && prod.discountVsOfficial > 0) ? (
+                      <span className="self-start text-[10px] font-black text-discount bg-accent-soft px-2 py-0.5 rounded-full leading-none">
+                        정가 대비 {prod.discountVsOfficial}% 할인
+                      </span>
+                    ) : null}
                     <div className="flex items-end gap-1.5 leading-none">
                       <span className="text-[15px] font-black text-primary">
                         {won(prod.lowestPrice)}{prod.bestIsMultipack ? <span className="text-[10px] font-bold"> /개</span> : null}
                       </span>
-                      {prod.officialPrice != null && prod.officialPrice > 0 && (
-                        <span className="text-[11px] text-muted font-bold">공식가 {won(prod.officialPrice)}</span>
-                      )}
+                      {prod.regularPrice != null && prod.regularPrice > 0 ? (
+                        <span className="text-[11px] text-muted font-bold">정가 {won(prod.regularPrice)}</span>
+                      ) : prod.officialPrice != null && prod.officialPrice > 0 ? (
+                        <span className="text-[11px] text-muted font-bold">정가 {won(prod.officialPrice)}</span>
+                      ) : null}
                     </div>
                     {sellerNames && (
                       <span className="text-[10px] text-text-secondary font-black tracking-tight max-w-[170px] truncate leading-none">
@@ -118,7 +124,7 @@ export default function TodayDealSection({ products, loading }: TodayDealSection
           })}
           {products.length === 0 && (
             <div className="w-full text-center py-12 text-sub font-bold border border-dashed border-line rounded-card bg-white">
-              공식몰 대비 할인 폭이 큰 제품을 준비 중입니다.
+              정가 대비 할인 폭이 큰 제품을 준비 중입니다.
             </div>
           )}
         </div>

@@ -54,9 +54,13 @@ export default function ProductListCard({ product, rank }: ProductListCardProps)
                 {b}
               </Badge>
             ))}
-            {product.discountVsOfficial && product.discountVsOfficial > 0 ? (
+            {product.discountVsRegular && product.discountVsRegular > 0 ? (
               <Badge type="accent" className="py-0.5">
-                공식몰 대비 {product.discountVsOfficial}%↓
+                정가 대비 {product.discountVsRegular}%↓
+              </Badge>
+            ) : product.discountVsOfficial && product.discountVsOfficial > 0 ? (
+              <Badge type="accent" className="py-0.5">
+                정가 대비 {product.discountVsOfficial}%↓
               </Badge>
             ) : null}
           </div>

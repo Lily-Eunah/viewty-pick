@@ -32,12 +32,6 @@ export function SkinTypeAndCategorySection({
       <div>
         <div className="mb-3 flex items-center justify-between px-1">
           <h2 className="text-[14px] font-black text-title">내 피부 타입은?</h2>
-          <button
-            type="button"
-            className="text-[11px] font-bold text-text-secondary hover:text-primary transition-colors cursor-pointer"
-          >
-            수정 &gt;
-          </button>
         </div>
 
         <div className="rounded-[22px] border border-line bg-surface px-3 py-4 shadow-[0_8px_24px_rgba(65,0,22,0.06)]">

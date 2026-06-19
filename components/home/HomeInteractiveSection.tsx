@@ -191,7 +191,7 @@ export default function HomeInteractiveSection({ allProducts, recommended, offic
                 <div className="w-full bg-[#EFE6DF] h-2 rounded-full overflow-hidden">
                   <div className="bg-primary h-full rounded-full" style={{ width: '50%' }} />
                 </div>
-                <span className="text-[10px] text-text-secondary font-bold leading-none">디렉터파이 합격템, 화해 랭킹, 올영 베스트 선정 여부</span>
+                <span className="text-[10px] text-text-secondary font-bold leading-none">디렉터파이 추천템, 화해 랭킹</span>
               </div>
 
               {/* Item 2 */}
@@ -215,7 +215,7 @@ export default function HomeInteractiveSection({ allProducts, recommended, offic
                 <div className="w-full bg-[#EFE6DF] h-2 rounded-full overflow-hidden">
                   <div className="bg-primary h-full rounded-full" style={{ width: '15%' }} />
                 </div>
-                <span className="text-[10px] text-text-secondary font-bold leading-none">올리브영, 쿠팡, 네이버 3대 쇼핑몰 동시 입점 및 가격 갱신</span>
+                <span className="text-[10px] text-text-secondary font-bold leading-none">올리브영, 쿠팡, 네이버 공식몰 입점 및 가격 갱신</span>
               </div>
             </div>
           </div>

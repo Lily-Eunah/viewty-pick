@@ -15,7 +15,7 @@ const SKIN_TYPES = ['지성', '건성', '수부지', '민감성', '복합성'] a
 const SORT_OPTIONS = [
   { key: 'recommend', label: '추천순' },
   { key: 'price_asc', label: '최저가순' },
-  { key: 'discount', label: '공식몰대비순' },
+  { key: 'discount', label: '할인율순' },
 ] as const;
 
 type SortKey = typeof SORT_OPTIONS[number]['key'];
@@ -45,7 +45,8 @@ export default function CategoryProductList({ initialProducts, minors }: Props) 
       } else if (sortBy === 'price_asc') {
         return askPrice(a) - askPrice(b); // missing price → back
       } else if (sortBy === 'discount') {
-        return (b.discountVsOfficial || 0) - (a.discountVsOfficial || 0);
+        const disc = (p: UIProduct) => p.discountVsRegular ?? p.discountVsOfficial ?? 0;
+        return disc(b) - disc(a);
       }
       return 0;
     };

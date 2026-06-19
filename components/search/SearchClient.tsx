@@ -114,6 +114,7 @@ export default function SearchClient({ items, initialQuery = '' }: Props) {
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
+                if (e.nativeEvent.isComposing) return;
                 commit(query);
                 inputRef.current?.blur();
               }
