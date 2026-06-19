@@ -14,6 +14,7 @@ import {
   normalizeMallName,
   productIdentityScore,
   classifyOfferComposition,
+  containsBareNJong,
   hasFormConflict,
   productNoFrom,
   pickAnchoredOffer,
@@ -181,6 +182,25 @@ it('1+1 / 리필 → set', () => {
 it('N개 multipack (N≥2) → set', () => {
   assert(classifyOfferComposition('라하 토너 265ml, 6개').kind === 'set', '6개 is a multipack');
 });
+// fix/oliveyoung-n-jong-option: a BARE "N종" is an "N종 중 택1" option-select page
+// (단품), NOT a set — it must stay single so the OliveYoung matcher prices it.
+it('bare 2종 (option-select) → single', () => {
+  assert(classifyOfferComposition('롬앤 글래스팅 워터 틴트 쿠션 2종').kind === 'single', 'bare 2종 is an option-select single');
+  assert(classifyOfferComposition('에스쁘아 프로테일러 비글로우 쿠션 3종 택1').kind === 'single', 'bare 3종 (택1) is single');
+});
+it('N종 + set-context word → set', () => {
+  assert(classifyOfferComposition('제니피끄 세럼 2종 세트').kind === 'set', '2종 세트 is a set');
+  assert(classifyOfferComposition('토리든 다이브인 기획 3종 구성').kind === 'set', '기획 3종 구성 is a set');
+  assert(classifyOfferComposition('에뛰드 픽싱 틴트 3종 패키지').kind === 'set', '3종 패키지 is a set');
+  assert(classifyOfferComposition('웜톤 선물 2종').kind === 'set', '선물 N종 (context before) is a set');
+});
+
+console.log('\n--- containsBareNJong (Discord verify flag) ---');
+it('bare N종 → true; N종 세트 / no-N종 → false', () => {
+  assert(containsBareNJong('롬앤 쿠션 2종') === true, 'bare 2종 flagged for verify');
+  assert(containsBareNJong('제니피끄 세럼 2종 세트') === false, 'N종 세트 not flagged (it is excluded as a set)');
+  assert(containsBareNJong('몽디에스 선크림 60ml') === false, 'no N종 not flagged');
+});
 
 console.log('\n--- hasFormConflict (same-line different SKU) ---');
 it('포맨 올인원 vs 클리어 수딩 크림 → conflict', () => {
@@ -292,6 +312,21 @@ it('OY gift-stripped scoring: 토너 set with "(+올인원크림)" gift → held
   const tonerGift = oyItem({ title: '[증정 기획] 닥터지 레드 블레미쉬 포 맨 멀티 수딩 토너 200ml 기획세트 (+올인원크림 30ml)', lprice: '31000', link: 'https://smartstore.naver.com/x/products/761' });
   const r = pickOliveYoungOffer([tonerGift], '닥터지 레드 블레미쉬 포 맨 진정 올인원');
   assert(r.matched === null, '토너 set (gift=올인원크림) must not auto-price as 올인원');
+});
+it('OY bare "N종" (option-select) → auto-priced (was held as heterogeneous)', () => {
+  // fix/oliveyoung-n-jong-option: "쿠션 2종" is an "N종 중 택1" 옵션선택 단품 page, not
+  // a set. Previously packageExtractor flagged any "N종" heterogeneous → held; now a
+  // bare N종 prices as a single. containsBareNJong flags it for the Discord verify line.
+  const bare = oyItem({ title: '롬앤 글래스팅 워터 틴트 쿠션 2종 15g', lprice: '12900', link: 'https://smartstore.naver.com/x/products/777' });
+  const r = pickOliveYoungOffer([bare], '롬앤 글래스팅 워터 틴트 쿠션');
+  assert(r.matched !== null && r.matched.lprice === '12900', `bare 2종 should auto-price, got ${JSON.stringify(r)}`);
+  assert(containsBareNJong(bare.title) === true, 'bare 2종 title should be flagged for Discord verify');
+});
+it('OY "N종 세트" → still held (heterogeneous set)', () => {
+  const set = oyItem({ title: '롬앤 글래스팅 워터 틴트 2종 세트 기획', lprice: '23000', link: 'https://smartstore.naver.com/x/products/778' });
+  const r = pickOliveYoungOffer([set], '롬앤 글래스팅 워터 틴트');
+  assert(r.matched === null, 'N종 세트 must remain a held set');
+  assert(containsBareNJong(set.title) === false, 'N종 세트 must NOT be flagged as bare N종');
 });
 it('OY two close same-product candidates → adopt the lowest price', () => {
   const a = oyItem({ title: '토리든 다이브인 포맨 올인원 200ml', lprice: '19700', link: 'https://smartstore.naver.com/x/products/741' });

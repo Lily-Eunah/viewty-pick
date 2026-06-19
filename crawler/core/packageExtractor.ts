@@ -13,6 +13,21 @@ export type PackageExtractionResult = {
   heterogeneous?: boolean;
 };
 
+// "N종" (2종/3종/4종) classification — shared by packageExtractor (heterogeneous
+// gate) and naver.ts (classifyOfferComposition / Discord verify). A BARE "N종" is
+// almost always an "N종 중 택1" OPTION-SELECT page (단품 구매), NOT a physical set,
+// so it must NOT be treated as a heterogeneous set — it is priced as a single. It
+// is a set ONLY when a set-context word sits adjacent to it (N종 세트/구성/기획/패키지/
+// 콜렉션/컬렉션, or 세트/기획/선물/패키지 N종).
+export const N_JONG_RE = /\d+\s*종/;
+export const N_JONG_SET_RE =
+  /\d+\s*종\s*(?:세트|구성|기획|패키지|콜렉션|컬렉션|기프트|선물)|(?:세트|기획|선물|패키지|콜렉션|컬렉션)\s*\d+\s*종/;
+
+/** True when a title carries a BARE "N종" (option-select), i.e. N종 with no set-context word. */
+export function isBareNJong(title: string): boolean {
+  return N_JONG_RE.test(title || '') && !N_JONG_SET_RE.test(title || '');
+}
+
 /**
  * Strip free-gift / sample / promo-only clauses so they are NOT counted as the
  * main product's quantity or volume. A "(+에피셀린 세럼 7ml*2)" / "+ 토너 20ml 증정"
@@ -260,10 +275,11 @@ export function extractPackageFromTitle(title: string): PackageExtractionResult 
   // 5b. Heterogeneous set: combines two DIFFERENT products → per-unit not computable
   //     → flag so the caller excludes + flags for inspection. Signals:
   //       - ≥2 DISTINCT main volumes (gift-stripped, non-additive): 토너100ml + 세럼30ml
-  //       - "N종" (2종/3종 = N different items)
+  //       - "N종 세트/구성/기획…" (a set-context "N종" = N different items). A BARE
+  //         "N종" is an option-select page (단품) → NOT heterogeneous (see N_JONG_SET_RE).
   //       - a device/기기 bundle (세럼 + 슈링크 홈 디바이스)
   const allVols = [...cleanTitle.matchAll(/(\d+(?:\.\d+)?)\s*(?:ml|g)\b/gi)].map((m) => parseFloat(m[1]));
-  const heteroSignal = new Set(allVols).size >= 2 || /\d+\s*종/.test(cleanTitle) || /디바이스|기기/.test(cleanTitle);
+  const heteroSignal = new Set(allVols).size >= 2 || N_JONG_SET_RE.test(cleanTitle) || /디바이스|기기/.test(cleanTitle);
   if (heteroSignal) {
     return {
       detected: true, unitType: "unknown", unitAmount: null, unitCount: null, totalAmount: null,

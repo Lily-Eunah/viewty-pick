@@ -238,6 +238,11 @@ export async function crawlPipeline(): Promise<void> {
   // the listing stays active (link-only); surfaced in the daily summary so the
   // operator fixes the sheet URL.
   const dataErrors: string[] = [];
+  // N종 verify bookkeeping — priced offers whose matched title has a BARE "N종"
+  // ("쿠션 2종"): usually an "N종 중 택1" option-select page (priced as a single),
+  // but possibly a real set. Informational only (price IS shown); surfaced in the
+  // daily summary so the operator confirms set-vs-option.
+  const nJongVerifyItems: string[] = [];
 
   // Step 4: Crawl Prices Listing by Listing
   console.log(`[Pipeline] Beginning crawl of ${listings.length} active listings...`);
@@ -458,6 +463,13 @@ export async function crawlPipeline(): Promise<void> {
         // Validation succeeded
         successCount++;
         if (check.status === 'warning') warningCount++;
+
+        // A priced offer whose matched title has a BARE "N종" (option-select page):
+        // surface for an operator set-vs-option check. Price is NOT blocked.
+        if (offer.nJongVerify) {
+          const link = offer.matchedUrl ?? listing.affiliate_url ?? listing.url ?? '';
+          nJongVerifyItems.push(`${product.name} @ ${seller.name} ${link}`.trim());
+        }
 
         // A held (warning) price with a value → inspection candidate: the crawler
         // pre-fills it into the OX tab so the operator can approve (O) / reject (X).
@@ -764,6 +776,7 @@ export async function crawlPipeline(): Promise<void> {
       pendingInspectionCount: pendingInspection,
       inspectionItems: inspectionPending,
       linkOnlyUnmatchedCount: linkOnlyTotal,
+      nJongVerifyItems,
     });
   }
 

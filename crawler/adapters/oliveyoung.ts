@@ -18,7 +18,7 @@ import { Listing, Product } from '../../lib/types';
 import { PriceOffer, RetailerAdapter } from './index';
 import { isSupabaseServerConfigured, supabaseServer } from '../../lib/supabase/server';
 import { loadMockDB } from '../../lib/supabase/mockDb';
-import { matchOliveYoungOffer, stripHtml } from './naver';
+import { matchOliveYoungOffer, stripHtml, containsBareNJong } from './naver';
 
 function isPlaceholderKey(v: string | undefined): boolean {
   return !v || v.includes('placeholder') || v.includes('example') || v.includes('dummy') || v.trim() === '';
@@ -146,6 +146,7 @@ export class OliveYoungAdapter implements RetailerAdapter {
       parsedVolumeRaw: result.parsedVolumeRaw,
       matchedUrl: item.link || null,
       matchedMallName: item.mallName || null,
+      nJongVerify: containsBareNJong(item.title),
       outcome: 'ok',
     };
   }

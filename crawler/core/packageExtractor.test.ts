@@ -237,6 +237,12 @@ for (const [idx, tc] of testCases.entries()) {
   // "(더블/대용량)" is ambiguous → must NOT be counted as ×2 (treat as single).
   if (dblBig.unitCount === 2) { console.error('  Fail: "(더블/대용량)" wrongly counted as ×2'); failed = true; }
   else console.log('  Pass: "(더블/대용량)" not over-counted');
+
+  // fix/oliveyoung-n-jong-option: a BARE "N종" is an "N종 중 택1" option-select page
+  // (단품), NOT a set → must NOT be flagged heterogeneous (so OY prices it as single).
+  const bareJong = extractPackageFromTitle('롬앤 글래스팅 워터 틴트 쿠션 2종 30ml');
+  if (bareJong.heterogeneous) { console.error('  Fail: bare "2종" wrongly flagged heterogeneous'); failed = true; }
+  else console.log('  Pass: bare "2종" (option-select) not flagged heterogeneous');
 }
 
 console.log('\n=== Running Normalizer Integration Tests ===');

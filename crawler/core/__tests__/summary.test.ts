@@ -79,5 +79,30 @@ it('skippedNoAdapterCount omitted → defaults to 0개', () => {
   assert(/Skipped · link-only, 어댑터 없음\)\*\*: 0개/.test(msg), `Skipped should default to 0:\n${msg}`);
 });
 
+it('N종 verify items surface as an info line (price kept)', () => {
+  const msg = buildDailySummaryMessage({
+    totalLinks: 10,
+    successCount: 10,
+    warningCount: 0,
+    failureCount: 0,
+    durationSeconds: 1,
+    nJongVerifyItems: ['롬앤 쿠션 @ 올리브영 https://oy.run/x'],
+  });
+  assert(/N종 옵션 링크 — 세트 여부 확인/.test(msg), `N종 verify line missing:\n${msg}`);
+  assert(/롬앤 쿠션 @ 올리브영/.test(msg), `N종 item not listed:\n${msg}`);
+  assert(/1건/.test(msg), `N종 count should be 1:\n${msg}`);
+});
+
+it('no N종 verify items → no N종 line', () => {
+  const msg = buildDailySummaryMessage({
+    totalLinks: 10,
+    successCount: 10,
+    warningCount: 0,
+    failureCount: 0,
+    durationSeconds: 1,
+  });
+  assert(!/N종 옵션 링크/.test(msg), `N종 line should be absent when empty:\n${msg}`);
+});
+
 console.log(failed ? '\nResult: FAILED' : '\nResult: ALL PASSED');
 if (failed) process.exit(1);
