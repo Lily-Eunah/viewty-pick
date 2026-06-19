@@ -389,6 +389,59 @@ export function stripMinorAddOn(
 }
 
 /**
+ * Quantity of a NO-volume HOMOGENEOUS bundle — the SAME product sold as multiple
+ * units when extractPackageFromTitle could not derive a per-unit (no ml on the unit),
+ * e.g. "쿠션 기획 (본품+리필)". 본품+리필 / 1+1·2+1 / N개·N팩·N병·N입·N매 / ×N of the same
+ * product return the unit count; a bare "N종" option-select, a 세트 of DIFFERENT items,
+ * or a plain single returns null. A device/기기 bundle is never a homogeneous multipack.
+ * (Used only when no clean per-unit volume exists — so the bundle lprice is divided by
+ * the count to estimate the 본품 unit price; trust-operator-anchored-bundles.)
+ */
+export function homogeneousBundleQty(title: string): number | null {
+  const t = stripHtml(title || '');
+  if (/디바이스|기기/.test(t)) return null;
+  // 본품 + 리필 = the same product twice (1+1). Require BOTH words so a standalone
+  // "리필팩" SKU (no 본품) is not miscounted as a bundle.
+  if (/본품/.test(t) && /리필/.test(t)) return 2;
+  const pm = t.match(/(?:^|[^0-9])([1-9])\s*\+\s*([1-9])(?![0-9])/); // 1+1, 2+1
+  if (pm) { const q = parseInt(pm[1], 10) + parseInt(pm[2], 10); if (q >= 2 && q <= 20) return q; }
+  const cm = t.match(/(\d+)\s*(?:개|팩|병|입|매)/); // N개/팩/병/입/매 (N≥2)
+  if (cm) { const q = parseInt(cm[1], 10); if (q >= 2 && q <= 20) return q; }
+  const xm = t.match(/[xX×*]\s*(\d+)\b/);
+  if (xm) { const q = parseInt(xm[1], 10); if (q >= 2 && q <= 20) return q; }
+  return null;
+}
+
+/**
+ * 본품 + 증정(소품목) on an anchored/curated offer (trust-operator-anchored-bundles):
+ * the curated DB volume (본품) appears in the title, the form matches (no form
+ * conflict), it is not a device bundle, and EVERY other detected volume is strictly
+ * smaller than 본품 (a 소량 증정/부스트, not a 2nd 본품) — ALSO accepting the case where
+ * the gift carries NO volume ("(+로션, 세럼)") as long as a gift/번들 context word is
+ * present. The whole bundle price is then attributed to the 본품 (보수적 ml당) and the
+ * offer is surfaced to inspection (O/X). Returns null when 본품 is not identifiable
+ * (→ a genuine multi-main 이종 세트; the caller still routes it to inspection, blank).
+ */
+export function priceGiftBundleOnMain(
+  title: string,
+  mainVolumeMl: number | null,
+  name: string | null
+): { mainMl: number } | null {
+  if (!mainVolumeMl || mainVolumeMl <= 0) return null;
+  const t = stripHtml(title || '');
+  if (/디바이스|기기/.test(t)) return null;
+  if (name && hasFormConflict(name, t)) return null;
+  const vols = [...t.matchAll(/(\d+(?:\.\d+)?)\s*(ml|g)\b/gi)].map((m) => ({ amt: parseFloat(m[1]), unit: m[2].toLowerCase() }));
+  if (new Set(vols.map((v) => v.unit)).size > 1) return null; // ml vs g mix → different products
+  const amts = vols.map((v) => v.amt);
+  if (!amts.includes(mainVolumeMl)) return null;                       // 본품(DB) must be present
+  if (amts.filter((a) => a === mainVolumeMl).length > 1) return null;  // 본품 volume twice → 2nd equal main → real set
+  if (amts.some((a) => a !== mainVolumeMl && a >= mainVolumeMl)) return null; // a 2nd 본품-sized item → real set
+  if (!/\+|증정|사은품|샘플|미니|기획|세트|패키지|키트|콜렉션|컬렉션/.test(t)) return null; // need gift/번들 context
+  return { mainMl: mainVolumeMl };
+}
+
+/**
  * Tier-1 selection: find the result whose link is the curated SKU (productNo N).
  * Returns null when no anchor number is given or none matches (→ caller falls back
  * to tier-2 title matching). A single anchor is accepted as-is (exact SKU); a
@@ -406,37 +459,81 @@ export function pickAnchoredOffer(
   const anchored = items.find((it) => productNoFrom(it.link) === anchorProductNo);
   if (!anchored) return null;
   const ext = extractPackageFromTitle(stripHtml(anchored.title));
-  // Heterogeneous 2-product set (e.g. 토너 + 세럼, both 본품) → per-unit not computable.
+  const lprice = parseInt(anchored.lprice, 10);
+  const priceHint = Number.isFinite(lprice) && lprice > 0 ? lprice : null;
+  const base = `id-anchored to curated SKU (productNo ${anchorProductNo}) @${anchored.mallName}`;
+
+  // Heterogeneous-LOOKING anchored SKU (이종 세트 / 증정 번들). The operator linked it,
+  // so we TRUST the link and NEVER drop it to link_only — we compute a 본품(main-unit)
+  // price when we can and route to inspection (O/X) with it pre-filled; otherwise we
+  // still route to inspection (anchor price as a hint), never link_only.
   if (ext.heterogeneous) {
-    // Case C: 본품(DB용량) + 소량 부스트/증정 → strip the add-on, price as 본품.
+    // (a) 본품 + 소량 부스트 (an add-on with a SMALLER known volume) → high-confidence
+    //     auto-price on the 본품 (#47 minor add-on; unchanged — price IS shown).
     const stripped = stripMinorAddOn(anchored.title, mainVolumeMl, name);
     if (stripped) {
       return {
         matched: anchored,
         parsedVolumeRaw: stripped.mainMl, // 본품=DB volume; bundle price attributed to it (보수적)
         identityScore: 1,
-        reason: `id-anchored to curated SKU (productNo ${anchorProductNo}) @${anchored.mallName} — ${stripped.note} (소량 부스트 strip, 본품 기준 가격)`,
+        reason: `${base} — ${stripped.note} (소량 부스트 strip, 본품 기준 가격)`,
         nJongVerify: true, // surface to Discord set/구성 verify (price IS shown)
       };
     }
+    // (b) 본품 + 증정(소품목, 다른 품목): the curated 본품(DB volume) is identifiable and
+    //     the rest are gifts → attribute the WHOLE bundle price to the 본품 (보수적 ml당)
+    //     and pre-fill it into inspection (O/X). [제니피끄 세럼 115ml 세트 (+로션, 세럼)]
+    if (priceGiftBundleOnMain(anchored.title, mainVolumeMl, name)) {
+      return {
+        matched: null,
+        parsedVolumeRaw: mainVolumeMl,
+        identityScore: 1,
+        reason: `${base} — 증정/번들, 본품 ${mainVolumeMl}ml 기준 추정(확인 후 O)`,
+        needsInspection: true,
+        inspectionEstimatedPrice: priceHint, // whole bundle price on the 본품 (conservative)
+      };
+    }
+    // (c) 본품 식별 불가 (진짜 다중-main 이종 세트) → inspection with the anchor price as a
+    //     starting hint (operator corrects + O), never link_only.
     return {
       matched: null,
       parsedVolumeRaw: null,
       identityScore: null,
-      reason: `id-anchored to curated SKU (productNo ${anchorProductNo}) but it is a heterogeneous 2-product set — needs inspection (no price)`,
+      reason: `${base} — 이종 세트 의심(본품 식별 불가, 확인 후 O)`,
       needsInspection: true,
+      inspectionEstimatedPrice: priceHint,
     };
   }
-  // Single OR homogeneous bundle (1+1 / N-pack / 본품+리필) — both priced; normalize
-  // derives the per-unit (effective) price from the title quantity. Gifts are not
-  // counted (packageExtractor strips them).
+
+  // Non-heterogeneous: a clean single OR a clean (volume-bearing) homogeneous bundle.
+  // Both are priced; normalize derives the per-unit (effective) price from the title
+  // quantity. Gifts are not counted (packageExtractor strips them).
   const parsedVolumeRaw = ext.detected && ext.unitType === 'ml' && ext.unitAmount !== null ? ext.unitAmount : null;
   const qty = ext.unitCount && ext.unitCount > 1 ? ext.unitCount : 1;
+
+  // A NO-volume homogeneous bundle (본품+리필 / 1+1 / N개 with no ml on the unit) reads
+  // here as a "single" (the extractor needs a volume to split it), so its lprice is the
+  // BUNDLE price, NOT the unit price. Route to inspection with a per-unit estimate
+  // (lprice / qty) and the curated DB volume as the 본품 size. [VDL 쿠션 기획 (본품+리필)]
+  if (qty === 1 && parsedVolumeRaw === null) {
+    const bundleQty = homogeneousBundleQty(anchored.title);
+    if (bundleQty && bundleQty > 1) {
+      return {
+        matched: null,
+        parsedVolumeRaw: mainVolumeMl,
+        identityScore: 1,
+        reason: `${base} — 동종 번들 ×${bundleQty}, 본품가 추정(확인 후 O)`,
+        needsInspection: true,
+        inspectionEstimatedPrice: priceHint ? Math.round(priceHint / bundleQty) : null,
+      };
+    }
+  }
+
   return {
     matched: anchored,
     parsedVolumeRaw,
     identityScore: 1,
-    reason: `id-anchored to curated SKU (productNo ${anchorProductNo}) @${anchored.mallName}${qty > 1 ? ` ×${qty} (per-unit)` : ''}`,
+    reason: `${base}${qty > 1 ? ` ×${qty} (per-unit)` : ''}`,
   };
 }
 
@@ -828,7 +925,8 @@ export function distinctiveTokens(name: string): string[] {
 export function pickOliveYoungOffer(
   items: NaverShoppingItem[],
   productName: string,
-  referencePrice?: number | null
+  referencePrice?: number | null,
+  mainVolumeMl?: number | null
 ): OfferMatchResult {
   const oy = items.filter((it) => isIndividualMallOffer(it) && normalizeMallName(it.mallName) === OY_MALL);
   if (oy.length === 0) {
@@ -902,6 +1000,28 @@ export function pickOliveYoungOffer(
     const ext = extractPackageFromTitle(chosen.t);
     const parsedVolumeRaw = ext.detected && ext.unitType === 'ml' && ext.unitAmount !== null ? ext.unitAmount : null;
     const qty = ext.unitCount && ext.unitCount > 1 ? ext.unitCount : 1;
+
+    // A NO-volume homogeneous bundle (본품+리필 / 1+1 / N개 with no ml on the unit) reads
+    // as a "single" here but its lprice is the BUNDLE price, not the unit price. OY
+    // matching is loose (no anchor), so route it to inspection with a per-unit estimate
+    // (lprice / qty) for the operator to confirm once (O) — never auto-shown at the
+    // bundle price. Volume-bearing bundles keep their per-unit auto-price (qty>1 above).
+    // [VDL 커버스테인 하이커버 쿠션 기획 (본품+리필)]
+    if (qty === 1 && parsedVolumeRaw === null) {
+      const bundleQty = homogeneousBundleQty(chosen.t);
+      if (bundleQty && bundleQty > 1) {
+        const lp = parseInt(chosen.it.lprice, 10);
+        return {
+          matched: null,
+          parsedVolumeRaw: mainVolumeMl ?? null,
+          identityScore: chosen.s,
+          reason: `올리브영 동종 번들 ×${bundleQty} (본품가 추정, 확인 후 O)`,
+          needsInspection: true,
+          inspectionEstimatedPrice: Number.isFinite(lp) && lp > 0 ? Math.round(lp / bundleQty) : null,
+        };
+      }
+    }
+
     const note = adoptable.length > 1 ? `, lowest of ${adoptable.length}` : '';
     return { matched: chosen.it, parsedVolumeRaw, identityScore: chosen.s, reason: `올리브영 match (sim ${chosen.s.toFixed(2)}${note})${qty > 1 ? ` ×${qty} (per-unit)` : ''}` };
   }
@@ -941,7 +1061,7 @@ export async function matchOliveYoungOffer(
   let inspection: OfferMatchResult | null = null;
   for (const query of candidates) {
     const items = await searchNaverShopping(query, clientId, clientSecret);
-    const r = pickOliveYoungOffer(items, product.name);
+    const r = pickOliveYoungOffer(items, product.name, null, product.volume_ml ?? null);
     if (r.matched) return r;
     if (r.needsInspection && !inspection) inspection = r;
   }

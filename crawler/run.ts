@@ -740,8 +740,14 @@ export async function crawlPipeline(): Promise<void> {
     try {
       const res = await upsertInspection(inspectionCandidates);
       pendingInspection = res.pending;
-      for (const c of inspectionCandidates) {
-        inspectionPending.push(`${c.product_name} @ ${c.seller} ≈${c.estimated_price?.toLocaleString('ko-KR') ?? '-'}원 (${c.source || '?'})`);
+      // List only the UNREVIEWED (blank O/X) rows — already-decided items stay in the
+      // sheet but are not re-surfaced — with 제품·추정가·출처·사유·링크 for the operator.
+      for (const c of res.pendingItems) {
+        const why = (c.reason || '').slice(0, 80);
+        inspectionPending.push(
+          `${c.product_name} @ ${c.seller} ≈${c.estimated_price?.toLocaleString('ko-KR') ?? '-'}원 (${c.source || '?'})` +
+            `${why ? ` — ${why}` : ''}${c.link ? ` ${c.link}` : ''}`
+        );
       }
       console.log(`[Pipeline] Inspection tab upserted: ${res.written} row(s), ${res.pending} pending O/X.`);
     } catch (e) {
