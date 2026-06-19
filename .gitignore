@@ -54,3 +54,10 @@ next-env.d.ts
 
 # DB backups (contain data, never commit)
 backups/
+
+# Claude agent logs, prompts, and temporary developer documents
+docs/prompts/
+docs/reports/
+docs/TBD.md
+viewtypick-resume-summary.md
+
