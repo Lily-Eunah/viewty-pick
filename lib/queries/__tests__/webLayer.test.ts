@@ -2,7 +2,7 @@
  * Web-layer pure-helper tests: composition labels (구성) + updatedAt formatting.
  * Run: tsx lib/queries/__tests__/webLayer.test.ts
  */
-import { compositionLabel, isSellerDisplayed, discountVsRegular } from '../index';
+import { compositionLabel, isSellerDisplayed, discountVsRegular, hasDisplayedSellerLink, byPriceThen } from '../index';
 import { updatedAt, pricedStoreNames } from '../../format';
 import { UIProduct, UIStorePrice } from '../../types';
 
@@ -100,6 +100,46 @@ it('caps at max (default 3)', () => {
     store({ name: 'c', hasPrice: true }), store({ name: 'd', hasPrice: true }),
   ]);
   assert(pricedStoreNames(p) === 'a · b · c', `got ${pricedStoreNames(p)}`);
+});
+
+console.log('--- hasDisplayedSellerLink (hide link-less products) ---');
+function prod(over: Partial<UIProduct>): UIProduct {
+  return { stores: [], hasAnyPrice: false, viewtyScore: 80, ...over } as UIProduct;
+}
+it('product with a displayed-seller link is shown', () => {
+  assert(hasDisplayedSellerLink(prod({ stores: [store({ name: '쿠팡' })] })) === true, 'has link → show');
+});
+it('product with link but no price is still shown (sunk, not hidden)', () => {
+  assert(hasDisplayedSellerLink(prod({ stores: [store({ name: '네이버', hasPrice: false })], hasAnyPrice: false })) === true, 'link-only → show');
+});
+it('product with no displayed-seller link is hidden', () => {
+  assert(hasDisplayedSellerLink(prod({ stores: [] })) === false, 'no link → hide');
+});
+
+console.log('--- byPriceThen (price-less products sink to bottom) ---');
+it('price-less products go after priced ones regardless of 2차 key', () => {
+  const a = prod({ hasAnyPrice: true, viewtyScore: 50 });   // priced, low score
+  const b = prod({ hasAnyPrice: false, viewtyScore: 99 });  // no price, high score
+  const cmp = byPriceThen((x, y) => y.viewtyScore - x.viewtyScore);
+  assert(cmp(a, b) < 0, 'priced beats price-less even with lower score');
+  assert(cmp(b, a) > 0, 'symmetric');
+});
+it('within same price-presence, 2차 comparator decides', () => {
+  const hi = prod({ hasAnyPrice: true, viewtyScore: 90 });
+  const lo = prod({ hasAnyPrice: true, viewtyScore: 70 });
+  const cmp = byPriceThen((x, y) => y.viewtyScore - x.viewtyScore);
+  assert(cmp(hi, lo) < 0, 'higher score first among priced');
+});
+it('sorts a mixed list: priced (by score) then price-less (by score)', () => {
+  const list: UIProduct[] = [
+    prod({ hasAnyPrice: false, viewtyScore: 95 }),
+    prod({ hasAnyPrice: true, viewtyScore: 60 }),
+    prod({ hasAnyPrice: false, viewtyScore: 80 }),
+    prod({ hasAnyPrice: true, viewtyScore: 88 }),
+  ];
+  list.sort(byPriceThen((a, b) => b.viewtyScore - a.viewtyScore));
+  const shape = list.map((p) => `${p.hasAnyPrice ? 'P' : '-'}${p.viewtyScore}`).join(',');
+  assert(shape === 'P88,P60,-95,-80', `got ${shape}`);
 });
 
 console.log(failed ? '\nResult: FAILED' : '\nResult: ALL PASSED');
