@@ -13,7 +13,7 @@ export default function Chip({
   onClick,
   variant = 'skin',
 }: ChipProps) {
-  const baseStyles = 'inline-flex items-center justify-center text-[13px] select-none transition-all cursor-pointer active:scale-95';
+  const baseStyles = 'inline-flex items-center justify-center text-[13px] select-none transition-all cursor-pointer active:scale-95 whitespace-nowrap shrink-0';
 
   let variantStyles = '';
 
