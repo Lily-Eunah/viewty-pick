@@ -17,12 +17,50 @@ interface Props {
 export default function HomeInteractiveSection({ allProducts, recommended, officialPicks }: Props) {
   const [selectedSkin, setSelectedSkin] = useState<string | null>(null);
   const [isInfoOpen, setIsInfoOpen] = useState(false);
+  const [recentlyViewed, setRecentlyViewed] = useState<UIProduct[]>([]);
 
-  // Sync skin type selection with localStorage on mount
+  // Sync skin type & recently viewed on mount
   useEffect(() => {
-    const saved = localStorage.getItem('selectedSkinType');
-    if (saved) {
-      setSelectedSkin(saved);
+    const savedSkin = localStorage.getItem('selectedSkinType');
+    if (savedSkin) {
+      setSelectedSkin(savedSkin);
+    }
+
+    try {
+      const savedHistory = localStorage.getItem('recentlyViewedProducts');
+      if (savedHistory) {
+        const parsed = JSON.parse(savedHistory);
+        const mapped: UIProduct[] = parsed.map((p: any) => ({
+          id: p.id,
+          slug: p.slug,
+          brand: p.brand,
+          name: p.name,
+          image: p.image,
+          lowestPrice: p.lowestPrice,
+          volume: p.volume,
+          viewtyScore: p.viewtyScore,
+          // stubs to satisfy TS interface
+          description: '',
+          skinTypes: [],
+          tags: [],
+          badges: ['최근 본 상품'],
+          lowestBasePrice: p.lowestPrice,
+          bestIsMultipack: false,
+          hasAnyPrice: p.lowestPrice > 0,
+          officialPrice: null,
+          discountVsOfficial: null,
+          regularPrice: null,
+          discountVsRegular: null,
+          lastUpdated: null,
+          source: 'oliveyoung',
+          reasonItems: [],
+          stores: [],
+          features: [],
+        }));
+        setRecentlyViewed(mapped);
+      }
+    } catch (e) {
+      console.error('Failed to parse recently viewed history from localStorage:', e);
     }
   }, []);
 
@@ -41,7 +79,6 @@ export default function HomeInteractiveSection({ allProducts, recommended, offic
       const next = prev === skin ? null : skin;
       if (next) {
         localStorage.setItem('selectedSkinType', next);
-        // Dispatch custom event to notify other components (e.g. category list)
         window.dispatchEvent(new Event('selectedSkinTypeChanged'));
       } else {
         localStorage.removeItem('selectedSkinType');
@@ -49,6 +86,11 @@ export default function HomeInteractiveSection({ allProducts, recommended, offic
       }
       return next;
     });
+  };
+
+  const handleClearHistory = () => {
+    localStorage.removeItem('recentlyViewedProducts');
+    setRecentlyViewed([]);
   };
 
   const handleSearchRedirect = () => {
@@ -92,8 +134,23 @@ export default function HomeInteractiveSection({ allProducts, recommended, offic
         </section>
       )}
 
-      {/* Always render deals/history at the bottom - not wiped out by skin filter */}
-      <TodayDealSection products={officialPicks} loading={false} />
+      {/* Recently Viewed Products or Fallback Deals */}
+      {recentlyViewed.length > 0 ? (
+        <section className="py-4 bg-bg flex flex-col gap-3 border-t border-divider">
+          <h3 className="px-4 text-[15px] font-black text-title tracking-tight flex items-center justify-between">
+            <span>🕰️ 최근 본 상품</span>
+            <button
+              onClick={handleClearHistory}
+              className="text-[11px] text-[#A8A0A0] hover:text-primary font-bold transition-colors cursor-pointer"
+            >
+              전체삭제
+            </button>
+          </h3>
+          <ProductCarousel products={recentlyViewed} />
+        </section>
+      ) : (
+        <TodayDealSection products={officialPicks} loading={false} />
+      )}
 
       {/* Viewty Score explanation modal */}
       {isInfoOpen && (
