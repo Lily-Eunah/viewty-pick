@@ -309,3 +309,15 @@ export interface UIProduct {
   viewtyScore: number;
   features?: string[];
 }
+
+export interface WaitlistEntry {
+  id: number;
+  email: string;
+  intent: 'launch' | 'price_alert';
+  wishlist_slugs: string[] | null;
+  consent_service: boolean;
+  consent_marketing: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
