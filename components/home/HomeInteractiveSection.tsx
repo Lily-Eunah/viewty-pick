@@ -1,12 +1,14 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import SearchBar from '../common/SearchBar';
 import CurationCarousel from './CurationCarousel';
 import { SkinTypeAndCategorySection } from './SkinTypeAndCategorySection';
 import ProductCarousel from '../product/ProductCarousel';
 import TodayDealSection from './TodayDealSection';
 import { UIProduct } from '../../lib/types';
+import { useSelectedSkinType } from '../../lib/hooks/useSelectedSkinType';
 
 interface Props {
   allProducts: UIProduct[];
@@ -14,23 +16,32 @@ interface Props {
   officialPicks: UIProduct[];
 }
 
+// Shape of a product cached in localStorage ('recentlyViewedProducts') — only the
+// fields the home carousel needs; the rest are stubbed below to satisfy UIProduct.
+interface StoredViewedProduct {
+  id: string;
+  slug: string;
+  brand: string;
+  name: string;
+  image: string;
+  lowestPrice: number;
+  volume: string;
+  viewtyScore: number;
+}
+
 export default function HomeInteractiveSection({ allProducts, recommended, officialPicks }: Props) {
-  const [selectedSkin, setSelectedSkin] = useState<string | null>(null);
+  const router = useRouter();
+  const [selectedSkin, setSelectedSkin] = useSelectedSkinType();
   const [isInfoOpen, setIsInfoOpen] = useState(false);
   const [recentlyViewed, setRecentlyViewed] = useState<UIProduct[]>([]);
 
-  // Sync skin type & recently viewed on mount
+  // Sync recently viewed on mount
   useEffect(() => {
-    const savedSkin = localStorage.getItem('selectedSkinType');
-    if (savedSkin) {
-      setSelectedSkin(savedSkin);
-    }
-
     try {
       const savedHistory = localStorage.getItem('recentlyViewedProducts');
       if (savedHistory) {
-        const parsed = JSON.parse(savedHistory);
-        const mapped: UIProduct[] = parsed.map((p: any) => ({
+        const parsed = JSON.parse(savedHistory) as StoredViewedProduct[];
+        const mapped: UIProduct[] = parsed.map((p) => ({
           id: p.id,
           slug: p.slug,
           brand: p.brand,
@@ -40,6 +51,7 @@ export default function HomeInteractiveSection({ allProducts, recommended, offic
           volume: p.volume,
           viewtyScore: p.viewtyScore,
           // stubs to satisfy TS interface
+          category: '',
           description: '',
           skinTypes: [],
           tags: [],
@@ -57,6 +69,10 @@ export default function HomeInteractiveSection({ allProducts, recommended, offic
           stores: [],
           features: [],
         }));
+        // Intentional one-shot post-mount load: recently-viewed is read from
+        // localStorage AFTER mount so server/client markup match (no hydration
+        // mismatch). This single synchronous setState is the documented pattern.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setRecentlyViewed(mapped);
       }
     } catch (e) {
@@ -75,17 +91,9 @@ export default function HomeInteractiveSection({ allProducts, recommended, offic
   }, [allProducts, recommended, selectedSkin]);
 
   const handleSkinFilter = (skin: string) => {
-    setSelectedSkin((prev) => {
-      const next = prev === skin ? null : skin;
-      if (next) {
-        localStorage.setItem('selectedSkinType', next);
-        window.dispatchEvent(new Event('selectedSkinTypeChanged'));
-      } else {
-        localStorage.removeItem('selectedSkinType');
-        window.dispatchEvent(new Event('selectedSkinTypeChanged'));
-      }
-      return next;
-    });
+    // Toggle: re-tapping the active type clears it. The hook persists to
+    // localStorage and broadcasts the change to the category list.
+    setSelectedSkin(selectedSkin === skin ? null : skin);
   };
 
   const handleClearHistory = () => {
@@ -94,7 +102,7 @@ export default function HomeInteractiveSection({ allProducts, recommended, offic
   };
 
   const handleSearchRedirect = () => {
-    alert('검색 기능은 준비 중입니다! (Phase 5 출시 예정)');
+    router.push('/search');
   };
 
   return (

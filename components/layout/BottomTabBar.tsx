@@ -44,10 +44,9 @@ export default function BottomTabBar({ activeTab }: BottomTabBarProps) {
       {/* 3. 검색 */}
       <Link
         href="/search"
-        onClick={(e) => handleUnderConstruction(e, '검색')}
         className={`flex flex-col items-center justify-center gap-0.5 w-[68px] py-1.5 rounded-xl transition-all duration-200 ${
           activeTab === 'search' ? 'text-primary bg-accent-soft font-black shadow-[0_2px_8px_rgba(65,0,22,0.03)]' : 'text-[#A8A0A0] hover:text-[#29272A]'
-        } opacity-60`}
+        }`}
       >
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor" className="w-5.5 h-5.5">
           <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.602 10.602Z" />
