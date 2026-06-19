@@ -179,7 +179,20 @@ export default async function ProductDetailPage({ params }: PageProps) {
                   <span className="text-[15px] font-black text-title mt-1">{won(product.lowestBasePrice)}</span>
                 </div>
               ) : null}
-              {product.discountVsOfficial && product.discountVsOfficial > 0 ? (
+              {/* 할인 배지: 정가가 있으면 정가 기준 우선, 없으면 공식몰 대비 폴백 (둘 중 하나만) */}
+              {product.regularPrice && product.discountVsRegular != null ? (
+                <div className="flex flex-col">
+                  <span className="text-[10px] text-sub font-bold leading-none">정가</span>
+                  <div className="flex items-baseline gap-1.5 mt-1">
+                    <span className="text-[13px] font-bold text-sub line-through">{won(product.regularPrice)}</span>
+                    {product.discountVsRegular > 0 && (
+                      <span className="text-[12px] text-discount bg-accent-soft font-extrabold px-2.5 py-1 rounded-full">
+                        {product.discountVsRegular}% 할인
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ) : product.discountVsOfficial && product.discountVsOfficial > 0 ? (
                 <span className="text-[12px] text-discount bg-accent-soft font-extrabold px-2.5 py-1 rounded-full">
                   공식몰 대비 {product.discountVsOfficial}% 저렴
                 </span>

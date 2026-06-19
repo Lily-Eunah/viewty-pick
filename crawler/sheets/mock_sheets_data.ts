@@ -22,8 +22,8 @@ export const mockCategoriesRefSheet = [
   { 대분류: '베이스 메이크업', 대분류_slug: 'base-makeup',    소분류: '쿠션',            소분류_slug: 'cushion',         sort_order: '1' },
 ];
 
-export const mockProductsSheet = [
-  { product_key: '', name: '엑설런트 선크림',                    brand: '몽디에스',           category: '선크림', volume_ml: '50', skin_types: '건성,민감성',            features: 'SPF50+ PA++++, 무기자차, 피부 저자극',          hwahae_url: '', image_url: '', is_disabled: '', slug: '' },
+export const mockProductsSheet: Record<string, string>[] = [
+  { product_key: '', name: '엑설런트 선크림',                    brand: '몽디에스',           category: '선크림', volume_ml: '50', skin_types: '건성,민감성',            features: 'SPF50+ PA++++, 무기자차, 피부 저자극',          hwahae_url: '', image_url: '', is_disabled: '', slug: '', regular_price: '22000' },
   { product_key: '', name: '더마 트러블 징크 카밍 선크림',       brand: '후시다딘 (동화약품)', category: '선크림', volume_ml: '50', skin_types: '수부지,지성,복합성',      features: 'SPF50+ PA++++, 무기자차, 트러블 진정',          hwahae_url: '', image_url: '', is_disabled: '', slug: '' },
   { product_key: '', name: '피디알엔 스킨핏 수분 선크림',        brand: '스타라이크',          category: '선크림', volume_ml: '50', skin_types: '수부지,지성',            features: 'SPF50+ PA++++, 유기자차, 물광 에센스 제형',     hwahae_url: '', image_url: '', is_disabled: '', slug: '' },
   { product_key: '', name: '멜라 TXA 선세럼',                   brand: '아로셀',             category: '선크림', volume_ml: '50', skin_types: '건성,복합성',            features: 'SPF50+ PA++++, 유기자차, 미백/주름/자외선 3중', hwahae_url: '', image_url: '', is_disabled: '', slug: '' },

@@ -32,6 +32,9 @@ export interface Product {
   brand: string | null;
   category_id: number | null;
   volume_ml: number;
+  // 정가 / MSRP for the DB representative volume (volume_ml). Basis for the
+  // "정가 대비 N% 할인" headline; null → no discount shown (never mis-displayed).
+  regular_price?: number | null;
   // §1b: when explicitly false, volume_ml is unverified (e.g. LLM-seeded default)
   // → ml-based unit_price is disabled until an operator confirms the real volume.
   // Absent/undefined keeps the legacy behavior (treated as usable).
@@ -266,6 +269,7 @@ export interface UIStorePrice {
   effectiveUnitPrice?: number | null; // per-unit (개당) price; = price for singles
   unitPrice?: number | null; // per ml price — only when reliable
   volumeMl?: number | null; // this seller's per-unit volume (size differs per retailer)
+  discountVsRegular?: number | null; // % this store's ml당 beats 정가 ml당 (≥0; null when not computable)
   // Web-layer additions (optional so the legacy static mock still compiles;
   // mapToUIProduct always sets them. Absent hasPrice ⇒ treated as priced).
   hasPrice?: boolean;          // false → link-only seller row ("○○에서 보기", no price)
@@ -292,6 +296,8 @@ export interface UIProduct {
   hasAnyPrice?: boolean;     // false → every seller is link-only (no price)
   officialPrice?: number | null;       // official brand-store per-unit baseline
   discountVsOfficial?: number | null;  // % the lowest non-official per-unit beats the official price (positive only)
+  regularPrice?: number | null;        // 정가 / MSRP (DB volume basis) — for "정가 X원" display; null when absent
+  discountVsRegular?: number | null;   // headline % the best store's ml당 beats 정가 ml당 (≥0; null when not computable)
   lastUpdated?: string | null;         // freshest priced store crawled_at (ISO)
   /** @deprecated mock price-history fields — never populated/displayed (kept only for the legacy static mock). */
   previousPrice?: number;
