@@ -151,6 +151,27 @@ export function extractCoupangProductId(url: string): string | null {
 }
 
 /**
+ * Extract the operator's search query (`q=`) from a Coupang URL. The product-page
+ * URL an operator pastes usually carries the real search term they used to FIND the
+ * product (e.g. `?q=몽디에스 선크림`), which is often a better image-search keyword than
+ * the brand+name we derive (e.g. "몽디에스 엑설런트 선크림") — the Partners search API
+ * surfaces that productId for the operator's query but not for our derived one.
+ * Query-string `+` means space; `%2B` means a literal plus, so decode after the swap.
+ * Returns null when absent, empty, or malformed.
+ */
+export function extractCoupangQuery(url: string): string | null {
+  if (!url) return null;
+  const m = url.match(/[?&]q=([^&#]*)/i);
+  if (!m) return null;
+  try {
+    const decoded = decodeURIComponent(m[1].replace(/\+/g, ' ')).trim();
+    return decoded || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * A `link.coupang.com/a/…` share short-link carries no productId. It is a data
  * problem (operator must put the product-detail URL in the sheet), NOT a fetch
  * failure — see fetchOffer's data_error path.
@@ -339,14 +360,21 @@ async function searchCoupang(
 /**
  * Resolve a Coupang product-page URL placed in products.image_url to a displayable
  * productImage via the Partners SEARCH API (the page URL itself is not an image).
- * Reuses the same rate-limited, HMAC-signed search path as price fetching: search
- * by brand+name, then pickCoupangImage (anchored productId → strict-identity fallback).
+ * Reuses the same rate-limited, HMAC-signed search path as price fetching, then
+ * pickCoupangImage (anchored productId → strict-identity fallback).
+ *
+ * Keyword choice: the operator's own `q=` search term (from the pasted URL) is tried
+ * FIRST — the Partners search API often surfaces the anchored productId for the query
+ * the operator actually used, but not for our derived brand+name (the result set is a
+ * small 4–10 ad slice). If `q=` is absent or does not resolve, fall back to
+ * buildSearchKeyword(brand,name) and re-match over the COMBINED result set. At most
+ * two searches; the second is skipped when the first already resolves.
  *
  * Returns null when unresolved — search miss, no same-product image, no productId, a
  * thrown HTTP/timeout, or mock/test mode — so the caller stores an EMPTY image and
  * the UI falls back to the placeholder, NEVER the broken product-page URL. Same
  * search-visibility limitation as price matching: a product absent from the search
- * top-10 cannot be resolved.
+ * top-10 cannot be resolved (a structural Partners API limit).
  */
 export async function resolveCoupangImageFromUrl(
   productUrl: string,
@@ -367,14 +395,30 @@ export async function resolveCoupangImageFromUrl(
   // No network in mock/test: leave the image unresolved → placeholder fallback.
   if (isMock) return null;
 
-  const keyword = buildSearchKeyword(brand, name);
+  // Try the operator's q= query first, then brand+name. De-dupe so we never spend a
+  // call on an identical keyword (keeps it to ≤2 searches and honors the rate limit).
+  const query = extractCoupangQuery(productUrl);
+  const fallback = buildSearchKeyword(brand, name);
+  const keywords = [query, fallback].filter(
+    (kw, i, arr): kw is string => !!kw && arr.indexOf(kw) === i
+  );
+
+  const items: CoupangApiItem[] = [];
   try {
-    const items = await searchCoupang(keyword, accessKey, secretKey);
-    const image = pickCoupangImage(items, productId, name, brand);
+    for (const keyword of keywords) {
+      // Accumulate results across keywords so the anchor/identity match can be found
+      // in either search's hits.
+      items.push(...(await searchCoupang(keyword, accessKey, secretKey)));
+      const image = pickCoupangImage(items, productId, name, brand);
+      if (image) {
+        console.log(`[Coupang Image] "${keyword}" (productId ${productId}) → ${image}`);
+        return image;
+      }
+    }
     console.log(
-      `[Coupang Image] "${keyword}" (productId ${productId}) → ${image ? image : 'unresolved (no image in search)'}`
+      `[Coupang Image] [${keywords.join(' | ')}] (productId ${productId}) → unresolved (no image in search)`
     );
-    return image;
+    return null;
   } catch (e: unknown) {
     console.warn(`[Coupang Image] resolve failed for ${productUrl}: ${(e as Error).message}`);
     return null;
