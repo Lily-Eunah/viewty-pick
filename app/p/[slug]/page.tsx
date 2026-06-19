@@ -10,6 +10,7 @@ import PriceTable from '../../../components/product/PriceTable';
 import ProductCard from '../../../components/product/ProductCard';
 import ProductStickyFooter from '../../../components/product/ProductStickyFooter';
 import AffiliateDisclosure from '../../../components/common/AffiliateDisclosure';
+import HistoryTracker from '../../../components/product/HistoryTracker';
 import { getProductDetailPageData } from '../../../lib/queries';
 import { won, updatedAt } from '../../../lib/format';
 
@@ -106,6 +107,18 @@ export default async function ProductDetailPage({ params }: PageProps) {
 
   return (
     <AppShell activeTab="category" showTabBar={false}>
+      <HistoryTracker
+        product={{
+          id: product.id,
+          slug: product.slug,
+          brand: product.brand,
+          name: product.name,
+          image: product.image,
+          lowestPrice: product.lowestPrice,
+          volume: product.volume,
+          viewtyScore: product.viewtyScore,
+        }}
+      />
       {/* Dynamic JSON-LD injection */}
       {jsonLd && (
         <script

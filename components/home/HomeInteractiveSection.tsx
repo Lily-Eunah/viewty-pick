@@ -1,11 +1,10 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
-import Link from 'next/link';
+import React, { useState, useMemo, useEffect } from 'react';
 import SearchBar from '../common/SearchBar';
+import CurationCarousel from './CurationCarousel';
 import { SkinTypeAndCategorySection } from './SkinTypeAndCategorySection';
 import ProductCarousel from '../product/ProductCarousel';
-import ProductListCard from '../product/ProductListCard';
 import TodayDealSection from './TodayDealSection';
 import { UIProduct } from '../../lib/types';
 
@@ -17,14 +16,81 @@ interface Props {
 
 export default function HomeInteractiveSection({ allProducts, recommended, officialPicks }: Props) {
   const [selectedSkin, setSelectedSkin] = useState<string | null>(null);
+  const [isInfoOpen, setIsInfoOpen] = useState(false);
+  const [recentlyViewed, setRecentlyViewed] = useState<UIProduct[]>([]);
 
-  const filteredProducts = useMemo(() => {
-    if (!selectedSkin) return [];
-    return allProducts.filter((p) => p.skinTypes.includes(selectedSkin));
-  }, [allProducts, selectedSkin]);
+  // Sync skin type & recently viewed on mount
+  useEffect(() => {
+    const savedSkin = localStorage.getItem('selectedSkinType');
+    if (savedSkin) {
+      setSelectedSkin(savedSkin);
+    }
+
+    try {
+      const savedHistory = localStorage.getItem('recentlyViewedProducts');
+      if (savedHistory) {
+        const parsed = JSON.parse(savedHistory);
+        const mapped: UIProduct[] = parsed.map((p: any) => ({
+          id: p.id,
+          slug: p.slug,
+          brand: p.brand,
+          name: p.name,
+          image: p.image,
+          lowestPrice: p.lowestPrice,
+          volume: p.volume,
+          viewtyScore: p.viewtyScore,
+          // stubs to satisfy TS interface
+          description: '',
+          skinTypes: [],
+          tags: [],
+          badges: ['최근 본 상품'],
+          lowestBasePrice: p.lowestPrice,
+          bestIsMultipack: false,
+          hasAnyPrice: p.lowestPrice > 0,
+          officialPrice: null,
+          discountVsOfficial: null,
+          regularPrice: null,
+          discountVsRegular: null,
+          lastUpdated: null,
+          source: 'oliveyoung',
+          reasonItems: [],
+          stores: [],
+          features: [],
+        }));
+        setRecentlyViewed(mapped);
+      }
+    } catch (e) {
+      console.error('Failed to parse recently viewed history from localStorage:', e);
+    }
+  }, []);
+
+  // Filter recommended products based on selected skin type, falling back to all recommended products
+  const carouselProducts = useMemo(() => {
+    if (!selectedSkin) return recommended;
+    // Get top recommended products matching skin type
+    return [...allProducts]
+      .filter((p) => p.skinTypes.includes(selectedSkin))
+      .sort((a, b) => b.viewtyScore - a.viewtyScore)
+      .slice(0, 8);
+  }, [allProducts, recommended, selectedSkin]);
 
   const handleSkinFilter = (skin: string) => {
-    setSelectedSkin((prev) => (prev === skin ? null : skin));
+    setSelectedSkin((prev) => {
+      const next = prev === skin ? null : skin;
+      if (next) {
+        localStorage.setItem('selectedSkinType', next);
+        window.dispatchEvent(new Event('selectedSkinTypeChanged'));
+      } else {
+        localStorage.removeItem('selectedSkinType');
+        window.dispatchEvent(new Event('selectedSkinTypeChanged'));
+      }
+      return next;
+    });
+  };
+
+  const handleClearHistory = () => {
+    localStorage.removeItem('recentlyViewedProducts');
+    setRecentlyViewed([]);
   };
 
   const handleSearchRedirect = () => {
@@ -38,89 +104,114 @@ export default function HomeInteractiveSection({ allProducts, recommended, offic
         <SearchBar onClick={handleSearchRedirect} readOnly />
       </section>
 
-      {/* Hero Banner (Figma UI §1) */}
-      <section className="px-4 py-4 bg-bg">
-        <Link
-          href="/pick/directorpi/sunscreen"
-          className="relative block w-full rounded-card-lg p-5 flex flex-col justify-between hover:opacity-98 active:scale-[0.99] transition-all shadow-[0_8px_24px_rgba(65,0,22,0.04)] overflow-hidden border border-line"
-          style={{ background: 'linear-gradient(135deg, #F6E7EC 0%, #FBF7F1 52%, #F7EFE7 100%)' }}
-        >
-          <div className="flex flex-col gap-2 z-10 max-w-[65%]">
-            <h2 className="text-[20px] font-black text-primary leading-tight tracking-tight">
-              피부에 밸런스를,<br />
-              가격에는 합리성을
-            </h2>
-            <p className="text-[12px] text-text-secondary font-bold leading-relaxed mt-1">
-              매일 똑똑하게 뷰티 쇼핑하세요
-            </p>
-            
-            <div className="mt-4">
-              <span className="inline-flex items-center gap-1.5 px-4.5 py-2.5 bg-primary text-white text-[12px] font-extrabold rounded-full shadow-sm hover:bg-primary-hover transition-colors">
-                <span>추천 선크림 보기</span>
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-3 h-3">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
-                </svg>
-              </span>
-            </div>
-          </div>
+      {/* Curation Carousel Banners */}
+      <CurationCarousel />
 
-          {/* Right decoration (mock image of sunscreen bottles) */}
-          <div className="absolute right-2 bottom-4 w-[110px] h-[110px] opacity-90 pointer-events-none select-none flex items-end justify-center">
-            <span className="text-[72px] leading-none">🧴</span>
-          </div>
-
-          {/* Page Indicators (Bottom Left / Bottom Right) */}
-          <div className="mt-8 flex items-center justify-between z-10">
-            {/* Dots */}
-            <div className="flex gap-1.5 items-center">
-              <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-              <span className="w-1.5 h-1.5 rounded-full bg-[#D9C8C9]" />
-              <span className="w-1.5 h-1.5 rounded-full bg-[#D9C8C9]" />
-            </div>
-            
-            {/* Badge */}
-            <span className="px-2 py-0.5 bg-[rgba(41,39,42,0.55)] text-white text-[10px] font-bold rounded-full">
-              1/5
-            </span>
-          </div>
-        </Link>
-      </section>
-
-      {/* Skin Type and Category Section */}
+      {/* Skin Type Section (Categories removed) */}
       <SkinTypeAndCategorySection selectedSkin={selectedSkin} onSkinSelect={handleSkinFilter} />
 
-      {/* TOP 10 Carousel section */}
-      {!selectedSkin && recommended.length > 0 && (
+      {/* Dynamic Recommended Products Carousel */}
+      {carouselProducts.length > 0 && (
         <section className="py-4 bg-bg flex flex-col gap-3">
           <h3 className="px-4 text-[15px] font-black text-title tracking-tight flex items-center gap-1.5">
-            <span>🔥 디렉터파이 추천 TOP</span>
-            <span className="text-xs bg-accent-light text-[#7A5B00] px-2 py-0.5 rounded-full font-extrabold leading-none">
+            <span>
+              뷰티 PICK 오늘의 {selectedSkin ? `[${selectedSkin}] ` : ''}상품
+            </span>
+            <button
+              onClick={() => setIsInfoOpen(true)}
+              className="text-[#6F6667] hover:text-primary transition-colors cursor-pointer inline-flex items-center"
+              aria-label="뷰티 스코어 산정 기준 보기"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 5.25h.008v.008H12v-.008Z" />
+              </svg>
+            </button>
+            <span className="text-xs bg-accent-light text-[#7A5B00] px-2 py-0.5 rounded-full font-extrabold leading-none ml-auto">
               매일 갱신
             </span>
           </h3>
-          <ProductCarousel products={recommended} />
+          <ProductCarousel products={carouselProducts} />
         </section>
       )}
 
-      {/* Today Deal Section / Skin recommendation list */}
-      {selectedSkin ? (
-        <section className="px-4 py-4 bg-bg flex flex-col gap-3">
-          <h3 className="text-[15px] font-black text-title tracking-tight">
-            피부 고민 [{selectedSkin}] 추천 제품
+      {/* Recently Viewed Products or Fallback Deals */}
+      {recentlyViewed.length > 0 ? (
+        <section className="py-4 bg-bg flex flex-col gap-3 border-t border-divider">
+          <h3 className="px-4 text-[15px] font-black text-title tracking-tight flex items-center justify-between">
+            <span>🕰️ 최근 본 상품</span>
+            <button
+              onClick={handleClearHistory}
+              className="text-[11px] text-[#A8A0A0] hover:text-primary font-bold transition-colors cursor-pointer"
+            >
+              전체삭제
+            </button>
           </h3>
-          <div className="flex flex-col gap-2.5">
-            {filteredProducts.map((prod) => (
-              <ProductListCard key={prod.id} product={prod} />
-            ))}
-            {filteredProducts.length === 0 && (
-              <div className="w-full text-center py-12 text-sub font-bold border border-dashed border-line rounded-card bg-white">
-                조건에 맞는 제품이 없습니다.
-              </div>
-            )}
-          </div>
+          <ProductCarousel products={recentlyViewed} />
         </section>
       ) : (
         <TodayDealSection products={officialPicks} loading={false} />
+      )}
+
+      {/* Viewty Score explanation modal */}
+      {isInfoOpen && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-surface border border-line rounded-[28px] max-w-[360px] w-full p-6 shadow-floating animate-in fade-in zoom-in duration-200">
+            <div className="flex justify-between items-start mb-3">
+              <h4 className="text-[16px] font-black text-primary">뷰티 PICK 점수 (Viewty Score) 기준</h4>
+              <button
+                onClick={() => setIsInfoOpen(false)}
+                className="text-text-secondary hover:text-primary transition-colors cursor-pointer p-0.5"
+                aria-label="닫기"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            <p className="text-[11.5px] text-text-secondary font-semibold leading-relaxed mb-5">
+              뷰티 PICK의 추천 순위는 광고를 배제하고 전문가 추천, 실사용 만족도, 판매처별 최저 가격 혜택을 자체 알고리즘으로 평가한 점수입니다.
+            </p>
+            
+            <div className="flex flex-col gap-4">
+              {/* Item 1 */}
+              <div className="flex flex-col gap-1.5">
+                <div className="flex justify-between items-center text-[12px] font-black">
+                  <span className="text-title">1. 추천 신뢰성 (Credibility)</span>
+                  <span className="text-primary">50%</span>
+                </div>
+                <div className="w-full bg-[#EFE6DF] h-2 rounded-full overflow-hidden">
+                  <div className="bg-primary h-full rounded-full" style={{ width: '50%' }} />
+                </div>
+                <span className="text-[10px] text-text-secondary font-bold leading-none">디렉터파이 합격템, 화해 랭킹, 올영 베스트 선정 여부</span>
+              </div>
+
+              {/* Item 2 */}
+              <div className="flex flex-col gap-1.5">
+                <div className="flex justify-between items-center text-[12px] font-black">
+                  <span className="text-title">2. 가격 경쟁력 (Competitiveness)</span>
+                  <span className="text-primary">35%</span>
+                </div>
+                <div className="w-full bg-[#EFE6DF] h-2 rounded-full overflow-hidden">
+                  <div className="bg-primary h-full rounded-full" style={{ width: '35%' }} />
+                </div>
+                <span className="text-[10px] text-text-secondary font-bold leading-none">동일 용량 대비 최저가 상위 비율, 공식몰 대비 할인폭</span>
+              </div>
+
+              {/* Item 3 */}
+              <div className="flex flex-col gap-1.5">
+                <div className="flex justify-between items-center text-[12px] font-black">
+                  <span className="text-title">3. 판매처 다양성 (Availability)</span>
+                  <span className="text-primary">15%</span>
+                </div>
+                <div className="w-full bg-[#EFE6DF] h-2 rounded-full overflow-hidden">
+                  <div className="bg-primary h-full rounded-full" style={{ width: '15%' }} />
+                </div>
+                <span className="text-[10px] text-text-secondary font-bold leading-none">올리브영, 쿠팡, 네이버 3대 쇼핑몰 동시 입점 및 가격 갱신</span>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

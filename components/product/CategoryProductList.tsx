@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import Chip from '../common/Chip';
 import ProductListCard from './ProductListCard';
 import { UIProduct, Category } from '../../lib/types';
@@ -10,7 +10,7 @@ interface Props {
   minors?: Category[]; // 소분류 sub-filter chips (present on 대분류 pages)
 }
 
-const SKIN_TYPES = ['지성', '건성', '수부지', '민감성'] as const;
+const SKIN_TYPES = ['지성', '건성', '수부지', '민감성', '복합성'] as const;
 const SORT_OPTIONS = [
   { key: 'recommend', label: '추천순' },
   { key: 'price_asc', label: '최저가순' },
@@ -24,21 +24,62 @@ export default function CategoryProductList({ initialProducts, minors }: Props) 
   const [selectedMinor, setSelectedMinor] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<SortKey>('recommend');
 
+  // Load from localStorage on mount and sync with changes
+  useEffect(() => {
+    const saved = localStorage.getItem('selectedSkinType');
+    if (saved) {
+      setSelectedSkin(saved);
+    }
+
+    const handleSync = () => {
+      setSelectedSkin(localStorage.getItem('selectedSkinType'));
+    };
+    window.addEventListener('selectedSkinTypeChanged', handleSync);
+    return () => {
+      window.removeEventListener('selectedSkinTypeChanged', handleSync);
+    };
+  }, []);
+
+  const handleSkinChipClick = (skin: string) => {
+    setSelectedSkin((prev) => {
+      const next = prev === skin ? null : skin;
+      if (next) {
+        localStorage.setItem('selectedSkinType', next);
+      } else {
+        localStorage.removeItem('selectedSkinType');
+      }
+      window.dispatchEvent(new Event('selectedSkinTypeChanged'));
+      return next;
+    });
+  };
+
   const products = useMemo(() => {
     let result = initialProducts;
-    if (selectedMinor) result = result.filter((p) => p.category === selectedMinor);
-    if (selectedSkin) result = result.filter((p) => p.skinTypes.includes(selectedSkin));
-
-    const copy = [...result];
-    const askPrice = (p: UIProduct) => (p.lowestPrice > 0 ? p.lowestPrice : Number.POSITIVE_INFINITY);
-    if (sortBy === 'recommend') {
-      copy.sort((a, b) => b.viewtyScore - a.viewtyScore);
-    } else if (sortBy === 'price_asc') {
-      copy.sort((a, b) => askPrice(a) - askPrice(b)); // missing price → back
-    } else if (sortBy === 'discount') {
-      copy.sort((a, b) => (b.discountVsOfficial || 0) - (a.discountVsOfficial || 0));
+    if (selectedMinor) {
+      result = result.filter((p) => p.category === selectedMinor);
     }
-    return copy;
+
+    const askPrice = (p: UIProduct) => (p.lowestPrice > 0 ? p.lowestPrice : Number.POSITIVE_INFINITY);
+
+    const sortFn = (a: UIProduct, b: UIProduct) => {
+      if (sortBy === 'recommend') {
+        return b.viewtyScore - a.viewtyScore;
+      } else if (sortBy === 'price_asc') {
+        return askPrice(a) - askPrice(b); // missing price → back
+      } else if (sortBy === 'discount') {
+        return (b.discountVsOfficial || 0) - (a.discountVsOfficial || 0);
+      }
+      return 0;
+    };
+
+    if (selectedSkin) {
+      // Partition: matching products first, then non-matching products
+      const matching = result.filter((p) => p.skinTypes.includes(selectedSkin)).sort(sortFn);
+      const nonMatching = result.filter((p) => !p.skinTypes.includes(selectedSkin)).sort(sortFn);
+      return [...matching, ...nonMatching];
+    } else {
+      return [...result].sort(sortFn);
+    }
   }, [initialProducts, selectedSkin, selectedMinor, sortBy]);
 
   return (
@@ -72,7 +113,7 @@ export default function CategoryProductList({ initialProducts, minors }: Props) 
                 key={skin}
                 label={skin}
                 selected={selectedSkin === skin}
-                onClick={() => setSelectedSkin(selectedSkin === skin ? null : skin)}
+                onClick={() => handleSkinChipClick(skin)}
               />
             ))}
           </div>
