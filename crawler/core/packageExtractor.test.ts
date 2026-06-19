@@ -227,22 +227,44 @@ for (const [idx, tc] of testCases.entries()) {
   if (single.heterogeneous) { console.error('  Fail: single wrongly flagged heterogeneous'); failed = true; }
   else console.log('  Pass: single not flagged heterogeneous');
 
-  const twoJong = extractPackageFromTitle('닥터지 레드 블레미쉬 포 맨 토너 진정올인원 2종 기획');
+  // Evidence-based (fix/set-classification-evidence-based): an explicit set COMPOUND
+  // (2종 세트) is heterogeneous; an ambiguous "기획 N종" with no real multi-item
+  // evidence is NOT (see §A below). A device/기기 bundle is still heterogeneous.
+  const setCompound = extractPackageFromTitle('롬앤 글래스팅 워터 틴트 2종 세트 기획');
   const device = extractPackageFromTitle('바이오힐보 NAD 세럼 30ml 슈링크 홈 디바이스 기획');
   const dblBig = extractPackageFromTitle('브링그린 티트리 시카 딥클렌징폼 200ml 기획 (더블/대용량)');
-  if (twoJong.heterogeneous !== true) { console.error('  Fail: "2종" not flagged heterogeneous'); failed = true; }
-  else console.log('  Pass: "2종" flagged heterogeneous');
+  if (setCompound.heterogeneous !== true) { console.error('  Fail: "2종 세트" (set compound) not flagged heterogeneous'); failed = true; }
+  else console.log('  Pass: "2종 세트" (set compound) flagged heterogeneous');
   if (device.heterogeneous !== true) { console.error('  Fail: device bundle not flagged heterogeneous'); failed = true; }
   else console.log('  Pass: device bundle flagged heterogeneous');
   // "(더블/대용량)" is ambiguous → must NOT be counted as ×2 (treat as single).
   if (dblBig.unitCount === 2) { console.error('  Fail: "(더블/대용량)" wrongly counted as ×2'); failed = true; }
   else console.log('  Pass: "(더블/대용량)" not over-counted');
 
+  // §A: a single-product single-volume title with an ambiguous "기획 N종" (NO set
+  // compound, one volume) → priced single (link-only 탈출), NOT heterogeneous.
+  const planN = extractPackageFromTitle('닥터지 더모이스처 배리어 D 인텐스 크림 100ml 기획 3종');
+  if (planN.heterogeneous) { console.error('  Fail: "100ml 기획 3종" wrongly flagged heterogeneous'); failed = true; }
+  else if (!(planN.detected && planN.unitType === 'ml' && planN.unitAmount === 100 && planN.unitCount === 1)) {
+    console.error(`  Fail: "100ml 기획 3종" not a priced single 100ml (got ${JSON.stringify({ d: planN.detected, a: planN.unitAmount, c: planN.unitCount })})`); failed = true;
+  } else console.log('  Pass: "100ml 기획 3종" priced single 100ml (link-only 탈출)');
+
   // fix/oliveyoung-n-jong-option: a BARE "N종" is an "N종 중 택1" option-select page
   // (단품), NOT a set → must NOT be flagged heterogeneous (so OY prices it as single).
   const bareJong = extractPackageFromTitle('롬앤 글래스팅 워터 틴트 쿠션 2종 30ml');
   if (bareJong.heterogeneous) { console.error('  Fail: bare "2종" wrongly flagged heterogeneous'); failed = true; }
   else console.log('  Pass: bare "2종" (option-select) not flagged heterogeneous');
+
+  // §B: homogeneous multipack (배수 용량 + 개수 신호) = the SAME product per-unit, NOT
+  // 이종; a non-multiple two-volume combine stays heterogeneous.
+  const homoPack = extractPackageFromTitle('이니스프리 레티놀 세럼 30ml 2개 (60ml)');
+  if (homoPack.heterogeneous) { console.error('  Fail: "30ml 2개 (60ml)" wrongly flagged heterogeneous'); failed = true; }
+  else if (!(homoPack.detected && homoPack.unitAmount === 30 && homoPack.unitCount === 2 && homoPack.totalAmount === 60)) {
+    console.error(`  Fail: "30ml 2개 (60ml)" not 30ml×2 (got ${JSON.stringify({ a: homoPack.unitAmount, c: homoPack.unitCount, t: homoPack.totalAmount })})`); failed = true;
+  } else console.log('  Pass: "30ml 2개 (60ml)" homogeneous 30ml×2 (개당가)');
+  const nonMultiple = extractPackageFromTitle('랑콤 토너 30ml + 미스트 50ml');
+  if (nonMultiple.heterogeneous !== true) { console.error('  Fail: "30ml + 미스트 50ml" (비배수) not flagged heterogeneous'); failed = true; }
+  else console.log('  Pass: "30ml + 미스트 50ml" (비배수) flagged heterogeneous');
 }
 
 console.log('\n=== Running Normalizer Integration Tests ===');

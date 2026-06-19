@@ -88,9 +88,9 @@ it('N종 verify items surface as an info line (price kept)', () => {
     durationSeconds: 1,
     nJongVerifyItems: ['롬앤 쿠션 @ 올리브영 https://oy.run/x'],
   });
-  assert(/N종 옵션 링크 — 세트 여부 확인/.test(msg), `N종 verify line missing:\n${msg}`);
-  assert(/롬앤 쿠션 @ 올리브영/.test(msg), `N종 item not listed:\n${msg}`);
-  assert(/1건/.test(msg), `N종 count should be 1:\n${msg}`);
+  assert(/세트\/구성 확인/.test(msg), `set/구성 verify line missing:\n${msg}`);
+  assert(/롬앤 쿠션 @ 올리브영/.test(msg), `verify item not listed:\n${msg}`);
+  assert(/1건/.test(msg), `verify count should be 1:\n${msg}`);
 });
 
 it('no N종 verify items → no N종 line', () => {
@@ -101,7 +101,7 @@ it('no N종 verify items → no N종 line', () => {
     failureCount: 0,
     durationSeconds: 1,
   });
-  assert(!/N종 옵션 링크/.test(msg), `N종 line should be absent when empty:\n${msg}`);
+  assert(!/세트\/구성 확인/.test(msg), `verify line should be absent when empty:\n${msg}`);
 });
 
 console.log(failed ? '\nResult: FAILED' : '\nResult: ALL PASSED');

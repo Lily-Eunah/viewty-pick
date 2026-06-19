@@ -21,7 +21,7 @@ import { Listing, Product, RetailerAllowlist } from '../../lib/types';
 import { PriceOffer, RetailerAdapter } from './index';
 import { isSupabaseServerConfigured, supabaseServer } from '../../lib/supabase/server';
 import { loadMockDB } from '../../lib/supabase/mockDb';
-import { extractPackageFromTitle, stripPromoGifts, isBareNJong, N_JONG_SET_RE } from '../core/packageExtractor';
+import { extractPackageFromTitle, stripPromoGifts, isBareNJong } from '../core/packageExtractor';
 import { crawlNaverPagePrice, isNaverStorefrontUrl } from '../core/naverPageCrawl';
 
 // ---------------------------------------------------------------------------
@@ -59,6 +59,10 @@ export interface OfferMatchResult {
   // mallName; 'catalog' = a 가격비교 catalog lprice. Such prices are always surfaced
   // as warning (inspection) — see NaverAdapter.fetchOffer + healthcheck.
   fallbackTier?: 'official-store' | 'catalog';
+  // True → route this priced match to the Discord set/구성 verify line (informational,
+  // does NOT block the price): a bare "N종" option-select, OR a 본품+소량 부스트 that was
+  // add-on-stripped (case C). The price IS shown; the operator confirms set-vs-단품.
+  nJongVerify?: boolean;
 }
 
 // productType: individual mall offers vs price-comparison catalog representative.
@@ -136,9 +140,10 @@ const MULTIPACK_COUNT = /(\d+)\s*(?:개|팩|병|입|매)/; // \b不可: 한글�
 
 // "N종" (2종/3종/4종) is, on its own, almost always an OPTION-SELECT page ("N종 중
 // 택1" → 단품 구매), NOT a physical set — so a BARE "N종" stays a comparable single
-// (옵션선택 → 정상 가격). It counts as a set ONLY with an adjacent set-context word
-// (N종 세트/구성/기획/패키지/콜렉션/컬렉션 …) — see N_JONG_SET_RE / isBareNJong in
-// packageExtractor (single source, also drives the heterogeneous gate there).
+// (옵션선택 → 정상 가격). Evidence-based (fix/set-classification-evidence-based): it
+// counts as a set ONLY when an explicit set COMPOUND is present (선물세트/기획세트/세트
+// 구성/패키지/콜렉션 — via SET_KEYWORDS); an ambiguous "기획 3종"/"선물 2종" is a single.
+// isBareNJong (packageExtractor) flags a bare "N종" for the Discord set-vs-option check.
 
 /**
  * True when an offer title carries a BARE "N종" — i.e. an "N종 중 택1" option-select
@@ -202,9 +207,10 @@ export function classifyOfferComposition(title: string): OfferComposition {
   if (/[x×*]\s*\d+\b/i.test(t)) return { kind: 'set', reason: '×N multiplier' };
   const cnt = t.match(MULTIPACK_COUNT);
   if (cnt && parseInt(cnt[1], 10) >= 2) return { kind: 'set', reason: `${cnt[1]}-count multipack` };
-  // "N종" only when a set-context word is adjacent; a bare "N종" is an option-select
-  // single (handled below by falling through to SET_KEYWORDS/single).
-  if (N_JONG_SET_RE.test(t)) return { kind: 'set', reason: 'N종 with set-context word (세트/구성/기획/패키지/콜렉션)' };
+  // Evidence-based (fix/set-classification-evidence-based): a "N종" makes an offer a
+  // set ONLY through an explicit set COMPOUND in SET_KEYWORDS (선물세트/기획세트/세트
+  // 구성/패키지/콜렉션/세트…). A bare "기획 3종" / "선물 2종" carries no such word → it
+  // falls through to a single (대개 'N종 중 택1' 옵션선택), surfaced to Discord verify.
   if (SET_KEYWORDS.test(t)) return { kind: 'set', reason: 'set/bundle keyword' };
   return { kind: 'single', reason: 'single unit' };
 }
@@ -350,18 +356,65 @@ export async function resolveCuratedProductNo(url: string): Promise<string | nul
 }
 
 /**
+ * C — minor add-on (부스트/증정) strip on a heterogeneous-looking anchored SKU
+ * (fix/set-classification-evidence-based). When the curated DB volume (본품) is one of
+ * the detected title volumes and EVERY other detected volume is STRICTLY smaller (a
+ * 소량 부스트/증정, not a 2nd 본품), and the title is neither a different form
+ * (hasFormConflict) nor a device bundle, the offer is the 본품 priced at the DB volume.
+ * The bundle price is attributed wholly to the 본품 (보수적 → ml당 약간↑, 가짜 최저가
+ * 방지). Returns null → keep the heterogeneous-set (inspection) treatment when the DB
+ * volume is absent, an add-on is ≥ 본품, or the form differs.
+ */
+export function stripMinorAddOn(
+  title: string,
+  mainVolumeMl: number | null,
+  name: string | null
+): { mainMl: number; note: string } | null {
+  if (!mainVolumeMl || mainVolumeMl <= 0) return null;
+  const t = stripHtml(title || '');
+  if (/디바이스|기기/.test(t)) return null; // a device bundle is a real set, never a strip
+  if (name && hasFormConflict(name, t)) return null; // different form/variant in same line
+  const vols = [...t.matchAll(/(\d+(?:\.\d+)?)\s*(ml|g)\b/gi)].map((m) => ({ amt: parseFloat(m[1]), unit: m[2].toLowerCase() }));
+  if (vols.length < 2) return null; // need ≥2 volumes for there to be an add-on to strip
+  if (new Set(vols.map((v) => v.unit)).size > 1) return null; // ml vs g mix → different products
+  const amts = vols.map((v) => v.amt);
+  if (!amts.includes(mainVolumeMl)) return null; // DB volume must BE one of the detected (본품)
+  const addOns = amts.filter((a) => a !== mainVolumeMl);
+  if (addOns.length === 0 || !addOns.every((a) => a < mainVolumeMl)) return null; // every add-on < 본품
+  return { mainMl: mainVolumeMl, note: `본품 ${mainVolumeMl}ml + 부속 ${addOns.map((a) => `${a}ml`).join('/')} 포함` };
+}
+
+/**
  * Tier-1 selection: find the result whose link is the curated SKU (productNo N).
  * Returns null when no anchor number is given or none matches (→ caller falls back
  * to tier-2 title matching). A single anchor is accepted as-is (exact SKU); a
- * set/multipack anchor is excluded (matched=null, anchorWasSet=true).
+ * set/multipack anchor is excluded (matched=null, anchorWasSet=true). A heterogeneous
+ * anchor that is really 본품(DB volume) + a 소량 부스트 is add-on-stripped and priced as
+ * the 본품 (case C) when mainVolumeMl/name are supplied.
  */
-export function pickAnchoredOffer(items: NaverShoppingItem[], anchorProductNo: string | null): OfferMatchResult | null {
+export function pickAnchoredOffer(
+  items: NaverShoppingItem[],
+  anchorProductNo: string | null,
+  mainVolumeMl: number | null = null,
+  name: string | null = null
+): OfferMatchResult | null {
   if (!anchorProductNo) return null;
   const anchored = items.find((it) => productNoFrom(it.link) === anchorProductNo);
   if (!anchored) return null;
   const ext = extractPackageFromTitle(stripHtml(anchored.title));
   // Heterogeneous 2-product set (e.g. 토너 + 세럼, both 본품) → per-unit not computable.
   if (ext.heterogeneous) {
+    // Case C: 본품(DB용량) + 소량 부스트/증정 → strip the add-on, price as 본품.
+    const stripped = stripMinorAddOn(anchored.title, mainVolumeMl, name);
+    if (stripped) {
+      return {
+        matched: anchored,
+        parsedVolumeRaw: stripped.mainMl, // 본품=DB volume; bundle price attributed to it (보수적)
+        identityScore: 1,
+        reason: `id-anchored to curated SKU (productNo ${anchorProductNo}) @${anchored.mallName} — ${stripped.note} (소량 부스트 strip, 본품 기준 가격)`,
+        nJongVerify: true, // surface to Discord set/구성 verify (price IS shown)
+      };
+    }
     return {
       matched: null,
       parsedVolumeRaw: null,
@@ -672,7 +725,9 @@ export async function matchNaverOffer(
   for (const query of candidates) {
     const items = await searchNaverShopping(query, clientId, clientSecret);
     if (anchorProductNo) {
-      const anchor = pickAnchoredOffer(items, anchorProductNo);
+      // Pass the DB volume + name so a heterogeneous anchor that is really 본품(DB용량)
+      // + a 소량 부스트 is add-on-stripped and priced as the 본품 (case C).
+      const anchor = pickAnchoredOffer(items, anchorProductNo, product.volume_ml ?? null, product.name);
       if (anchor) return anchor; // Tier-1: anchored single/bundle (price) OR set (inspection)
     }
     for (const it of items) {
@@ -1092,7 +1147,8 @@ export class NaverAdapter implements RetailerAdapter {
       parsedVolumeRaw: result.parsedVolumeRaw,
       matchedUrl: isAffiliate ? null : item.link || null,
       matchedMallName: item.mallName || null,
-      nJongVerify: containsBareNJong(item.title),
+      // Bare "N종" option-select OR a case-C 본품+부스트 strip → Discord set/구성 verify.
+      nJongVerify: containsBareNJong(item.title) || !!result.nJongVerify,
       outcome: 'ok',
     };
   }
