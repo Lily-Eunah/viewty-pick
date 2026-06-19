@@ -1,4 +1,4 @@
-import { Category, Seller, Product, Badge, ProductBadge, Listing, RetailerAllowlist, PriceSnapshot, CurrentPrice, ManualOverride, SeoPage, ScoreConfig, AffiliateClick } from '../types';
+import { Category, Seller, Product, Badge, ProductBadge, Listing, RetailerAllowlist, PriceSnapshot, CurrentPrice, ManualOverride, SeoPage, ScoreConfig, AffiliateClick, WaitlistEntry } from '../types';
 import { categories as defaultCategories } from '../data/categories';
 import { products as defaultUiProducts } from '../data/products';
 
@@ -24,6 +24,7 @@ export interface MockDBState {
   seo_pages: SeoPage[];
   score_config: ScoreConfig[];
   affiliate_clicks: AffiliateClick[];
+  waitlist: WaitlistEntry[];
 }
 
 // 1. Initial State Seed Generator
@@ -161,7 +162,8 @@ function getInitialState(): MockDBState {
       { id: 2, slug: 'sensitive-sunscreen', page_type: 'skin', title: '민감성 피부 추천 선크림 최저가 한눈에 보기', h1: '민감성 피부 선크림 추천', description: '민감한 피부 타입을 위한 디렉터파이 합격 선크림의 판매처별 가격비교 정보입니다.', category: 'sunscreen', skin_type: '민감성', badge_type: null, is_active: true }
     ],
     score_config,
-    affiliate_clicks: []
+    affiliate_clicks: [],
+    waitlist: []
   };
 }
 
