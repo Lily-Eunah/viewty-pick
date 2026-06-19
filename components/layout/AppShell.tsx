@@ -1,6 +1,5 @@
 import React from 'react';
 import BottomTabBar from './BottomTabBar';
-import CoupangPartnersNotice from '../common/CoupangPartnersNotice';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -20,10 +19,6 @@ export default function AppShell({
         <main className="w-full flex-grow flex flex-col">
           {children}
         </main>
-
-        {/* Coupang Partners disclosure — site-wide so any page showing a Coupang
-            link/image meets the policy (DESIGN §12). */}
-        <CoupangPartnersNotice />
 
         {showTabBar && <BottomTabBar activeTab={activeTab} />}
       </div>
