@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import Chip from '../common/Chip';
 import ProductListCard from './ProductListCard';
 import { UIProduct, Category } from '../../lib/types';
+import { useSelectedSkinType } from '../../lib/hooks/useSelectedSkinType';
 
 interface Props {
   initialProducts: UIProduct[];
@@ -20,37 +21,14 @@ const SORT_OPTIONS = [
 type SortKey = typeof SORT_OPTIONS[number]['key'];
 
 export default function CategoryProductList({ initialProducts, minors }: Props) {
-  const [selectedSkin, setSelectedSkin] = useState<string | null>(null);
+  // Skin type is shared with the home list via localStorage + a change event; the
+  // hook keeps both in sync (and is hydration-safe, see useSelectedSkinType).
+  const [selectedSkin, setSelectedSkin] = useSelectedSkinType();
   const [selectedMinor, setSelectedMinor] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<SortKey>('recommend');
 
-  // Load from localStorage on mount and sync with changes
-  useEffect(() => {
-    const saved = localStorage.getItem('selectedSkinType');
-    if (saved) {
-      setSelectedSkin(saved);
-    }
-
-    const handleSync = () => {
-      setSelectedSkin(localStorage.getItem('selectedSkinType'));
-    };
-    window.addEventListener('selectedSkinTypeChanged', handleSync);
-    return () => {
-      window.removeEventListener('selectedSkinTypeChanged', handleSync);
-    };
-  }, []);
-
   const handleSkinChipClick = (skin: string) => {
-    setSelectedSkin((prev) => {
-      const next = prev === skin ? null : skin;
-      if (next) {
-        localStorage.setItem('selectedSkinType', next);
-      } else {
-        localStorage.removeItem('selectedSkinType');
-      }
-      window.dispatchEvent(new Event('selectedSkinTypeChanged'));
-      return next;
-    });
+    setSelectedSkin(selectedSkin === skin ? null : skin);
   };
 
   const products = useMemo(() => {

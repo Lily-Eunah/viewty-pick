@@ -14,6 +14,8 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // opennextjs-cloudflare build output (gitignored): not source, never lint.
     ".open-next/**",
+    // wrangler build/temp output (gitignored): not source, never lint.
+    ".wrangler/**",
   ]),
 ]);
 
