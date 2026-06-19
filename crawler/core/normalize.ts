@@ -7,8 +7,8 @@ export interface NormalizedPrice {
   sale_price: number | null;
   base_unit_price: number | null;
   effective_unit_price: number | null;
-  unit_price: number | null; // per ml — null when not reliable (§1 compromise)
-  unit_price_reliable: boolean; // false when volume mismatched/unverified
+  unit_price: number | null; // per ml — null only when volume unverified / match unverified
+  unit_price_reliable: boolean; // false only when DB volume unverified & not read, or match unverified
   promo_type: PromoType;
   promo_text: string | null;
   min_quantity: number;
@@ -18,7 +18,8 @@ export interface NormalizedPrice {
   total_ml: number;
   in_stock: boolean;
   parse_confidence: ParseConfidence;
-  // Flags consumed by healthcheck / notify
+  // Informational only (per-retailer volume): true when the listing volume differs
+  // from the DB volume. Does NOT gate the price or unit_price — kept for audit/log.
   volume_mismatch: boolean;
   volume_mismatch_detail: string | null;
   shipping_note: string | null;
@@ -168,52 +169,51 @@ export function normalizePrice(product: Product, offer: PriceOffer): NormalizedP
     effective_unit_price = sale_price;
   }
 
-  // --- Volume and volume-mismatch detection ---
+  // --- Per-retailer volume (operator decision: size differs per seller) ---
+  // A retailer may sell the same product (identity-confirmed upstream) in a
+  // different size (네이버 100ml / 올리브영 80ml / 쿠팡 120ml). We therefore price
+  // ml당 from THIS listing's own volume:
+  //   - volume READ from the offer (parsedVolumeRaw or title) → use it.
+  //   - volume NOT read → assume the DB volume (product.volume_ml).
+  // Either way unit_price is computed and unit_price_reliable=true. A volume that
+  // differs from the DB is NO LONGER a mismatch-gate — `volume_mismatch_detail`
+  // is kept ONLY as an informational audit string (NOT used to null the price or
+  // hold the listing). The parsing-error risk (wrong ml → wrong ml당) is accepted.
   let volume_ml = product.volume_ml || 50;
-  let volume_mismatch = false;
   let volume_mismatch_detail: string | null = null;
-
-  // §1 compromise: a volume mismatch (or unverified volume) does NOT gate the
-  // price. base_unit_price / effective_unit_price stay as-is and parse_confidence
-  // stays 'high' when the price itself is sound. Only the ml-dependent unit_price
-  // is marked unreliable (null + unit_price_reliable=false) and the mismatch is
-  // flagged for the inspection queue / volume-audit (§1b).
 
   // Check 1: explicit parsedVolumeRaw from adapter (Naver crawl provides this)
   if (offer.parsedVolumeRaw !== undefined && offer.parsedVolumeRaw !== null) {
+    volume_ml = offer.parsedVolumeRaw;
     if (product.volume_ml && offer.parsedVolumeRaw !== product.volume_ml) {
-      volume_mismatch = true;
-      volume_mismatch_detail = `Page volume ${offer.parsedVolumeRaw}ml ≠ DB ${product.volume_ml}ml`;
-    } else {
-      volume_ml = offer.parsedVolumeRaw;
+      volume_mismatch_detail = `판매처 용량 ${offer.parsedVolumeRaw}ml (DB ${product.volume_ml}ml와 다름) — 판매처 용량으로 ml당 계산`;
     }
   } else if (offer.sourceText && (promo_type === 'bundle' || promo_type === 'none')) {
     // Check 2: derive volume from title for bundle/none promos
     const ext = extractPackageFromTitle(offer.sourceText);
     if (ext.detected && ext.confidence === 'high' && ext.unitAmount !== null) {
+      volume_ml = ext.unitAmount;
       if (product.volume_ml && ext.unitAmount !== product.volume_ml) {
-        volume_mismatch = true;
-        volume_mismatch_detail = `Title volume ${ext.unitAmount}ml ≠ DB ${product.volume_ml}ml`;
-      } else {
-        volume_ml = ext.unitAmount;
+        volume_mismatch_detail = `판매처 용량 ${ext.unitAmount}ml (DB ${product.volume_ml}ml와 다름) — 판매처 용량으로 ml당 계산`;
       }
     }
   }
 
   const total_ml = volume_ml * total_quantity;
 
-  // ml당 단가 (using effective unit price for cross-product comparison).
-  // Gated: when volume is mismatched/unverified the ml normalization is not
-  // trustworthy, so unit_price is nulled and excluded from ml-based ranking /
-  // Viewty Score ml-항목. The actual prices remain visible and comparable.
-  // §1b: an explicitly-unverified DB volume (LLM-seeded default) is also unreliable
-  // for ml normalization, even without a detected mismatch. Price stays; ml off.
-  const volume_unverified = product.volume_verified === false;
+  // ml당 단가 (effective unit price ÷ this listing's volume). Per-retailer volume:
+  // computed and reliable regardless of whether the volume was parsed or assumed.
+  // §1b: an explicitly-unverified DB volume (LLM-seeded default) stays unreliable
+  // for ml normalization ONLY when the volume was NOT read from the listing — a
+  // parsed listing volume overrides the unverified DB default.
+  const volume_from_listing =
+    (offer.parsedVolumeRaw !== undefined && offer.parsedVolumeRaw !== null) || volume_mismatch_detail !== null;
+  const volume_unverified = product.volume_verified === false && !volume_from_listing;
   // A non-anchored fallback match (offer.inspectionWarning set) has UNVERIFIED SKU
-  // identity, so its ml normalization is not trustworthy either — disable the
-  // ml-based unit_price (price itself stays visible/comparable, like §1b).
+  // identity, so its ml normalization is not trustworthy — disable the ml-based
+  // unit_price (price itself stays visible/comparable, like §1b).
   const match_unverified = !!offer.inspectionWarning;
-  const unit_price_reliable = !volume_mismatch && !volume_unverified && !match_unverified;
+  const unit_price_reliable = !volume_unverified && !match_unverified;
   const unit_price =
     unit_price_reliable && effective_unit_price !== null
       ? Number((effective_unit_price / volume_ml).toFixed(4))
@@ -235,7 +235,7 @@ export function normalizePrice(product: Product, offer: PriceOffer): NormalizedP
     total_ml,
     in_stock,
     parse_confidence,
-    volume_mismatch,
+    volume_mismatch: volume_mismatch_detail !== null, // informational, never gates
     volume_mismatch_detail,
     shipping_note: offer.shippingNote ?? null,
   };
