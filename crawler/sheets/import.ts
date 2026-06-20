@@ -171,21 +171,40 @@ async function resolveProductImages(rawProducts: Record<string, string>[]): Prom
 
 /**
  * Final products.image_url to store, given the raw sheet value, the product's
- * brand+name, and the pre-resolved map. A Coupang product-page URL collapses to ITS
- * product's resolved image or null (never the page URL); a direct image URL passes
- * through; empty → null.
+ * brand+name, the pre-resolved map, and the product's CURRENT DB image_url.
+ *   - empty sheet cell          → null (operator cleared it on purpose),
+ *   - direct image URL          → itself,
+ *   - Coupang URL, resolved     → resolved image,
+ *   - Coupang URL, UNRESOLVED   → keep the last-good DB image (keptPrevious), since
+ *                                 resolution failure is usually transient (rate
+ *                                 limit). Only when there is no previous image does
+ *                                 it fall to null.
+ *
+ * Keeping the previous value turns a transient Coupang resolution failure into a
+ * no-op instead of permanent data loss. The narrow stale case (operator swapped the
+ * Coupang URL for a different product AND that re-resolve fails the same run) is
+ * accepted here — the first-pass rule is "same kind of value, resolve failed → keep
+ * previous"; the next successful run corrects it.
  */
-function resolveImageUrl(
+export function resolveImageUrl(
   rawImageUrl: string | undefined,
   brand: string | null | undefined,
   name: string | null | undefined,
   resolved: Map<string, string>,
-): string | null {
+  previousImageUrl?: string | null,
+): { image: string | null; keptPrevious: boolean } {
   const raw = (rawImageUrl ?? '').trim();
-  if (!raw) return null;
+  if (!raw) return { image: null, keptPrevious: false }; // operator cleared the cell
   const key = imageResolveKey(raw, brand, name);
   const value = resolved.has(key) ? resolved.get(key)! : raw;
-  return value || null;
+  if (value) return { image: value, keptPrevious: false };
+  // value is empty ⇒ a Coupang product-page URL we failed to resolve this run
+  // (transient — e.g. rate limit). Keep the last-good DB image rather than wiping it.
+  if (isCoupangProductPageUrl(raw)) {
+    const prev = (previousImageUrl ?? '').trim();
+    if (prev) return { image: prev, keptPrevious: true };
+  }
+  return { image: null, keptPrevious: false };
 }
 
 // ---------------------------------------------------------------------------
@@ -318,11 +337,19 @@ export async function runSheetImport(): Promise<ImportStats> {
       const { data: dbCategories, error: catErr } = await supabaseServer.from('categories').select('*');
       if (catErr) throw catErr;
 
+      // Current DB image per product_key — so an unresolved Coupang image keeps its
+      // last-good value instead of being wiped (see resolveImageUrl).
+      const { data: existingForImages } = await supabaseServer.from('products').select('product_key, image_url');
+      const prevImageByKey = new Map((existingForImages ?? []).map((p) => [p.product_key, p.image_url as string | null]));
+      let keptPreviousImages = 0;
+
       for (const row of rawProducts) {
         const p = v.simpleProductRowSchema.safeParse(row);
         if (!p.success) { stats.errorCount++; stats.errors.push(`Product: ${p.error.message}`); continue; }
         const productKey = p.data.product_key?.trim() || makeProductKey(p.data.brand, p.data.name);
         const categoryId = dbCategories?.find((c) => c.slug === p.data.category || c.name === p.data.category)?.id ?? null;
+        const img = resolveImageUrl(p.data.image_url, p.data.brand || null, p.data.name, resolvedImages, prevImageByKey.get(productKey) ?? null);
+        if (img.keptPrevious) keptPreviousImages++;
 
         const { error } = await supabaseServer.from('products').upsert({
           product_key: productKey,
@@ -333,7 +360,7 @@ export async function runSheetImport(): Promise<ImportStats> {
           volume_ml:   p.data.volume_ml,
           regular_price: p.data.regular_price,
           hwahae_url:  p.data.hwahae_url  || null,
-          image_url:   resolveImageUrl(p.data.image_url, p.data.brand || null, p.data.name, resolvedImages),
+          image_url:   img.image,
           features:    p.data.features    || null,
           skin_types:  p.data.skin_types,
           is_active:   !p.data.is_disabled,
@@ -341,6 +368,7 @@ export async function runSheetImport(): Promise<ImportStats> {
         if (error) throw error;
         stats.productsCount++;
       }
+      if (keptPreviousImages) console.log(`[Sheet Import] Coupang image unresolved, kept previous: ${keptPreviousImages}`);
 
       // 3. Listings (from expanded flat list)
       const { data: dbProducts } = await supabaseServer.from('products').select('*');
@@ -535,18 +563,22 @@ export async function runSheetImport(): Promise<ImportStats> {
     }
 
     // Products
+    let keptPreviousImages = 0;
     for (const row of rawProducts) {
       const p = v.simpleProductRowSchema.safeParse(row);
       if (!p.success) { stats.errorCount++; stats.errors.push(`Product: ${p.error.message}`); continue; }
       const productKey = p.data.product_key?.trim() || makeProductKey(p.data.brand, p.data.name);
       const categoryId = db.categories.find((c) => c.slug === p.data.category || c.name === p.data.category)?.id ?? null;
       const existing   = db.products.find((pr) => pr.product_key === productKey);
-      const data = { product_key: productKey, slug: v.resolveDisplaySlug(p.data.slug, productKey), name: p.data.name, brand: p.data.brand || null, category_id: categoryId, volume_ml: p.data.volume_ml, regular_price: p.data.regular_price, hwahae_url: p.data.hwahae_url || null, image_url: resolveImageUrl(p.data.image_url, p.data.brand || null, p.data.name, resolvedImages), features: p.data.features || null, skin_types: p.data.skin_types, official_info_url: null, viewty_score: 0, source: 'sheet', is_active: !p.data.is_disabled };
+      const img = resolveImageUrl(p.data.image_url, p.data.brand || null, p.data.name, resolvedImages, existing?.image_url ?? null);
+      if (img.keptPrevious) keptPreviousImages++;
+      const data = { product_key: productKey, slug: v.resolveDisplaySlug(p.data.slug, productKey), name: p.data.name, brand: p.data.brand || null, category_id: categoryId, volume_ml: p.data.volume_ml, regular_price: p.data.regular_price, hwahae_url: p.data.hwahae_url || null, image_url: img.image, features: p.data.features || null, skin_types: p.data.skin_types, official_info_url: null, viewty_score: 0, source: 'sheet', is_active: !p.data.is_disabled };
       if (existing) { Object.assign(existing, data); }
       else { db.products.push({ id: (db.products.length ? Math.max(...db.products.map((pr) => pr.id)) + 1 : 1), ...data }); }
       nameToKey.set(p.data.name.trim(), productKey);
       stats.productsCount++;
     }
+    if (keptPreviousImages) console.log(`[Sheet Import] Coupang image unresolved, kept previous: ${keptPreviousImages}`);
 
     // Listings (from flat list)
     for (const listing of flatListings) {
