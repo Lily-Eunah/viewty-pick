@@ -58,10 +58,6 @@ export default function ProductCard({ product }: ProductCardProps) {
               <span className="text-[10px] text-discount font-extrabold leading-none mt-0.5">
                 정가 대비 {product.discountVsRegular}% 할인
               </span>
-            ) : product.discountVsOfficial && product.discountVsOfficial > 0 ? (
-              <span className="text-[10px] text-discount font-extrabold leading-none mt-0.5">
-                정가 대비 {product.discountVsOfficial}% 할인
-              </span>
             ) : null}
           </div>
           

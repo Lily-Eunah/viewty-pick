@@ -232,16 +232,6 @@ function mapToUIProduct(
   const lowestBasePrice = hasAnyPrice ? Math.min(...priced.map((s) => s.price)) : 0;
   const bestIsMultipack = !!(firstPriced && (firstPriced.quantity ?? 1) > 1);
 
-  // 공식몰 대비: official brand-store per-unit baseline vs the lowest non-official per-unit.
-  const officialStore = priced.find((s) => s.isOfficial);
-  const officialPrice = officialStore ? perUnit(officialStore) : null;
-  const nonOfficial = priced.filter((s) => !s.isOfficial).map(perUnit);
-  const otherLowest = nonOfficial.length > 0 ? Math.min(...nonOfficial) : null;
-  const discountVsOfficial =
-    officialPrice && officialPrice > 0 && otherLowest !== null && otherLowest < officialPrice
-      ? Math.round(((officialPrice - otherLowest) / officialPrice) * 100)
-      : null;
-
   // Freshness: newest crawled_at among this product's displayable rows.
   const prodLps = dbListingPrices.filter((p) => p.product_id === prod.id && p.crawled_at);
   const lastUpdated = prodLps.length > 0
@@ -275,8 +265,6 @@ function mapToUIProduct(
     lowestBasePrice,
     bestIsMultipack,
     hasAnyPrice,
-    officialPrice,
-    discountVsOfficial,
     // 정가 대비: headline uses the best (최저가) store's ml당-normalized discount.
     regularPrice,
     discountVsRegular: firstPriced ? firstPriced.discountVsRegular ?? null : null,
@@ -469,8 +457,8 @@ export async function getProducts(filters?: {
   } else if (sortBy === 'price_desc') {
     uiProducts.sort(byPriceThen((a, b) => (b.lowestPrice || 0) - (a.lowestPrice || 0)));
   } else if (sortBy === 'discount') {
-    // Prefer 정가 대비 (when a 정가 exists), else fall back to 공식몰 대비.
-    const disc = (p: UIProduct) => p.discountVsRegular ?? p.discountVsOfficial ?? 0;
+    // 정가 대비 할인률 기준. 정가 미입력 제품은 0으로 뒤로 밀린다.
+    const disc = (p: UIProduct) => p.discountVsRegular ?? 0;
     uiProducts.sort(byPriceThen((a, b) => disc(b) - disc(a)));
   }
 
@@ -497,12 +485,12 @@ export async function getRecommendedProducts(limit = 10): Promise<UIProduct[]> {
 }
 
 /**
- * 정가 대비 최저가 픽: products where a verified seller beats the regular price
- * (or official store price as fallback), ranked by the discount %.
+ * 정가 대비 최저가 픽: products where a verified seller beats the 정가 (MSRP),
+ * ranked by the 정가-대비 discount %. 정가 미입력 제품은 제외된다.
  */
 export async function getOfficialPickProducts(limit = 6): Promise<UIProduct[]> {
   const products = await getProducts();
-  const disc = (p: UIProduct) => p.discountVsRegular ?? p.discountVsOfficial ?? 0;
+  const disc = (p: UIProduct) => p.discountVsRegular ?? 0;
   return products
     .filter((p) => disc(p) > 0)
     .sort(byPriceThen((a, b) => disc(b) - disc(a)))
@@ -515,7 +503,7 @@ export async function getOfficialPickProducts(limit = 6): Promise<UIProduct[]> {
 
 export async function getHomePageData() {
   const allProducts = await getProducts();
-  const disc = (p: UIProduct) => p.discountVsRegular ?? p.discountVsOfficial ?? 0;
+  const disc = (p: UIProduct) => p.discountVsRegular ?? 0;
   return {
     allProducts,
     recommended: [...allProducts].sort(byPriceThen((a, b) => b.viewtyScore - a.viewtyScore)).slice(0, 8),

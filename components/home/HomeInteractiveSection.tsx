@@ -59,8 +59,6 @@ export default function HomeInteractiveSection({ allProducts, recommended, offic
           lowestBasePrice: p.lowestPrice,
           bestIsMultipack: false,
           hasAnyPrice: p.lowestPrice > 0,
-          officialPrice: null,
-          discountVsOfficial: null,
           regularPrice: null,
           discountVsRegular: null,
           lastUpdated: null,
@@ -203,7 +201,7 @@ export default function HomeInteractiveSection({ allProducts, recommended, offic
                 <div className="w-full bg-[#EFE6DF] h-2 rounded-full overflow-hidden">
                   <div className="bg-primary h-full rounded-full" style={{ width: '35%' }} />
                 </div>
-                <span className="text-[10px] text-text-secondary font-bold leading-none">동일 용량 대비 최저가 상위 비율, 공식몰 대비 할인폭</span>
+                <span className="text-[10px] text-text-secondary font-bold leading-none">동일 용량 대비 최저가 상위 비율, 정가 대비 할인폭</span>
               </div>
 
               {/* Item 3 */}

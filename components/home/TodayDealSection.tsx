@@ -13,8 +13,8 @@ interface TodayDealSectionProps {
 }
 
 /**
- * 🏆 공식몰 대비 최저가 픽 — ranks products by how far a verified seller beats the
- * official brand-store per-unit price (real metric; no mock ratings / drop badges).
+ * 🏆 정가 대비 최저가 픽 — ranks products by how far a verified seller beats the
+ * 정가(MSRP) per-unit price (real metric; no mock ratings / drop badges).
  */
 export default function TodayDealSection({ products, loading }: TodayDealSectionProps) {
   const [liked, setLiked] = useState<Record<string, boolean>>({});
@@ -86,10 +86,6 @@ export default function TodayDealSection({ products, loading }: TodayDealSection
                       <span className="self-start text-[10px] font-black text-discount bg-accent-soft px-2 py-0.5 rounded-full leading-none">
                         정가 대비 {prod.discountVsRegular}% 할인
                       </span>
-                    ) : (prod.discountVsOfficial != null && prod.discountVsOfficial > 0) ? (
-                      <span className="self-start text-[10px] font-black text-discount bg-accent-soft px-2 py-0.5 rounded-full leading-none">
-                        정가 대비 {prod.discountVsOfficial}% 할인
-                      </span>
                     ) : null}
                     <div className="flex items-end gap-1.5 leading-none">
                       <span className="text-[15px] font-black text-primary">
@@ -97,8 +93,6 @@ export default function TodayDealSection({ products, loading }: TodayDealSection
                       </span>
                       {prod.regularPrice != null && prod.regularPrice > 0 ? (
                         <span className="text-[11px] text-muted font-bold">정가 {won(prod.regularPrice)}</span>
-                      ) : prod.officialPrice != null && prod.officialPrice > 0 ? (
-                        <span className="text-[11px] text-muted font-bold">정가 {won(prod.officialPrice)}</span>
                       ) : null}
                     </div>
                     {sellerNames && (
