@@ -18,6 +18,8 @@ import {
   hasFormConflict,
   productNoFrom,
   pickAnchoredOffer,
+  homogeneousBundleQty,
+  priceGiftBundleOnMain,
   buildAnchorQueries,
   pickOliveYoungOffer,
   distinctiveTokens,
@@ -313,6 +315,42 @@ it('anchored heterogeneous WITHOUT a DB volume → heterogeneous (back-compat)',
   assert(r !== null && r.matched === null && r.needsInspection === true, 'no DB volume passed → unchanged inspection');
 });
 
+console.log('\n--- trust-operator-anchored-bundles: 증정/번들 앵커 → inspection (NOT link_only) ---');
+it('homogeneousBundleQty: 본품+리필 / 1+1 / N개 → count; bare N종 / single → null', () => {
+  assert(homogeneousBundleQty('VDL 커버스테인 하이커버 쿠션 기획 (본품+리필)') === 2, '본품+리필 = 2');
+  assert(homogeneousBundleQty('토너 1+1 기획') === 2, '1+1 = 2');
+  assert(homogeneousBundleQty('세럼 30ml 2개입') === 2, 'N개 = 2');
+  assert(homogeneousBundleQty('롬앤 글래스팅 워터 틴트 쿠션 2종 15g') === null, 'bare N종 is option-select, not a bundle');
+  assert(homogeneousBundleQty('에스네이처 토너 300ml') === null, 'plain single → null');
+  assert(homogeneousBundleQty('세럼 30ml + 디바이스 (본품+리필)') === null, 'device bundle → null');
+});
+it('priceGiftBundleOnMain: 본품(DB vol) + no-volume gift → main; 2nd 본품-sized item → null', () => {
+  assert(priceGiftBundleOnMain('제니피끄 세럼 115ml 세트 (+로션, 세럼)', 115, '랑콤 제니피끄 세럼') !== null, 'no-volume gifts strip → 본품 115ml');
+  assert(priceGiftBundleOnMain('세럼 30ml + 토너 100ml 세트', 30, '세럼') === null, '2nd 본품-sized (100≥30) → real set');
+  assert(priceGiftBundleOnMain('세럼 50ml + 크림 50ml 세트', 50, '세럼') === null, '2nd equal-volume main → real set');
+  assert(priceGiftBundleOnMain('세럼 21ml + 토너 100ml', 50, '세럼') === null, 'DB 50 not in title → null');
+  assert(priceGiftBundleOnMain('세럼 115ml 세트 (+크림)', null, '세럼') === null, 'no DB volume → null');
+});
+it('제니피끄: anchored 본품 + 증정(로션/세럼, no vol) → inspection with 본품 115ml price (NOT link_only)', () => {
+  const gift = item({ title: '[6월] 제니피끄 세럼 115ml 세트 (+로션, 세럼)', link: 'https://brand.naver.com/lancome/products/991', lprice: '228000' });
+  const r = pickAnchoredOffer([gift], '991', 115, '랑콤 제니피끄 세럼');
+  assert(r !== null && r.matched === null && r.needsInspection === true, '증정 번들 → inspection, not auto/link_only');
+  assert(r!.inspectionEstimatedPrice === 228000, `본품가 추정 = whole bundle price on 본품, got ${r!.inspectionEstimatedPrice}`);
+  assert(r!.parsedVolumeRaw === 115, `본품 volume = DB 115ml, got ${r!.parsedVolumeRaw}`);
+});
+it('VDL: anchored 동종 번들 (본품+리필, no vol) → inspection with per-unit price (NOT 이종/link_only)', () => {
+  const refill = item({ title: 'VDL 커버스테인 하이커버 쿠션 기획 (본품+리필)', link: 'https://smartstore.naver.com/vdl/products/992', lprice: '40000' });
+  const r = pickAnchoredOffer([refill], '992', 15, 'VDL 커버 스테인 하이커버 쿠션');
+  assert(r !== null && r.matched === null && r.needsInspection === true, '동종 번들 → inspection, not auto');
+  assert(r!.inspectionEstimatedPrice === 20000, `per-unit = bundle/2, got ${r!.inspectionEstimatedPrice}`);
+});
+it('본품 식별 불가 2종 동등 세트 → inspection (추정가 = 앵커가), NOT link_only', () => {
+  const set = item({ title: '세럼 50ml + 크림 50ml 세트', link: 'https://brand.naver.com/x/products/993', lprice: '99000' });
+  const r = pickAnchoredOffer([set], '993', 50, '세럼'); // 두 50ml가 동등 → 본품 식별 불가
+  assert(r !== null && r.matched === null && r.needsInspection === true, '다중-main 세트 → inspection, not link_only');
+  assert(r!.inspectionEstimatedPrice === 99000, `추정가 = 앵커가, got ${r!.inspectionEstimatedPrice}`);
+});
+
 console.log('\n--- multi-query anchor recall ---');
 it('buildAnchorQueries adds a brand+form-noun recall query', () => {
   const qs = buildAnchorQueries('유세린', '하이아르론 에피셀린 세럼');
@@ -367,6 +405,15 @@ it('OY "N종 세트" → still held (heterogeneous set)', () => {
   // A heterogeneous set price is not per-unit → no hint (operator fills it in inspection).
   assert(r.needsInspection === true, 'N종 세트 → needsInspection');
   assert(r.inspectionEstimatedPrice == null, `set price must NOT be used as a hint, got ${r.inspectionEstimatedPrice}`);
+});
+it('OY 동종 번들 (본품+리필, no vol) → inspection with per-unit price (NOT auto bundle price)', () => {
+  // trust-operator-anchored-bundles: 본품+리필 = the same product twice. With no ml on
+  // the unit it would auto-price at the FULL bundle price → instead route to inspection
+  // with a per-unit estimate (lprice/2) for the operator to confirm once (O). [VDL]
+  const refill = oyItem({ title: 'VDL 커버스테인 하이커버 쿠션 기획 (본품+리필)', lprice: '40000', link: 'https://smartstore.naver.com/x/products/991' });
+  const r = pickOliveYoungOffer([refill], 'VDL 커버 스테인 하이커버 쿠션', null, 15);
+  assert(r.matched === null && r.needsInspection === true, '동종 번들 → inspection, not auto');
+  assert(r.inspectionEstimatedPrice === 20000, `per-unit = bundle/2, got ${r.inspectionEstimatedPrice}`);
 });
 it('OY two close same-product candidates → adopt the lowest price', () => {
   const a = oyItem({ title: '토리든 다이브인 포맨 올인원 200ml', lprice: '19700', link: 'https://smartstore.naver.com/x/products/741' });

@@ -219,11 +219,17 @@ export async function writeInspectionRows(rows: InspectionRow[]): Promise<void> 
   }
 }
 
-/** Upsert current warnings into the tab; returns counts (pending = blank 승인). */
-export async function upsertInspection(current: InspectionItem[]): Promise<{ written: number; pending: number }> {
+/**
+ * Upsert current warnings into the tab; returns counts plus the still-UNREVIEWED
+ * (blank 승인) rows. `pendingItems` is what the Discord summary lists: an already
+ * O/X-decided item is preserved in the sheet but NOT re-surfaced (no re-prompt).
+ */
+export async function upsertInspection(
+  current: InspectionItem[]
+): Promise<{ written: number; pending: number; pendingItems: InspectionRow[] }> {
   const existing = await readInspectionRows();
   const merged = mergeInspectionRows(existing, current);
   await writeInspectionRows(merged);
-  const pending = merged.filter((r) => parseApproval(r.approval) === '').length;
-  return { written: merged.length, pending };
+  const pendingItems = merged.filter((r) => parseApproval(r.approval) === '');
+  return { written: merged.length, pending: pendingItems.length, pendingItems };
 }

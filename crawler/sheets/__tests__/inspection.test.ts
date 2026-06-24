@@ -94,6 +94,20 @@ it('same product, different seller are distinct rows', () => {
   const merged = mergeInspectionRows([], [item({ seller: 'naver' }), item({ seller: 'oliveyoung' })]);
   assert(merged.length === 2, 'two distinct seller rows');
 });
+it('pending (Discord) list = blank-approval only → an already O/X item is not re-surfaced', () => {
+  // trust-operator-anchored-bundles: a previously O/X-decided item is re-detected this
+  // run (still in `current`) but must NOT re-appear in Discord. upsertInspection lists
+  // only the blank-approval merged rows; this asserts that filter.
+  const existing = [row({ product_key: 'POK', seller: 'naver', approval: 'O', estimated_price: 20000 })];
+  const merged = mergeInspectionRows(existing, [
+    item({ product_key: 'POK', seller: 'naver', estimated_price: 20000 }), // re-detected, already O
+    item({ product_key: 'PNEW', seller: 'naver', estimated_price: 30000 }), // fresh, blank
+  ]);
+  const pending = merged.filter((r) => parseApproval(r.approval) === '');
+  const keys = pending.map((r) => rowKey(r.product_key, r.seller));
+  assert(keys.includes('PNEW::naver'), 'fresh blank item is pending');
+  assert(!keys.includes('POK::naver'), 'already-O item is NOT re-surfaced to Discord');
+});
 
 console.log('\n--- approvalOverrides ---');
 const PRODUCTS = [{ id: 11, product_key: 'P1' }, { id: 12, product_key: 'P2' }];
