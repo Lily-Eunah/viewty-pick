@@ -53,9 +53,11 @@ export const simpleProductRowSchema = z.object({
   volume_ml:   z.number().or(z.string().transform((v) => parseFloat(v) || 0)).default(0),
   // 정가 / MSRP for volume_ml. Blank → null (discount simply hidden). A non-positive
   // value is coerced to null so a stray 0 never produces a bogus 100% discount.
+  // Operators type currency-formatted values (e.g. "₩35,000", "35,000원"), so strip
+  // every non-digit/decimal char before parsing — a raw parseFloat("₩35,000") is NaN.
   regular_price: z
     .number()
-    .or(z.string().transform((v) => parseFloat(v)))
+    .or(z.string().transform((v) => parseFloat(v.replace(/[^\d.-]/g, ''))))
     .transform((v) => (Number.isFinite(v) && v > 0 ? v : null))
     .nullable()
     .default(null),
