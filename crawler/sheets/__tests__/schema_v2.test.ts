@@ -128,6 +128,12 @@ it('numeric string → number', () => {
   const p = simpleProductRowSchema.safeParse({ ...baseProd, regular_price: '30000' });
   assert(p.success && p.data.regular_price === 30000, `expected 30000, got ${JSON.stringify(p)}`);
 });
+it('currency-formatted string (₩ + comma / 원) → number', () => {
+  for (const v of ['₩35,000', '35,000', '35,000원', ' 35000 ']) {
+    const p = simpleProductRowSchema.safeParse({ ...baseProd, regular_price: v });
+    assert(p.success && p.data.regular_price === 35000, `"${v}" expected 35000, got ${JSON.stringify(p)}`);
+  }
+});
 it('blank → null (discount hidden, no error)', () => {
   const p = simpleProductRowSchema.safeParse({ ...baseProd, regular_price: '' });
   assert(p.success && p.data.regular_price === null, `expected null, got ${JSON.stringify(p)}`);
