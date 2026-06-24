@@ -45,7 +45,7 @@ export default function CategoryProductList({ initialProducts, minors }: Props) 
       } else if (sortBy === 'price_asc') {
         return askPrice(a) - askPrice(b); // missing price → back
       } else if (sortBy === 'discount') {
-        const disc = (p: UIProduct) => p.discountVsRegular ?? p.discountVsOfficial ?? 0;
+        const disc = (p: UIProduct) => p.discountVsRegular ?? 0;
         return disc(b) - disc(a);
       }
       return 0;
