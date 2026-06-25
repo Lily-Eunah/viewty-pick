@@ -30,7 +30,7 @@ interface StoredViewedProduct {
 
 export default function HomeInteractiveSection({ allProducts, recommended, officialPicks }: Props) {
   const router = useRouter();
-  const [selectedSkin, setSelectedSkin] = useSelectedSkinType();
+  const [selectedSkin] = useSelectedSkinType();
   const [isInfoOpen, setIsInfoOpen] = useState(false);
   const [recentlyViewed, setRecentlyViewed] = useState<UIProduct[]>([]);
 
