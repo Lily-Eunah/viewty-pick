@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import ProductImageWithFallback from '../common/ProductImageWithFallback';
 import Badge from '../common/Badge';
-import { won, perMl, pricedStoreNames } from '../../lib/format';
+import { won, perUnit, pricedStoreNames } from '../../lib/format';
 import { UIProduct } from '../../lib/types';
 
 interface TodayDealSectionProps {
@@ -75,9 +75,6 @@ export default function TodayDealSection({ products, loading }: TodayDealSection
                     <h4 className="text-[13.5px] font-black text-title tracking-tight line-clamp-1 leading-snug mt-0.5">
                       {prod.name}
                     </h4>
-                    {mlUnit != null && mlUnit > 0 && (
-                      <span className="text-[10px] text-text-secondary font-bold leading-none mt-1">{perMl(mlUnit)}</span>
-                    )}
                     <span className="text-[10.5px] text-text-secondary font-semibold leading-none mt-1 truncate">{shortDesc}</span>
                   </div>
 
@@ -91,8 +88,8 @@ export default function TodayDealSection({ products, loading }: TodayDealSection
                       <span className="text-[15px] font-black text-primary">
                         {won(prod.lowestPrice)}{prod.bestIsMultipack ? <span className="text-[10px] font-bold"> /개</span> : null}
                       </span>
-                      {prod.regularPrice != null && prod.regularPrice > 0 ? (
-                        <span className="text-[11px] text-muted font-bold">정가 {won(prod.regularPrice)}</span>
+                      {mlUnit != null && mlUnit > 0 ? (
+                        <span className="text-[11px] text-text-secondary font-bold">{perUnit(mlUnit, prod.volumeUnit)}</span>
                       ) : null}
                     </div>
                     {sellerNames && (
