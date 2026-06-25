@@ -149,6 +149,10 @@ function mapToUIProduct(
   // "정가 대비 N% 할인" headline. null → discount simply hidden (never mis-displayed).
   const regularPrice = prod.regular_price != null && Number(prod.regular_price) > 0 ? Number(prod.regular_price) : null;
 
+  // Unit of the volume amount (ml/g/매). Default 'ml' keeps existing products
+  // unchanged. Display-only; threaded onto stores + the product for unit-aware labels.
+  const volumeUnit = prod.volume_unit || 'ml';
+
   // Build stores: a priced row when the listing has a displayable price, else a
   // link-only row (tier-4: still show the seller with a "보기" link, no price).
   // Single display gate (covers priced / link-only / lowest / 공식몰대비): only
@@ -170,6 +174,7 @@ function mapToUIProduct(
       isBest: false,
       isRocket: listing.is_rocket,
       isOfficial: listing.is_official_store,
+      volumeUnit, // product-level unit (ml/g/매) for this store's volume label
     };
 
     // Link-only: no displayable snapshot or out-of-stock → seller shown w/o a price.
@@ -256,7 +261,9 @@ function mapToUIProduct(
     category: category?.slug || 'etc',
     majorCategory,
     image: displayImage,
-    volume: `${prod.volume_ml}ml`,
+    volume: `${prod.volume_ml}${volumeUnit}`,
+    volumeMl: prod.volume_ml,
+    volumeUnit,
     description: prod.features || '검증된 큐레이션 추천 뷰티 제품',
     skinTypes: prod.skin_types,
     tags: prod.features ? prod.features.split(',').map((s) => s.trim()) : [],
