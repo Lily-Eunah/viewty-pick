@@ -11,6 +11,8 @@ interface HistoryProduct {
   lowestPrice: number;
   volume: string;
   viewtyScore: number;
+  category?: string;
+  majorCategory?: string;
 }
 
 export default function HistoryTracker({ product }: { product: HistoryProduct }) {

@@ -126,6 +126,8 @@ export default async function ProductDetailPage({ params }: PageProps) {
           lowestPrice: product.lowestPrice,
           volume: product.volume,
           viewtyScore: product.viewtyScore,
+          category: product.category,
+          majorCategory: product.majorCategory,
         }}
       />
       {/* Dynamic JSON-LD injection */}
