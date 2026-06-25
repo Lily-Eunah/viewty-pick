@@ -1,6 +1,6 @@
 import React from 'react';
 import { UIStorePrice } from '../../lib/types';
-import { won, perMl } from '../../lib/format';
+import { won, perUnit } from '../../lib/format';
 
 interface StorePriceCardProps {
   store: UIStorePrice;
@@ -39,7 +39,7 @@ export default function StorePriceCard({ store, rank }: StorePriceCardProps) {
             {store.name}
           </span>
           {store.volumeMl != null && store.volumeMl > 0 && (
-            <span className="text-[10px] font-bold text-text-secondary shrink-0">{store.volumeMl}ml</span>
+            <span className="text-[10px] font-bold text-text-secondary shrink-0">{store.volumeMl}{store.volumeUnit ?? 'ml'}</span>
           )}
           {store.isRocket && (
             <span className="text-[9px] bg-sky-100 text-sky-700 font-extrabold px-1.5 py-0.5 rounded-[2px] leading-none shrink-0">
@@ -72,9 +72,9 @@ export default function StorePriceCard({ store, rank }: StorePriceCardProps) {
               ) : store.composition ? (
                 <span className="text-[10px] text-discount font-bold leading-none mt-0.5">{store.composition}</span>
               ) : null}
-              {/* ml당 — representative ranking metric when sizes differ per retailer */}
+              {/* 단위당가 — representative ranking metric when sizes differ per retailer */}
               {store.unitPrice != null && store.unitPrice > 0 && (
-                <span className="text-[10px] text-text-secondary font-bold leading-none mt-0.5">{perMl(store.unitPrice)}</span>
+                <span className="text-[10px] text-text-secondary font-bold leading-none mt-0.5">{perUnit(store.unitPrice, store.volumeUnit)}</span>
               )}
             </>
           )}
