@@ -51,6 +51,18 @@ export const simpleProductRowSchema = z.object({
   brand:       z.string().default(''),
   category:    z.string().min(1),
   volume_ml:   z.number().or(z.string().transform((v) => parseFloat(v) || 0)).default(0),
+  // Unit of the volume_ml amount: ml / g / 매. Blank or unknown → 'ml' (so existing
+  // ml products are unchanged). 장/시트/p/매입 are normalized to 매. Display-only;
+  // the per-unit price math is unit-agnostic.
+  volume_unit: z
+    .string()
+    .optional()
+    .transform((v) => {
+      const t = (v ?? '').trim().toLowerCase();
+      if (t === 'g') return 'g';
+      if (['매', '장', '시트', 'p', '매입'].includes(t)) return '매';
+      return 'ml';
+    }),
   // 정가 / MSRP for volume_ml. Blank → null (discount simply hidden). A non-positive
   // value is coerced to null so a stray 0 never produces a bogus 100% discount.
   // Operators type currency-formatted values (e.g. "₩35,000", "35,000원"), so strip

@@ -150,6 +150,26 @@ it('zero / negative / non-numeric → null (never a bogus discount)', () => {
 });
 
 // ---------------------------------------------------------------------------
+console.log('\n--- volume_unit (ml/g/매) parsing ---');
+
+it('blank / missing / unknown → ml (existing products unchanged)', () => {
+  for (const v of ['', '  ', 'oz', undefined]) {
+    const p = simpleProductRowSchema.safeParse({ ...baseProd, volume_unit: v });
+    assert(p.success && p.data.volume_unit === 'ml', `"${v}" should → ml, got ${JSON.stringify(p)}`);
+  }
+});
+it('g and ml pass through (case-insensitive)', () => {
+  assert(simpleProductRowSchema.safeParse({ ...baseProd, volume_unit: 'g' }).data?.volume_unit === 'g', 'g');
+  assert(simpleProductRowSchema.safeParse({ ...baseProd, volume_unit: 'ML' }).data?.volume_unit === 'ml', 'ML→ml');
+});
+it('매 / 장 / 시트 / p / 매입 → 매', () => {
+  for (const v of ['매', '장', '시트', 'p', '매입']) {
+    const p = simpleProductRowSchema.safeParse({ ...baseProd, volume_unit: v });
+    assert(p.success && p.data.volume_unit === '매', `"${v}" should → 매, got ${JSON.stringify(p)}`);
+  }
+});
+
+// ---------------------------------------------------------------------------
 console.log('\n--- product_key freeze plan ---');
 
 it('blank product_key → generated + correct sheet row; existing untouched', () => {

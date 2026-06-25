@@ -32,6 +32,9 @@ export interface Product {
   brand: string | null;
   category_id: number | null;
   volume_ml: number;
+  // Unit of volume_ml: 'ml' | 'g' | '매'. Default 'ml' (migration 0017). Display-only;
+  // the per-unit price math is unit-agnostic. Optional so the legacy mock compiles.
+  volume_unit?: string | null;
   // 정가 / MSRP for the DB representative volume (volume_ml). Basis for the
   // "정가 대비 N% 할인" headline; null → no discount shown (never mis-displayed).
   regular_price?: number | null;
