@@ -69,7 +69,7 @@ export default function MyPage() {
 
   return (
     <AppShell activeTab="my">
-      <Header title="마이" showBack={false} />
+      <Header title="마이" showBack={false} hideSkinSetting />
 
       <div className="flex-grow bg-bg px-4 py-6 flex flex-col gap-6">
         {/* Hero Section */}
