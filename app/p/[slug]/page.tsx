@@ -141,7 +141,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
           src={product.image}
           alt={product.name}
           className="w-full max-h-[360px] aspect-square object-contain"
-          category={product.category}
+          category={product.majorCategory || product.category}
         />
       </section>
 

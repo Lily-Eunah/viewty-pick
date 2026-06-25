@@ -59,7 +59,7 @@ export default function TodayDealSection({ products, loading }: TodayDealSection
                   <div className="absolute top-0 left-0 bg-primary text-white text-[10px] font-black w-5.5 h-5.5 flex items-center justify-center rounded-br-md z-10 shadow-sm">
                     {rank}
                   </div>
-                  <ProductImageWithFallback src={prod.image} alt={prod.name} className="w-full h-full" category={prod.category} />
+                  <ProductImageWithFallback src={prod.image} alt={prod.name} className="w-full h-full" category={prod.majorCategory || prod.category} />
                 </div>
 
                 <div className="flex-grow flex flex-col justify-between pl-3.5 pr-8 py-0.5 min-h-[104px] overflow-hidden">

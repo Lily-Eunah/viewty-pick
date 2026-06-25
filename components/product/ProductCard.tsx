@@ -12,7 +12,7 @@ interface ProductCardProps {
 
 export default function ProductCard({ product }: ProductCardProps) {
   return (
-    <div className="relative w-[170px] shrink-0">
+    <div className="relative w-[170px] h-[360px] shrink-0">
       <Link
         href={`/p/${product.slug}`}
         className="flex flex-col w-full h-full bg-surface border border-line rounded-card overflow-hidden shadow-[0_8px_24px_rgba(65,0,22,0.06)] active:scale-[0.98] transition-transform duration-200"
@@ -22,8 +22,8 @@ export default function ProductCard({ product }: ProductCardProps) {
           src={product.image}
           alt={product.name}
           brand={product.brand}
-          className="w-full"
-          category={product.category}
+          className="w-full aspect-square object-contain"
+          category={product.majorCategory || product.category}
         />
 
       {/* 2. Content Info */}
