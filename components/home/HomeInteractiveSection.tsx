@@ -26,6 +26,8 @@ interface StoredViewedProduct {
   lowestPrice: number;
   volume: string;
   viewtyScore: number;
+  category?: string;
+  majorCategory?: string;
 }
 
 export default function HomeInteractiveSection({ allProducts, recommended, officialPicks }: Props) {
@@ -50,7 +52,8 @@ export default function HomeInteractiveSection({ allProducts, recommended, offic
           volume: p.volume,
           viewtyScore: p.viewtyScore,
           // stubs to satisfy TS interface
-          category: '',
+          category: p.category || '',
+          majorCategory: p.majorCategory || '',
           description: '',
           skinTypes: [],
           tags: [],
