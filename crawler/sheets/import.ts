@@ -358,6 +358,7 @@ export async function runSheetImport(): Promise<ImportStats> {
           brand:       p.data.brand || null,
           category_id: categoryId,
           volume_ml:   p.data.volume_ml,
+          volume_unit: p.data.volume_unit,
           regular_price: p.data.regular_price,
           hwahae_url:  p.data.hwahae_url  || null,
           image_url:   img.image,
@@ -572,7 +573,7 @@ export async function runSheetImport(): Promise<ImportStats> {
       const existing   = db.products.find((pr) => pr.product_key === productKey);
       const img = resolveImageUrl(p.data.image_url, p.data.brand || null, p.data.name, resolvedImages, existing?.image_url ?? null);
       if (img.keptPrevious) keptPreviousImages++;
-      const data = { product_key: productKey, slug: v.resolveDisplaySlug(p.data.slug, productKey), name: p.data.name, brand: p.data.brand || null, category_id: categoryId, volume_ml: p.data.volume_ml, regular_price: p.data.regular_price, hwahae_url: p.data.hwahae_url || null, image_url: img.image, features: p.data.features || null, skin_types: p.data.skin_types, official_info_url: null, viewty_score: 0, source: 'sheet', is_active: !p.data.is_disabled };
+      const data = { product_key: productKey, slug: v.resolveDisplaySlug(p.data.slug, productKey), name: p.data.name, brand: p.data.brand || null, category_id: categoryId, volume_ml: p.data.volume_ml, volume_unit: p.data.volume_unit, regular_price: p.data.regular_price, hwahae_url: p.data.hwahae_url || null, image_url: img.image, features: p.data.features || null, skin_types: p.data.skin_types, official_info_url: null, viewty_score: 0, source: 'sheet', is_active: !p.data.is_disabled };
       if (existing) { Object.assign(existing, data); }
       else { db.products.push({ id: (db.products.length ? Math.max(...db.products.map((pr) => pr.id)) + 1 : 1), ...data }); }
       nameToKey.set(p.data.name.trim(), productKey);

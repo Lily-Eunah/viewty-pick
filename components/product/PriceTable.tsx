@@ -1,5 +1,5 @@
 import React from 'react';
-import { won, perMl } from '../../lib/format';
+import { won, perUnit } from '../../lib/format';
 import { UIStorePrice } from '../../lib/types';
 
 interface PriceTableProps {
@@ -39,7 +39,7 @@ export default function PriceTable({ stores }: PriceTableProps) {
                     )}
                   </span>
                   {store.volumeMl != null && store.volumeMl > 0 && (
-                    <span className="block text-[9px] text-sub font-semibold leading-none mt-0.5">{store.volumeMl}ml</span>
+                    <span className="block text-[9px] text-sub font-semibold leading-none mt-0.5">{store.volumeMl}{store.volumeUnit ?? 'ml'}</span>
                   )}
                 </td>
 
@@ -59,11 +59,11 @@ export default function PriceTable({ stores }: PriceTableProps) {
                     <>
                       {won(store.effectiveUnitPrice!)}<span className="text-[9px] font-bold">/개</span>
                       {store.unitPrice != null && store.unitPrice > 0 && (
-                        <div className="text-[9px] text-sub font-semibold leading-none mt-0.5">{perMl(store.unitPrice)}</div>
+                        <div className="text-[9px] text-sub font-semibold leading-none mt-0.5">{perUnit(store.unitPrice, store.volumeUnit)}</div>
                       )}
                     </>
                   ) : store.unitPrice != null && store.unitPrice > 0 ? (
-                    <span className="text-[10px] text-sub font-semibold">{perMl(store.unitPrice)}</span>
+                    <span className="text-[10px] text-sub font-semibold">{perUnit(store.unitPrice, store.volumeUnit)}</span>
                   ) : '–'}
                 </td>
 

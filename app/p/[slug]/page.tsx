@@ -58,6 +58,14 @@ export default async function ProductDetailPage({ params }: PageProps) {
   // Get cheapest store to feed the sticky buy button
   const cheapestStore = product.stores.find((s) => s.isBest) || product.stores[0] || null;
 
+  // Volume context: when the cheapest seller's size differs from the product's
+  // representative volume, show it next to the 최저가 so a big-pack 최저가 (and a
+  // large 정가-대비 %) reads in context. Unit label drives "ml/매/g".
+  const volLabel = product.volumeUnit ?? 'ml';
+  const baseVolume = product.volumeMl ?? null;
+  const bestVolume = cheapestStore?.volumeMl ?? null;
+  const bestVolumeDiffers = bestVolume != null && bestVolume > 0 && baseVolume != null && bestVolume !== baseVolume;
+
   // Per-retailer volume: when priced sellers carry different sizes, the headline /
   // ranking is by ml당 (총가 비교는 작은 용량이 싸 보이는 착시). Surface a hint.
   const pricedVolumes = new Set(
@@ -169,6 +177,9 @@ export default async function ProductDetailPage({ params }: PageProps) {
         </div>
         <span className="text-[13px] text-body opacity-80 mt-1 font-semibold">
           용량/규격: {product.volume}
+          {product.regularPrice != null && product.regularPrice > 0 ? (
+            <span className="text-sub"> · 정가 {won(product.regularPrice)}</span>
+          ) : null}
         </span>
 
         {/* Pricing area */}
@@ -189,6 +200,9 @@ export default async function ProductDetailPage({ params }: PageProps) {
                 <div className="flex items-baseline gap-1 mt-1">
                   <PriceText price={product.lowestPrice} size="xl" />
                   {product.bestIsMultipack && <span className="text-[12px] text-sub font-bold">/개</span>}
+                  {bestVolumeDiffers && (
+                    <span className="text-[12px] text-sub font-bold">({bestVolume}{volLabel})</span>
+                  )}
                 </div>
               </div>
               {product.bestIsMultipack && product.lowestBasePrice ? (
@@ -197,18 +211,12 @@ export default async function ProductDetailPage({ params }: PageProps) {
                   <span className="text-[15px] font-black text-title mt-1">{won(product.lowestBasePrice)}</span>
                 </div>
               ) : null}
-              {/* 할인 배지: 정가(시트 입력) 기준 — 정가 없으면 미표시 */}
-              {product.regularPrice && product.discountVsRegular != null ? (
-                <div className="flex flex-col">
-                  <span className="text-[10px] text-sub font-bold leading-none">정가</span>
-                  <div className="flex items-baseline gap-1.5 mt-1">
-                    <span className="text-[13px] font-bold text-sub line-through">{won(product.regularPrice)}</span>
-                    {product.discountVsRegular > 0 && (
-                      <span className="text-[12px] text-discount bg-accent-soft font-extrabold px-2.5 py-1 rounded-full">
-                        {product.discountVsRegular}% 할인
-                      </span>
-                    )}
-                  </div>
+              {/* 할인 배지: 정가(시트 입력) 기준 — 정가는 용량/규격 옆에 표기, 여기선 % 만 */}
+              {product.regularPrice != null && product.discountVsRegular != null && product.discountVsRegular > 0 ? (
+                <div className="flex flex-col justify-end">
+                  <span className="text-[12px] text-discount bg-accent-soft font-extrabold px-2.5 py-1 rounded-full">
+                    정가 대비 {product.discountVsRegular}% 할인
+                  </span>
                 </div>
               ) : null}
             </div>
@@ -217,7 +225,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
           {/* 판매처별 용량이 다를 때: ml당 기준 비교 안내 */}
           {sizesDiffer && (
             <span className="text-[10px] text-primary font-bold mt-2 leading-relaxed">
-              판매처마다 용량이 달라요 · 최저가는 ml당 기준으로 비교했어요.
+              판매처마다 용량이 달라요 · 최저가는 {volLabel}당 기준으로 비교했어요.
             </span>
           )}
 

@@ -32,6 +32,9 @@ export interface Product {
   brand: string | null;
   category_id: number | null;
   volume_ml: number;
+  // Unit of volume_ml: 'ml' | 'g' | '매'. Default 'ml' (migration 0017). Display-only;
+  // the per-unit price math is unit-agnostic. Optional so the legacy mock compiles.
+  volume_unit?: string | null;
   // 정가 / MSRP for the DB representative volume (volume_ml). Basis for the
   // "정가 대비 N% 할인" headline; null → no discount shown (never mis-displayed).
   regular_price?: number | null;
@@ -269,6 +272,7 @@ export interface UIStorePrice {
   effectiveUnitPrice?: number | null; // per-unit (개당) price; = price for singles
   unitPrice?: number | null; // per ml price — only when reliable
   volumeMl?: number | null; // this seller's per-unit volume (size differs per retailer)
+  volumeUnit?: string | null; // unit of volumeMl: 'ml' | 'g' | '매' (product-level; display label)
   discountVsRegular?: number | null; // % this store's ml당 beats 정가 ml당 (≥0; null when not computable)
   // Web-layer additions (optional so the legacy static mock still compiles;
   // mapToUIProduct always sets them. Absent hasPrice ⇒ treated as priced).
@@ -294,6 +298,8 @@ export interface UIProduct {
   lowestBasePrice?: number;  // lowest single-buy (1개 기준) base price; 0 when none
   bestIsMultipack?: boolean; // the per-unit-cheapest store is a multipack (headline shows 개당)
   hasAnyPrice?: boolean;     // false → every seller is link-only (no price)
+  volumeMl?: number | null;            // DB representative volume amount (numeric) — for size comparison
+  volumeUnit?: string | null;          // unit of volumeMl: 'ml' | 'g' | '매' (display label)
   regularPrice?: number | null;        // 정가 / MSRP (DB volume basis) — for "정가 X원" display; null when absent
   discountVsRegular?: number | null;   // headline % the best store's ml당 beats 정가 ml당 (≥0; null when not computable)
   lastUpdated?: string | null;         // freshest priced store crawled_at (ISO)

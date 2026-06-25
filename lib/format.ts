@@ -26,12 +26,19 @@ export function won(price: number | null | undefined): string {
 }
 
 /**
- * Formats unit price (per ml).
- * Example: (9900, 50) -> 'ml당 198원'
+ * Formats unit price per the product's volume unit (ml/g/매).
+ * Example: perUnit(198) -> 'ml당 198원'; perUnit(77, '매') -> '매당 77원'.
+ * Unknown/blank unit falls back to 'ml' so existing callers are unchanged.
  */
-export function perMl(unitPrice: number | null | undefined): string {
+export function perUnit(unitPrice: number | null | undefined, unit?: string | null): string {
   if (unitPrice === null || unitPrice === undefined || isNaN(unitPrice)) return '';
-  return `ml당 ${Math.round(unitPrice).toLocaleString('ko-KR')}원`;
+  const u = unit && unit.trim() ? unit.trim() : 'ml';
+  return `${u}당 ${Math.round(unitPrice).toLocaleString('ko-KR')}원`;
+}
+
+/** @deprecated use perUnit(unitPrice, unit). Kept as an ml-only alias. */
+export function perMl(unitPrice: number | null | undefined): string {
+  return perUnit(unitPrice, 'ml');
 }
 
 /**
