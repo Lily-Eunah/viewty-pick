@@ -173,7 +173,7 @@ export default function SearchClient({ items, initialQuery = '' }: Props) {
                     onClick={() => commit(query)}
                     className="flex items-center gap-3 py-2 border-b border-divider last:border-b-0 active:bg-bg-warm rounded-lg transition"
                   >
-                    <ProductImage src={p.image} alt={p.name} brand={p.brand} className="w-10 h-10 rounded-md shrink-0 overflow-hidden" />
+                    <ProductImage src={p.image} alt={p.name} brand={p.brand} className="w-10 h-10 rounded-md shrink-0 overflow-hidden" category={p.majorCategory || p.category} />
                     <div className="flex-grow min-w-0">
                       <span className="block text-[10px] font-extrabold text-sub leading-none">{p.brand}</span>
                       <span className="block text-[13px] font-bold text-title truncate mt-0.5">{p.name}</span>

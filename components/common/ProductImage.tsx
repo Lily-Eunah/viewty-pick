@@ -8,18 +8,21 @@ interface ProductImageProps {
   alt: string;
   brand?: string;
   className?: string;
+  category?: string;
 }
 
 export default function ProductImage({
   src,
   alt,
   className = '',
+  category,
 }: ProductImageProps) {
   return (
     <ProductImageWithFallback
       src={src}
       alt={alt}
       className={className}
+      category={category}
     />
   );
 }

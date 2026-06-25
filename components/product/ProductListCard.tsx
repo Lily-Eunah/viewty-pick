@@ -42,6 +42,7 @@ export default function ProductListCard({ product, rank }: ProductListCardProps)
         alt={product.name}
         brand={product.brand}
         className="w-[92px] h-[92px] rounded-lg shrink-0 overflow-hidden"
+        category={product.majorCategory || product.category}
       />
 
       {/* 3. Right Details */}
