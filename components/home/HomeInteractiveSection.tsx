@@ -4,7 +4,6 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import SearchBar from '../common/SearchBar';
 import CurationCarousel from './CurationCarousel';
-import { SkinTypeAndCategorySection } from './SkinTypeAndCategorySection';
 import ProductCarousel from '../product/ProductCarousel';
 import TodayDealSection from './TodayDealSection';
 import { UIProduct } from '../../lib/types';
@@ -31,7 +30,7 @@ interface StoredViewedProduct {
 
 export default function HomeInteractiveSection({ allProducts, recommended, officialPicks }: Props) {
   const router = useRouter();
-  const [selectedSkin, setSelectedSkin] = useSelectedSkinType();
+  const [selectedSkin] = useSelectedSkinType();
   const [isInfoOpen, setIsInfoOpen] = useState(false);
   const [recentlyViewed, setRecentlyViewed] = useState<UIProduct[]>([]);
 
@@ -88,11 +87,7 @@ export default function HomeInteractiveSection({ allProducts, recommended, offic
       .slice(0, 8);
   }, [allProducts, recommended, selectedSkin]);
 
-  const handleSkinFilter = (skin: string) => {
-    // Toggle: re-tapping the active type clears it. The hook persists to
-    // localStorage and broadcasts the change to the category list.
-    setSelectedSkin(selectedSkin === skin ? null : skin);
-  };
+
 
   const handleClearHistory = () => {
     localStorage.removeItem('recentlyViewedProducts');
@@ -113,8 +108,7 @@ export default function HomeInteractiveSection({ allProducts, recommended, offic
       {/* Curation Carousel Banners */}
       <CurationCarousel />
 
-      {/* Skin Type Section (Categories removed) */}
-      <SkinTypeAndCategorySection selectedSkin={selectedSkin} onSkinSelect={handleSkinFilter} />
+
 
       {/* Dynamic Recommended Products Carousel */}
       {carouselProducts.length > 0 && (
