@@ -214,3 +214,84 @@ export function MoreGridIcon(props: IconProps) {
     </svg>
   );
 }
+
+// ─── Image-based Category Icons (using background-removed PNGs) ────────────────
+
+export function SuncareImageIcon({ className, ...props }: React.ComponentPropsWithoutRef<'img'>) {
+  return (
+    <img
+      src="/images/categories/suncare.png"
+      alt="선케어"
+      width={48}
+      height={48}
+      className={className}
+      {...props}
+    />
+  );
+}
+
+export function SkincareImageIcon({ className, ...props }: React.ComponentPropsWithoutRef<'img'>) {
+  return (
+    <img
+      src="/images/categories/skincare.png"
+      alt="스킨케어"
+      width={48}
+      height={48}
+      className={className}
+      {...props}
+    />
+  );
+}
+
+export function CleansingCareImageIcon({ className, ...props }: React.ComponentPropsWithoutRef<'img'>) {
+  return (
+    <img
+      src="/images/categories/cleansing-care.png"
+      alt="클렌징"
+      width={48}
+      height={48}
+      className={className}
+      {...props}
+    />
+  );
+}
+
+export function MaskpackImageIcon({ className, ...props }: React.ComponentPropsWithoutRef<'img'>) {
+  return (
+    <img
+      src="/images/categories/maskpack.png"
+      alt="마스크팩"
+      width={48}
+      height={48}
+      className={className}
+      {...props}
+    />
+  );
+}
+
+export function BodycareImageIcon({ className, ...props }: React.ComponentPropsWithoutRef<'img'>) {
+  return (
+    <img
+      src="/images/categories/bodycare.png"
+      alt="바디케어"
+      width={48}
+      height={48}
+      className={className}
+      {...props}
+    />
+  );
+}
+
+export function BaseMakeupImageIcon({ className, ...props }: React.ComponentPropsWithoutRef<'img'>) {
+  return (
+    <img
+      src="/images/categories/base-makeup.png"
+      alt="베이스 메이크업"
+      width={48}
+      height={48}
+      className={className}
+      {...props}
+    />
+  );
+}
+
