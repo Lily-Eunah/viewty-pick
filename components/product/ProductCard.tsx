@@ -23,6 +23,7 @@ export default function ProductCard({ product }: ProductCardProps) {
           alt={product.name}
           brand={product.brand}
           className="w-full"
+          category={product.category}
         />
 
       {/* 2. Content Info */}

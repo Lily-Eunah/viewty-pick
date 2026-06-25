@@ -7,12 +7,14 @@ interface ProductImageWithFallbackProps {
   src?: string | null;
   alt: string;
   className?: string;
+  category?: string;
 }
 
 export default function ProductImageWithFallback({
   src,
   alt,
   className = '',
+  category,
 }: ProductImageWithFallbackProps) {
   const [error, setError] = useState(false);
 
