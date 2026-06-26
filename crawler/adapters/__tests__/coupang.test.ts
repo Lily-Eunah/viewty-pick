@@ -20,6 +20,7 @@ import {
   isCoupangProductPageUrl,
   looksLikeImageUrl,
   pickCoupangImage,
+  resolveCoupangImageAuto,
   CoupangApiItem,
 } from '../coupang';
 
@@ -451,6 +452,16 @@ it('returns null for an empty q= value', () => {
 
 it('returns null for an empty url', () => {
   expect(extractCoupangQuery('')).toBeNull();
+});
+
+// ---------------------------------------------------------------------------
+// Fixture 14: resolveCoupangImageAuto
+// ---------------------------------------------------------------------------
+console.log('\n--- [Fixture 14] resolveCoupangImageAuto mock ---');
+it('returns null in mock/test mode', () => {
+  resolveCoupangImageAuto('몽디에스', '엑설런트 선크림').then((img) => {
+    expect(img).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------

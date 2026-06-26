@@ -425,6 +425,52 @@ export async function resolveCoupangImageFromUrl(
   }
 }
 
+/**
+ * Resolve a Coupang productImage by keyword search, with optional anchorProductId for exact matching.
+ * Used for automated background image gathering when no explicit override URL is provided.
+ */
+export async function resolveCoupangImageAuto(
+  brand: string | null,
+  name: string,
+  anchorProductId?: string | null,
+  overrideKeyword?: string | null
+): Promise<string | null> {
+  const accessKey = process.env.COUPANG_ACCESS_KEY ?? '';
+  const secretKey = process.env.COUPANG_SECRET_KEY ?? '';
+  const isMock =
+    process.env.VIEWTYPICK_MOCK_MODE === 'true' ||
+    process.env.CRAWLER_MODE === 'mock' ||
+    process.env.NODE_ENV === 'test' ||
+    isPlaceholderKey(accessKey) ||
+    isPlaceholderKey(secretKey);
+
+  if (isMock) return null;
+
+  const fallback = buildSearchKeyword(brand, name);
+  const keywords = [overrideKeyword, fallback].filter(
+    (kw, i, arr): kw is string => !!kw && arr.indexOf(kw) === i
+  );
+
+  const items: CoupangApiItem[] = [];
+  try {
+    for (const keyword of keywords) {
+      items.push(...(await searchCoupang(keyword, accessKey, secretKey)));
+      const image = pickCoupangImage(items, anchorProductId ?? '', name, brand);
+      if (image) {
+        console.log(`[Coupang Image Auto] "${keyword}" (productId ${anchorProductId ?? 'none'}) → ${image}`);
+        return image;
+      }
+    }
+    console.log(
+      `[Coupang Image Auto] [${keywords.join(' | ')}] (productId ${anchorProductId ?? 'none'}) → unresolved (no image in search)`
+    );
+    return null;
+  } catch (e: unknown) {
+    console.warn(`[Coupang Image Auto] resolve failed for brand=${brand} name=${name}: ${(e as Error).message}`);
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Helper.
 // ---------------------------------------------------------------------------
