@@ -1,11 +1,13 @@
-﻿import { runSheetImport } from './sheets/import';
+import { runSheetImport } from './sheets/import';
 import { CoupangAdapter, NaverAdapter, OliveYoungAdapter, RetailerAdapter, PriceOffer, FetchOutcome } from './adapters/index';
+import { resolveCoupangImageAuto, extractCoupangProductId } from './adapters/coupang';
 import { clearNaverSearchCache } from './adapters/naver';
 import { readInspectionRows, upsertInspection, approvalOverrides, InspectionItem } from './sheets/inspection';
 import { upsertLinkOnly, LinkOnlyItem } from './sheets/linkOnly';
 import { routeNoOffer } from './core/routeNoOffer';
 import { applyManualOverrides, normalizePrice } from './core/normalize';
 import { runHealthCheck, resolveListingOutcome } from './core/healthcheck';
+import { resolveListingOutcome as _unused, runHealthCheck as _unused2 } from './core/healthcheck'; // just in case
 import { recalculateViewtyScores } from './core/score';
 import { sendDailySummary, sendCriticalAlarm } from './core/notify';
 import { isSupabaseServerConfigured, supabaseServer } from '../lib/supabase/server';
@@ -624,6 +626,75 @@ export async function crawlPipeline(): Promise<void> {
     };
   });
 
+  // Step 6.5: 이미지 유효성 검사 및 자동 매칭 (쿠팡 Partners API 활용)
+  console.log('[Pipeline] Validating and automatically gathering product images...');
+  const checkImageAlive = async (url: string): Promise<boolean> => {
+    if (url.startsWith('keyword:')) return true;
+    if (!url.startsWith('http://') && !url.startsWith('https://')) return false;
+    try {
+      const res = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(3000) });
+      if (res.ok) return true;
+      const resGet = await fetch(url, { method: 'GET', signal: AbortSignal.timeout(3000) });
+      return resGet.ok;
+    } catch {
+      return false;
+    }
+  };
+
+  const finalProducts: Product[] = [];
+  for (const prod of updatedProducts) {
+    let currentImage = prod.image_url ? prod.image_url.trim() : null;
+    let imageUpdated = false;
+
+    // 1. 이미지가 있는 경우 -> 상태 체크
+    if (currentImage) {
+      const alive = await checkImageAlive(currentImage);
+      if (!alive) {
+        console.log(`[Pipeline] Image URL broken/expired for "${prod.name}": ${currentImage}`);
+        currentImage = null;
+        imageUpdated = true;
+      }
+    }
+
+    // 2. 이미지가 없거나(null) 또는 keyword 오버라이드가 적혀 있는 경우
+    const isKeywordOverride = !!(currentImage && currentImage.startsWith('keyword:'));
+    if (!currentImage || isKeywordOverride) {
+      let overrideKeyword: string | null = null;
+      if (isKeywordOverride) {
+        overrideKeyword = currentImage.substring('keyword:'.length).trim();
+      }
+
+      // 상품에 매칭된 쿠팡 판매처 링크가 있는지 확인
+      const prodListings = updatedListings.filter((l) => l.product_id === prod.id && l.is_active);
+      const coupangListing = prodListings.find((l) => {
+        const seller = sellers.find((s) => s.id === l.seller_id);
+        return seller && seller.slug === 'coupang';
+      });
+      const anchorProductId = coupangListing ? extractCoupangProductId(coupangListing.url) : null;
+
+      // 쿠팡 API 이미지 자동 조회 호출
+      const newImage = await resolveCoupangImageAuto(
+        prod.brand || null,
+        prod.name,
+        anchorProductId,
+        overrideKeyword
+      );
+
+      if (newImage) {
+        currentImage = newImage;
+        imageUpdated = true;
+        console.log(`[Pipeline] Automatically resolved image for "${prod.name}" → ${newImage}`);
+      } else if (isKeywordOverride) {
+        console.warn(`[Pipeline] Custom keyword "${overrideKeyword}" search failed for "${prod.name}". Retaining override.`);
+      }
+    }
+
+    finalProducts.push({
+      ...prod,
+      image_url: currentImage,
+    });
+  }
+
   // Step 7: Save Results
   if (useSupabase) {
     try {
@@ -645,10 +716,11 @@ export async function crawlPipeline(): Promise<void> {
         }).eq('id', list.id);
       }
 
-      // Upsert Products score
-      for (const prod of updatedProducts) {
+      // Upsert Products score & image_url
+      for (const prod of finalProducts) {
         await supabaseServer.from('products').update({
           viewty_score: prod.viewty_score,
+          image_url: prod.image_url,
         }).eq('id', prod.id);
       }
 
@@ -701,8 +773,8 @@ export async function crawlPipeline(): Promise<void> {
     });
 
     db.products = db.products.map((orig) => {
-      const updated = updatedProducts.find((p) => p.id === orig.id);
-      return updated ? { ...orig, viewty_score: updated.viewty_score } : orig;
+      const updated = finalProducts.find((p) => p.id === orig.id);
+      return updated ? { ...orig, viewty_score: updated.viewty_score, image_url: updated.image_url } : orig;
     });
 
     db.price_snapshots.push(...newSnapshots);

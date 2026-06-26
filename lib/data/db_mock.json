@@ -10869,5 +10869,30 @@
       "value": 5
     }
   ],
-  "affiliate_clicks": []
+  "affiliate_clicks": [],
+  "waitlist": [
+    {
+      "id": 1,
+      "email": "test@example.com",
+      "intent": "price_alert",
+      "wishlist_slugs": [
+        "slug1",
+        "slug2"
+      ],
+      "consent_service": true,
+      "consent_marketing": true,
+      "created_at": "2026-06-26T06:23:03.481Z",
+      "updated_at": "2026-06-26T06:23:03.526Z"
+    },
+    {
+      "id": 2,
+      "email": "route@example.com",
+      "intent": "launch",
+      "wishlist_slugs": null,
+      "consent_service": true,
+      "consent_marketing": true,
+      "created_at": "2026-06-26T06:23:03.584Z",
+      "updated_at": "2026-06-26T06:23:03.584Z"
+    }
+  ]
 }
