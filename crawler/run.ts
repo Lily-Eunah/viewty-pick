@@ -660,7 +660,7 @@ export async function crawlPipeline(): Promise<void> {
     const isKeywordOverride = !!(currentImage && currentImage.startsWith('keyword:'));
     if (!currentImage || isKeywordOverride) {
       let overrideKeyword: string | null = null;
-      if (isKeywordOverride) {
+      if (isKeywordOverride && currentImage) {
         overrideKeyword = currentImage.substring('keyword:'.length).trim();
       }
 
