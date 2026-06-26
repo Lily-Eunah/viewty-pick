@@ -194,7 +194,13 @@ export function resolveImageUrl(
   previousImageUrl?: string | null,
 ): { image: string | null; keptPrevious: boolean } {
   const raw = (rawImageUrl ?? '').trim();
-  if (!raw) return { image: null, keptPrevious: false }; // operator cleared the cell
+  
+  // If the sheet cell is empty, preserve the existing DB image_url (allows automated background gathering).
+  if (!raw) {
+    const prev = (previousImageUrl ?? '').trim();
+    return { image: prev || null, keptPrevious: !!prev };
+  }
+
   const key = imageResolveKey(raw, brand, name);
   const value = resolved.has(key) ? resolved.get(key)! : raw;
   if (value) return { image: value, keptPrevious: false };
