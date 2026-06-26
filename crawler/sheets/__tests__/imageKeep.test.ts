@@ -54,10 +54,10 @@ it('Coupang URL resolved → uses the freshly resolved image', () => {
   assert(r.keptPrevious === false, 'not kept-previous when resolved');
 });
 
-it('empty sheet cell → null even when a previous image exists (operator cleared)', () => {
+it('empty sheet cell → preserves previous image when exists (allows background auto-match)', () => {
   const r = resolveImageUrl('', BRAND, NAME, new Map(), PREV);
-  assert(r.image === null, `expected null, got ${r.image}`);
-  assert(r.keptPrevious === false, 'clearing is intentional, not kept-previous');
+  assert(r.image === PREV, `expected previous kept, got ${r.image}`);
+  assert(r.keptPrevious === true, 'empty sheet cell preserves previous image');
 });
 
 it('direct .jpg URL → passes through unchanged', () => {
