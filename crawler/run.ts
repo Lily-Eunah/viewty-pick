@@ -6,6 +6,10 @@ import { readInspectionRows, upsertInspection, approvalOverrides, InspectionItem
 import { upsertLinkOnly, LinkOnlyItem } from './sheets/linkOnly';
 import { routeNoOffer } from './core/routeNoOffer';
 import { applyManualOverrides, normalizePrice } from './core/normalize';
+import { parsePackage } from './core/parsePackage';
+import { llmExtractTitle, llmRunStats, resetLlmRunStats, llmKeyCount, getLlmModel } from './core/llmTitleParse';
+import { makeDbParseCache, clearParseCacheMemo } from './core/titleParseCache';
+import { rawOfferTitle } from './core/offerTitle';
 import { runHealthCheck, resolveListingOutcome } from './core/healthcheck';
 import { resolveListingOutcome as _unused, runHealthCheck as _unused2 } from './core/healthcheck'; // just in case
 import { recalculateViewtyScores } from './core/score';
@@ -202,6 +206,16 @@ export async function crawlPipeline(): Promise<void> {
   // (possibly operator-edited) estimated price promotes to a displayable 'ok'.
   // Candidates written back to the tab are collected during the crawl loop below.
   const inspectionCandidates: InspectionItem[] = [];
+
+  // Stage-2: LLM 제목 파싱 토글(기본 off → 거동 무변경). 'on'이면 priced offer의 제목을
+  // parsePackage(게이트+LLM, DB캐시)로 파싱해 normalize에 주입. 캐시 덕에 제목 변경 시에만 호출.
+  const llmTitleParseOn = process.env.LLM_TITLE_PARSE === 'on' && !mockMode && llmKeyCount() > 0;
+  const parseCache = makeDbParseCache();
+  if (llmTitleParseOn) {
+    resetLlmRunStats();
+    clearParseCacheMemo();
+    console.log(`[Pipeline] LLM title parse ON (${getLlmModel()}, keys=${llmKeyCount()})`);
+  }
   // Unmatched (no-price) crawl-target links collected during the crawl loop →
   // auto-maintained into the link_only sheet tab (Step 8.6). Only adapter-having
   // sellers reach the loop body that pushes here, so zigzag/ably are excluded.
@@ -375,6 +389,23 @@ export async function crawlPipeline(): Promise<void> {
           });
         }
         continue;
+      }
+
+      // 4.2c Stage-2: parse the matched offer title (gate+LLM, DB-cached) and inject
+      // into the offer so normalize uses it instead of re-parsing sourceText. Only
+      // high-confidence parses change normalize's numbers (its confidence gate);
+      // low-confidence/하lucination-guarded results are ignored there (conservative).
+      if (llmTitleParseOn && offer.sourceText) {
+        try {
+          offer.parsedPackage = await parsePackage(
+            rawOfferTitle(offer.sourceText),
+            { volumeMl: product.volume_ml ?? null, volumeUnit: product.volume_unit ?? null, productName: product.name, brand: product.brand ?? null },
+            llmExtractTitle,
+            parseCache
+          );
+        } catch (e) {
+          console.warn(`[Pipeline] parsePackage failed for ${product.name}: ${(e as Error).message}`);
+        }
       }
 
       // 4.3 Normalize raw prices
@@ -838,6 +869,21 @@ export async function crawlPipeline(): Promise<void> {
       console.log(`[Pipeline] link_only tab written: ${res.written} unmatched (no-price) link(s).`);
     } catch (e) {
       console.warn('[Pipeline] link_only tab write failed (continuing):', (e as Error).message);
+    }
+  }
+
+  // Step 8.7: LLM title-parse health alarm (stage-2 §5-2). If every API key hit its
+  // quota (429) or errors were high, new/changed titles fell back to inspection
+  // without an LLM prediction → alert the operator to add another account's key or
+  // wait for the daily reset. Cached titles are unaffected.
+  if (llmTitleParseOn) {
+    console.log(`[Pipeline] LLM title parse: ${llmRunStats.networkCalls} calls · ${llmRunStats.quotaErrors} quota(429) · ${llmRunStats.otherErrors} err`);
+    if (llmRunStats.allKeysExhausted) {
+      await sendCriticalAlarm(
+        'LLM 제목 파싱 쿼터 소진',
+        `모든 Gemini 키(${llmKeyCount()}개) 429 — 새/변경 제목이 LLM 예측 없이 검수로 빠졌습니다. ` +
+          `GEMINI_API_KEYS에 다른 계정 키 추가 또는 일일 쿼터 리셋 후 재sync 필요. (calls=${llmRunStats.networkCalls}, quota429=${llmRunStats.quotaErrors})`
+      );
     }
   }
 

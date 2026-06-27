@@ -18,6 +18,34 @@ const MODEL = process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite';
 // 지원하지 않는다 → system을 user 프롬프트에 합치고, 응답 텍스트에서 JSON을 직접 추출한다.
 const IS_GEMMA = MODEL.toLowerCase().startsWith('gemma');
 
+// 멀티 API 키(다른 계정으로 무료 쿼터 풀 확장): GEMINI_API_KEYS(쉼표) 우선, 없으면 GEMINI_API_KEY.
+// 429(쿼터)인 키는 그 run 동안 소진 처리하고 다음 키로 로테이션한다.
+const API_KEYS = (process.env.GEMINI_API_KEYS || process.env.GEMINI_API_KEY || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+const exhaustedKeys = new Set<string>();
+
+/** run 단위 LLM 상태(run.ts가 쿼터 소진/장애 알람에 사용). */
+export const llmRunStats = { networkCalls: 0, quotaErrors: 0, otherErrors: 0, allKeysExhausted: false };
+export function resetLlmRunStats(): void {
+  llmRunStats.networkCalls = 0;
+  llmRunStats.quotaErrors = 0;
+  llmRunStats.otherErrors = 0;
+  llmRunStats.allKeysExhausted = false;
+  exhaustedKeys.clear();
+}
+export function getLlmModel(): string {
+  return MODEL;
+}
+export function llmKeyCount(): number {
+  return API_KEYS.length;
+}
+function nextAvailableKey(): string | null {
+  for (const k of API_KEYS) if (!exhaustedKeys.has(k)) return k;
+  return null;
+}
+
 /** ```json 펜스/잡문을 걷어내고 첫 번째 { … } 객체를 파싱(Gemma 자유텍스트 대비). */
 function extractJson<T>(text: string): T | null {
   if (!text) return null;
@@ -107,8 +135,7 @@ const cache = new Map<string, LlmTitleResult | null>();
 
 /** parsePackage에 주입할 LLM 추출 함수. 실패/불가 시 null. */
 export const llmExtractTitle: LlmExtractFn = async (title, ctx) => {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || isMock() || !title) return null;
+  if (API_KEYS.length === 0 || isMock() || !title) return null;
 
   const cacheKey = `${MODEL}|${title}|${ctx.volumeMl ?? ''}|${ctx.volumeUnit ?? ''}`;
   if (cache.has(cacheKey)) return cache.get(cacheKey)!;
@@ -138,12 +165,22 @@ export const llmExtractTitle: LlmExtractFn = async (title, ctx) => {
           responseSchema: RESPONSE_SCHEMA,
         },
       });
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`;
-
-  // 429(쿼터)/503(과부하)/5xx는 백오프 재시도. 그 외 오류는 즉시 null(=regex 폴백).
-  const MAX_ATTEMPTS = 3;
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+  // 429 → 해당 키 소진 처리 후 다음 키로 로테이션. 5xx/네트워크 → 같은 키로 백오프 재시도(상한).
+  // 모든 키 소진 → allKeysExhausted=true + null(=regex 폴백). 무한 루프 없음(429는 키를 줄이고,
+  // 5xx/네트워크는 backoffAttempt 상한).
+  const MAX_BACKOFF = 3;
+  let backoffAttempt = 0;
+  while (true) {
+    const apiKey = nextAvailableKey();
+    if (!apiKey) {
+      llmRunStats.allKeysExhausted = true;
+      console.warn(`[llmTitleParse] 모든 API 키 쿼터 소진 — "${title.slice(0, 40)}" → 폴백(검수)`);
+      cache.set(cacheKey, null);
+      return null;
+    }
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`;
     try {
+      llmRunStats.networkCalls++;
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -153,38 +190,39 @@ export const llmExtractTitle: LlmExtractFn = async (title, ctx) => {
       if (res.ok) {
         const json = await res.json();
         const text: string | undefined = json?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!text) {
-          cache.set(cacheKey, null);
-          return null;
-        }
-        const parsed = extractJson<LlmTitleResult>(text);
+        const parsed = text ? extractJson<LlmTitleResult>(text) : null;
         cache.set(cacheKey, parsed);
         return parsed;
       }
-      const retryable = res.status === 429 || res.status >= 500;
-      if (retryable && attempt < MAX_ATTEMPTS) {
-        const backoff = 2000 * attempt + Math.floor(Math.random() * 1000); // 2~3s, 4~5s
-        console.warn(`[llmTitleParse] HTTP ${res.status} — retry ${attempt}/${MAX_ATTEMPTS - 1} in ${backoff}ms ("${title.slice(0, 32)}")`);
-        await new Promise((r) => setTimeout(r, backoff));
-        continue;
+      if (res.status === 429) {
+        llmRunStats.quotaErrors++;
+        exhaustedKeys.add(apiKey);
+        console.warn(`[llmTitleParse] 429 (쿼터) — 키 소진 ${exhaustedKeys.size}/${API_KEYS.length}, 다음 키로 로테이션`);
+        continue; // 다음 키
       }
+      if (res.status >= 500 && backoffAttempt < MAX_BACKOFF) {
+        backoffAttempt++;
+        const backoff = 2000 * backoffAttempt + Math.floor(Math.random() * 1000);
+        console.warn(`[llmTitleParse] HTTP ${res.status} — backoff ${backoffAttempt}/${MAX_BACKOFF} in ${backoff}ms`);
+        await new Promise((r) => setTimeout(r, backoff));
+        continue; // 같은 키 재시도
+      }
+      llmRunStats.otherErrors++;
       console.warn(`[llmTitleParse] HTTP ${res.status} (giving up) for "${title.slice(0, 40)}"`);
       cache.set(cacheKey, null);
       return null;
     } catch (e) {
-      if (attempt < MAX_ATTEMPTS) {
-        const backoff = 2000 * attempt;
-        console.warn(`[llmTitleParse] ${(e as Error).message} — retry ${attempt}/${MAX_ATTEMPTS - 1} in ${backoff}ms`);
-        await new Promise((r) => setTimeout(r, backoff));
+      if (backoffAttempt < MAX_BACKOFF) {
+        backoffAttempt++;
+        await new Promise((r) => setTimeout(r, 2000 * backoffAttempt));
         continue;
       }
+      llmRunStats.otherErrors++;
       console.warn(`[llmTitleParse] failed for "${title.slice(0, 40)}": ${(e as Error).message}`);
       cache.set(cacheKey, null);
       return null;
     }
   }
-  cache.set(cacheKey, null);
-  return null;
 };
 
 export function clearLlmTitleCache(): void {
