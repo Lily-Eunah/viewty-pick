@@ -151,6 +151,19 @@ export function extractCoupangProductId(url: string): string | null {
 }
 
 /**
+ * Extract the vendorItemId from a Coupang product-detail URL's query string.
+ * A single productId can have MULTIPLE vendors (sellers); vendorItemId uniquely
+ * identifies the operator-curated vendor option. Without this, pickCoupangMatch
+ * may return a different vendor's price/image/deeplink for the same product.
+ * Returns null when absent.
+ */
+export function extractCoupangVendorItemId(url: string): string | null {
+  if (!url) return null;
+  const m = url.match(/[?&]vendorItemId=(\d+)/i);
+  return m ? m[1] : null;
+}
+
+/**
  * Extract the operator's search query (`q=`) from a Coupang URL. The product-page
  * URL an operator pastes usually carries the real search term they used to FIND the
  * product (e.g. `?q=몽디에스 선크림`), which is often a better image-search keyword than
@@ -285,9 +298,10 @@ export function pickCoupangImage(
   items: CoupangApiItem[],
   anchorProductId: string,
   productName: string,
-  brand: string | null | undefined
+  brand: string | null | undefined,
+  anchorVendorItemId?: string | null
 ): string | null {
-  const anchored = pickCoupangMatch(items, anchorProductId);
+  const anchored = pickCoupangMatch(items, anchorProductId, anchorVendorItemId);
   if (anchored?.productImage) return anchored.productImage;
   // Results arrive in relevance order — first identity-passing one with an image wins.
   const sameProduct = items.find(
@@ -297,17 +311,37 @@ export function pickCoupangImage(
 }
 
 /**
- * Pick the offer for an anchored Coupang productId. A single product page exposes
- * several purchase options (1개 / 묶음 / 벌크) as separate search rows that SHARE the
- * same productId — the earlier `.find()` grabbed the first, which is often a bulk
- * option (e.g. 일리윤 클렌저 81,840원 instead of the 16,600원 single). Pick the
- * LOWEST productPrice among the matches = the base single unit.
+ * Pick the offer for an anchored Coupang listing. Matching priority:
+ *   1. productId + vendorItemId — exact operator-curated vendor (when provided).
+ *      A single productId can have MULTIPLE vendors/sellers, each with a distinct
+ *      vendorItemId. Without vendorItemId anchoring, the adapter picks the cheapest
+ *      vendor — which may be a completely different seller with different pricing,
+ *      image, and affiliate deeplink than the one the operator curated.
+ *   2. productId only (vendorItemId absent or not in results) — fall back to the
+ *      LOWEST productPrice among all vendors sharing the productId (the base single
+ *      unit, not a bulk option).
  */
-export function pickCoupangMatch(items: CoupangApiItem[], productId: string): CoupangApiItem | null {
-  const matches = items.filter((pd) => String(pd.productId) === productId);
-  if (matches.length === 0) return null;
+export function pickCoupangMatch(
+  items: CoupangApiItem[],
+  productId: string,
+  vendorItemId?: string | null
+): CoupangApiItem | null {
+  const productMatches = items.filter((pd) => String(pd.productId) === productId);
+  if (productMatches.length === 0) return null;
+
+  // Priority 1: exact vendor match (operator's curated seller).
+  if (vendorItemId) {
+    const vendorMatch = productMatches.find(
+      (pd) => pd.vendorItemId != null && String(pd.vendorItemId) === vendorItemId
+    );
+    if (vendorMatch) return vendorMatch;
+    // vendorItemId not in search results — fall through to lowest-price fallback.
+    // This is expected when the Partners search API's ad-slice omits the exact vendor.
+  }
+
+  // Priority 2: lowest price among all vendors of the same product.
   const priceOf = (pd: CoupangApiItem) => pd.productPrice ?? pd.price ?? Number.POSITIVE_INFINITY;
-  return matches.reduce((lo, pd) => (priceOf(pd) < priceOf(lo) ? pd : lo));
+  return productMatches.reduce((lo, pd) => (priceOf(pd) < priceOf(lo) ? pd : lo));
 }
 
 /** Build the search keyword (brand + name, volume stripped). */
@@ -397,6 +431,7 @@ export async function resolveCoupangImageFromUrl(
 
   // Try the operator's q= query first, then brand+name. De-dupe so we never spend a
   // call on an identical keyword (keeps it to ≤2 searches and honors the rate limit).
+  const vendorItemId = extractCoupangVendorItemId(productUrl);
   const query = extractCoupangQuery(productUrl);
   const fallback = buildSearchKeyword(brand, name);
   const keywords = [query, fallback].filter(
@@ -409,9 +444,9 @@ export async function resolveCoupangImageFromUrl(
       // Accumulate results across keywords so the anchor/identity match can be found
       // in either search's hits.
       items.push(...(await searchCoupang(keyword, accessKey, secretKey)));
-      const image = pickCoupangImage(items, productId, name, brand);
+      const image = pickCoupangImage(items, productId, name, brand, vendorItemId);
       if (image) {
-        console.log(`[Coupang Image] "${keyword}" (productId ${productId}) → ${image}`);
+        console.log(`[Coupang Image] "${keyword}" (productId ${productId}, vendorItemId ${vendorItemId ?? 'none'}) → ${image}`);
         return image;
       }
     }
@@ -455,7 +490,8 @@ export async function resolveCoupangImageAuto(
   try {
     for (const keyword of keywords) {
       items.push(...(await searchCoupang(keyword, accessKey, secretKey)));
-      const image = pickCoupangImage(items, anchorProductId ?? '', name, brand);
+      // No vendorItemId in auto-resolve (no operator URL); anchor on productId only.
+      const image = pickCoupangImage(items, anchorProductId ?? '', name, brand, null);
       if (image) {
         console.log(`[Coupang Image Auto] "${keyword}" (productId ${anchorProductId ?? 'none'}) → ${image}`);
         return image;
@@ -538,26 +574,31 @@ export class CoupangAdapter implements RetailerAdapter {
       };
     }
 
+    // Extract vendorItemId for exact seller anchoring. A single productId can list
+    // multiple vendors; without vendorItemId the adapter may return a different
+    // vendor's price/image/deeplink.
+    const vendorItemId = extractCoupangVendorItemId(listing.url);
+
     // Load the product to build the search keyword (brand + name).
     const product = await this._loadProduct(listing.product_id);
     if (!product) throw new Error(`Product not found for ID: ${listing.product_id}`);
 
     const keyword = buildSearchKeyword(product.brand, product.name);
-    console.log(`[Coupang Adapter] Searching "${keyword}" → anchor productId ${productId}`);
+    console.log(`[Coupang Adapter] Searching "${keyword}" → anchor productId ${productId}, vendorItemId ${vendorItemId ?? 'none'}`);
 
     // HTTP error / timeout throws here → run.ts classifies 'failed' (§4.4 staircase).
     const productData = await searchCoupang(keyword, accessKey, secretKey);
 
-    // Exact anchor: among rows sharing the URL's productId, pick the lowest-price
-    // option (the base single, not a bundle/bulk purchase option).
-    const match = pickCoupangMatch(productData, productId);
+    // Exact anchor: prefer the operator's vendorItemId (exact seller), then fall
+    // back to the lowest-price option among all vendors of the same productId.
+    const match = pickCoupangMatch(productData, productId, vendorItemId);
 
     if (!match) {
       // Search SUCCEEDED but the anchored product is not among results → legitimate
       // no-match (delisted / not surfaced for this keyword). Reset fail_count,
       // keep link-only. (PR #14 no_offer semantics.)
       console.warn(
-        `[Coupang Adapter] productId ${productId} not in ${productData.length} search results — link-only (no_offer)`
+        `[Coupang Adapter] productId ${productId} (vendorItemId ${vendorItemId ?? 'none'}) not in ${productData.length} search results — link-only (no_offer)`
       );
       return {
         regularPrice: null,
@@ -572,8 +613,9 @@ export class CoupangAdapter implements RetailerAdapter {
       };
     }
 
-    // Exact productId match = anchored to the operator-curated SKU → run.ts shows it
-    // directly and never downgrades to inspection on LLM parse uncertainty.
+    // Exact productId (+ vendorItemId when available) match = anchored to the
+    // operator-curated SKU → run.ts shows it directly and never downgrades to
+    // inspection on LLM parse uncertainty.
     return { ...parseCoupangItem(match), anchored: true, outcome: 'ok' };
   }
 

@@ -13,6 +13,7 @@
 import {
   parseCoupangItem,
   extractCoupangProductId,
+  extractCoupangVendorItemId,
   isCoupangShortLink,
   buildSearchKeyword,
   extractCoupangQuery,
@@ -278,6 +279,62 @@ it('picks the lowest-price row among same-productId options (single, not bulk)',
 it('returns null when no row matches the anchored productId', () => {
   const data: CoupangApiItem[] = [item({ productId: 111 }), item({ productId: 222 })];
   expect(pickCoupangMatch(data, '333')).toBeNull();
+});
+
+// ---------------------------------------------------------------------------
+// Fixture 10b: vendorItemId anchoring — exact seller match over lowest-price
+// ---------------------------------------------------------------------------
+console.log('\n--- [Fixture 10b] vendorItemId anchoring ---');
+it('prefers exact vendorItemId match over lowest-price fallback', () => {
+  const data: CoupangApiItem[] = [
+    item({ productId: 7975902054, vendorItemId: 11111, productName: '닥터지 선스틱 (저가 판매자)', productPrice: 8000 }),
+    item({ productId: 7975902054, vendorItemId: 85566203806, productName: '닥터지 선스틱 (운영자 지정)', productPrice: 12000 }),
+    item({ productId: 7975902054, vendorItemId: 33333, productName: '닥터지 선스틱 (다른 판매자)', productPrice: 10000 }),
+  ];
+  const m = pickCoupangMatch(data, '7975902054', '85566203806');
+  expect(m).not.toBeNull();
+  expect(m!.vendorItemId).toBe(85566203806);
+  expect(m!.productPrice).toBe(12000);
+});
+
+it('falls back to lowest-price when vendorItemId not in results', () => {
+  const data: CoupangApiItem[] = [
+    item({ productId: 7975902054, vendorItemId: 11111, productPrice: 10000 }),
+    item({ productId: 7975902054, vendorItemId: 22222, productPrice: 8000 }),
+  ];
+  const m = pickCoupangMatch(data, '7975902054', '99999');
+  expect(m).not.toBeNull();
+  expect(m!.productPrice).toBe(8000);
+});
+
+it('falls back to lowest-price when vendorItemId is null/undefined', () => {
+  const data: CoupangApiItem[] = [
+    item({ productId: 7975902054, vendorItemId: 11111, productPrice: 15000 }),
+    item({ productId: 7975902054, vendorItemId: 22222, productPrice: 9000 }),
+  ];
+  const m = pickCoupangMatch(data, '7975902054', null);
+  expect(m).not.toBeNull();
+  expect(m!.productPrice).toBe(9000);
+});
+
+// ---------------------------------------------------------------------------
+// Fixture 10c: extractCoupangVendorItemId
+// ---------------------------------------------------------------------------
+console.log('\n--- [Fixture 10c] extractCoupangVendorItemId ---');
+it('extracts vendorItemId from a product-detail URL', () => {
+  expect(extractCoupangVendorItemId(
+    'https://www.coupang.com/vp/products/7975902054?itemId=18424406365&vendorItemId=85566203806'
+  )).toBe('85566203806');
+});
+
+it('returns null when vendorItemId is absent', () => {
+  expect(extractCoupangVendorItemId(
+    'https://www.coupang.com/vp/products/7975902054?itemId=18424406365'
+  )).toBeNull();
+});
+
+it('returns null for empty URL', () => {
+  expect(extractCoupangVendorItemId('')).toBeNull();
 });
 
 // ---------------------------------------------------------------------------
