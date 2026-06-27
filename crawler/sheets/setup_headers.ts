@@ -4,7 +4,13 @@ import { google } from 'googleapis';
 const HEADERS: Record<string, string[]> = {
   _categories:        ['대분류', '대분류_slug', '소분류', '소분류_slug', 'sort_order'],
   products:           ['product_key', 'name', 'brand', 'category', 'volume_ml', 'volume_unit', 'skin_types', 'features', 'hwahae_url', 'image_url', 'is_disabled', 'slug', 'regular_price'],
-  product_links:      ['product_name', 'brand', 'oliveyoung', 'coupang', 'naver', 'zigzag', 'ably'],
+  // naver_prev (APPENDED at the end on purpose): write-once backup of the operator's
+  // ORIGINAL naver link, preserved when a 품절 SKU is auto-substituted with another
+  // official-mall 구성 (B2 fallback). It MUST stay last — setup_headers overwrites only
+  // row 1 without shifting data, so inserting mid-row would misalign existing
+  // zigzag/ably columns on a live sheet. Column order is irrelevant to the importer
+  // and the write-back (both resolve columns by header name).
+  product_links:      ['product_name', 'brand', 'oliveyoung', 'coupang', 'naver', 'zigzag', 'ably', 'naver_prev'],
   badges:             ['product_name', 'brand', 'directorpi_detail', 'directorpi_source', 'directorpi_ref_url', 'directorpi_date'],
   retailer_allowlist: ['seller', 'brand', 'allowed_store_name'],
   manual_overrides:   ['product_name', 'seller', 'override_type', 'value', 'reason', 'expires_at', 'product_key'],

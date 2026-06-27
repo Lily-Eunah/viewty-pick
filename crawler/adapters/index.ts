@@ -43,6 +43,14 @@ export interface PriceOffer {
   // only (does NOT block the price); run.ts collects these into a Discord verify line
   // so the operator can confirm it is an option-select page and not a real set.
   nJongVerify?: boolean;
+  // True → a NON-affiliate Naver listing's curated SKU was missing (e.g. 품절 → dropped
+  // from Shopping results) and the price came from a DIFFERENT official-mall offer
+  // (B2 official-store fallback). matchedUrl is that substitute offer's link. run.ts
+  // adopts it as the buy link (DB affiliate_url/url + sheet writeback), preserving the
+  // operator's original link in the product_links `naver_prev` column, and reports the
+  // substitution to Discord. Always false for affiliate (naver.me) listings, catalog
+  // fallbacks, and id-anchored matches (those never replace the operator's SKU).
+  linkSubstituted?: boolean;
   // True → the matcher found a candidate it could NOT auto-price because it is a
   // SUSPECTED set (heterogeneous N-product bundle) or a low-confidence band match.
   // There is no qualified offer (outcome stays no_offer), but unlike a plain

@@ -104,5 +104,26 @@ it('no N종 verify items → no N종 line', () => {
   assert(!/세트\/구성 확인/.test(msg), `verify line should be absent when empty:\n${msg}`);
 });
 
+it('naver link substitutions surface as an info line (품절→공식몰 다른 구성)', () => {
+  const msg = buildDailySummaryMessage({
+    totalLinks: 10,
+    successCount: 10,
+    warningCount: 0,
+    failureCount: 0,
+    durationSeconds: 1,
+    naverLinkSubstitutions: ['레스트업 세럼 스킨 @ 네이버: https://smartstore.naver.com/x/products/5328668155 → https://smartstore.naver.com/x/products/9999'],
+  });
+  assert(/네이버 링크 교체/.test(msg), `link-substitution line missing:\n${msg}`);
+  assert(/naver_prev/.test(msg), `naver_prev preservation hint missing:\n${msg}`);
+  assert(/레스트업 세럼 스킨/.test(msg), `substitution item not listed:\n${msg}`);
+});
+
+it('no naver link substitutions → no substitution line', () => {
+  const msg = buildDailySummaryMessage({
+    totalLinks: 10, successCount: 10, warningCount: 0, failureCount: 0, durationSeconds: 1,
+  });
+  assert(!/네이버 링크 교체/.test(msg), `substitution line should be absent when empty:\n${msg}`);
+});
+
 console.log(failed ? '\nResult: FAILED' : '\nResult: ALL PASSED');
 if (failed) process.exit(1);

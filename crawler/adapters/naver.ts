@@ -1264,6 +1264,11 @@ export class NaverAdapter implements RetailerAdapter {
         matchedMallName,
         inspectionWarning,
         nJongVerify: containsBareNJong(item.title),
+        // B2 only (official-store fallback that UPDATES the buy link on a non-affiliate
+        // listing): the curated SKU was missing, so this priced offer is a DIFFERENT
+        // official-mall 구성. run.ts adopts the link end-to-end + preserves the operator
+        // original. A2 (affiliate kept → updateLink=false) and catalog never substitute.
+        linkSubstituted: result.fallbackTier === 'official-store' && updateLink,
         outcome: 'ok', // priced; healthcheck downgrades to warning when inspectionWarning set
       };
     }
