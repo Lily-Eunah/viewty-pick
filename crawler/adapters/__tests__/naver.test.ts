@@ -29,7 +29,6 @@ import {
   isNaverAffiliate,
   fallbackPolicy,
   pickOfficialStoreFallback,
-  pickCatalogFallback,
   NaverShoppingItem,
   OfferMatchInput,
 } from '../naver';
@@ -543,20 +542,14 @@ it('fallbackPolicy: B2 official+non-affiliate → update link, NO warn', () => {
   const p = fallbackPolicy('official-store', false);
   assert(p.updateLink === true && p.warn === false, 'B2 update link, no warning');
 });
-it('fallbackPolicy: catalog always warns, never updates link (A3/B3)', () => {
-  assert(fallbackPolicy('catalog', true).warn === true && fallbackPolicy('catalog', true).updateLink === false, 'A3');
-  assert(fallbackPolicy('catalog', false).warn === true && fallbackPolicy('catalog', false).updateLink === false, 'B3');
-});
 // fetchOffer sets offer.linkSubstituted = (fallbackTier === 'official-store' && updateLink).
 // Only B2 (official store on a NON-affiliate listing) substitutes the buy link end-to-end
-// (DB url/affiliate_url + sheet naver_prev write-back); A2/catalog/anchor never do.
+// (DB url/affiliate_url + sheet naver_prev write-back); A2/anchor never do.
 it('linkSubstituted rule: true only for B2 (official-store + non-affiliate)', () => {
-  const sub = (tier: 'official-store' | 'catalog' | null, isAffiliate: boolean): boolean =>
-    tier === 'official-store' && (tier ? fallbackPolicy(tier, isAffiliate).updateLink : false);
+  const sub = (tier: 'official-store' | null, isAffiliate: boolean): boolean =>
+    tier === 'official-store' && fallbackPolicy(tier, isAffiliate).updateLink;
   assert(sub('official-store', false) === true, 'B2 → substituted');
   assert(sub('official-store', true) === false, 'A2 (affiliate kept) → not substituted');
-  assert(sub('catalog', false) === false, 'catalog → not substituted');
-  assert(sub('catalog', true) === false, 'catalog affiliate → not substituted');
   assert(sub(null, false) === false, 'anchor (no fallbackTier) → not substituted');
 });
 it('pickOfficialStoreFallback matches official store single → fallbackTier official-store', () => {
@@ -580,24 +573,6 @@ it('pickOfficialStoreFallback: form conflict (토너 vs 크림) → no match', (
   const wrong = item({ title: '코스알엑스 아드보훼이셜 크림 100ml', mallName: '코스알엑스', link: 'https://smartstore.naver.com/cosrx/products/9', lprice: '21390', productType: '2' });
   const r = pickOfficialStoreFallback([wrong], { brand: '코스알엑스', name: '코스알엑스 아드보훼이셜 토너', volumeMl: 150, allowedStoreName: null });
   assert(r.matched === null, 'different form (크림 vs 토너) must be excluded');
-});
-
-console.log('\n--- anchor-miss fallback: 가격비교 catalog lprice (Tier-3) ---');
-it('pickCatalogFallback matches catalog item → fallbackTier catalog', () => {
-  const cat = item({ title: '넘버즈인 5번 시카 베리어 크림 50ml', mallName: '네이버', link: 'https://search.shopping.naver.com/catalog/4567', lprice: '17900', productType: '1' });
-  const r = pickCatalogFallback([cat], '넘버즈인 5번 시카 베리어 크림', 50);
-  assert(r.matched !== null && r.matched.lprice === '17900', `catalog lprice expected, got ${r.matched?.lprice}`);
-  assert(r.fallbackTier === 'catalog', `fallbackTier expected catalog, got ${r.fallbackTier}`);
-});
-it('pickCatalogFallback ignores lprice=0 catalog rows', () => {
-  const empty = item({ title: '넘버즈인 5번 시카 크림 50ml', mallName: '네이버', link: 'https://search.shopping.naver.com/catalog/1', lprice: '0', productType: '1' });
-  const r = pickCatalogFallback([empty], '넘버즈인 5번 시카 크림', 50);
-  assert(r.matched === null, 'lprice 0 catalog should be skipped');
-});
-it('pickCatalogFallback: low identity → no match', () => {
-  const other = item({ title: '조선미녀 맑은쌀 선크림 50ml', mallName: '네이버', link: 'https://search.shopping.naver.com/catalog/2', lprice: '20000', productType: '1' });
-  const r = pickCatalogFallback([other], '넘버즈인 5번 시카 베리어 크림', 50);
-  assert(r.matched === null, 'different product must not catalog-match');
 });
 
 // ---------------------------------------------------------------------------

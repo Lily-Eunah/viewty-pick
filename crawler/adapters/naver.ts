@@ -61,9 +61,10 @@ export interface OfferMatchResult {
   inspectionEstimatedPrice?: number | null;
   // Set when this match came from a NON-ANCHORED anchor-miss fallback (not the
   // curated SKU): 'official-store' = an official Naver brand-store offer matched by
-  // mallName; 'catalog' = a 가격비교 catalog lprice. Such prices are always surfaced
-  // as warning (inspection) — see NaverAdapter.fetchOffer + healthcheck.
-  fallbackTier?: 'official-store' | 'catalog';
+  // mallName. (The 가격비교 catalog lprice fallback was removed — reseller/non-official
+  // prices rarely matched the operator's link → anchor-miss w/o official store = link-only.)
+  // Surfaced as warning (inspection) — see NaverAdapter.fetchOffer + healthcheck.
+  fallbackTier?: 'official-store';
   // True → route this priced match to the Discord set/구성 verify line (informational,
   // does NOT block the price): a bare "N종" option-select, OR a 본품+소량 부스트 that was
   // add-on-stripped (case C). The price IS shown; the operator confirms set-vs-단품.
@@ -679,19 +680,18 @@ export function isNaverAffiliate(url?: string | null): boolean {
 }
 
 /**
- * Link/warning policy for a NON-ANCHORED fallback adoption (operator 3-case rules):
- *   - catalog (가격비교 lprice): keep the operator link, always warning (temp,
- *     리셀러 가능·공식 아님 → operator manual price preferred).            [A3 / B3]
+ * Link/warning policy for a NON-ANCHORED official-store fallback adoption:
  *   - official store + affiliate listing (naver.me): keep the affiliate buy link
  *     (do NOT update), warning (price-owner ≠ link-owner; record affiliate). [A2]
  *   - official store + non-affiliate listing: adopt the official price AND update
  *     the buy link to that official store → price/link same owner → NO warning. [B2]
+ * (catalog/가격비교 fallback was removed — see fallbackTier.)
  */
 export function fallbackPolicy(
-  tier: 'official-store' | 'catalog',
+  tier: 'official-store',
   isAffiliate: boolean
 ): { updateLink: boolean; warn: boolean } {
-  if (tier === 'catalog') return { updateLink: false, warn: true };
+  void tier;
   return isAffiliate ? { updateLink: false, warn: true } : { updateLink: true, warn: false };
 }
 
@@ -776,28 +776,6 @@ export function pickOfficialStoreFallback(items: NaverShoppingItem[], input: Off
   };
 }
 
-/** Tier-3: a 가격비교 catalog lprice matched by strict identity (no official store). */
-export function pickCatalogFallback(items: NaverShoppingItem[], name: string, volumeMl: number | null): OfferMatchResult {
-  const catalogs = items.filter((it) => it.link && CATALOG_LINK_RE.test(it.link) && parseInt(it.lprice, 10) > 0);
-  if (catalogs.length === 0) {
-    return { matched: null, parsedVolumeRaw: null, identityScore: null, reason: 'no 가격비교 catalog offer with lprice in results' };
-  }
-  const passing: ScoredCandidate[] = catalogs
-    .map((it) => { const id = passesStrictIdentity(it.title, name, volumeMl); return { it, score: id.score, parsedVol: id.parsedVol, ok: id.ok }; })
-    .filter((x) => x.ok)
-    .map(({ it, score, parsedVol }) => ({ it, score, parsedVol }));
-  if (passing.length === 0) {
-    return { matched: null, parsedVolumeRaw: null, identityScore: null, reason: 'catalog offer(s) failed strict identity' };
-  }
-  const chosen = chooseFallback(passing, items, volumeMl);
-  return {
-    matched: chosen.it,
-    parsedVolumeRaw: chosen.parsedVol,
-    identityScore: chosen.score,
-    reason: `가격비교 catalog lprice fallback (sim ${chosen.score.toFixed(2)})`,
-    fallbackTier: 'catalog',
-  };
-}
 
 /**
  * Resolve a Naver price: Tier-1 ANCHOR to the curated SKU, then anchor-miss
@@ -845,18 +823,20 @@ export async function matchNaverOffer(
     volumeMl: product.volume_ml ?? null,
     allowedStoreName,
   };
+  // Tier-2 official Naver brand-store only. The 가격비교 catalog lprice fallback was
+  // removed: those all-sellers-lowest prices are usually reseller/non-official and
+  // rarely matched the operator's linked price → not worth holding for inspection.
+  // No official-store match → link-only (routed by run.ts).
   const tier2 = pickOfficialStoreFallback(merged, input);
   if (tier2.matched) return tier2;
-  const tier3 = pickCatalogFallback(merged, product.name, product.volume_ml ?? null);
-  if (tier3.matched) return tier3;
 
   return {
     matched: null,
     parsedVolumeRaw: null,
     identityScore: null,
     reason: anchorProductNo
-      ? `anchor miss (productNo ${anchorProductNo}) + no official-store/catalog fallback — link-only`
-      : 'no curated productId + no official-store/catalog fallback — link-only',
+      ? `anchor miss (productNo ${anchorProductNo}) + no official-store fallback — link-only`
+      : 'no curated productId + no official-store fallback — link-only',
   };
 }
 
@@ -1221,11 +1201,10 @@ export class NaverAdapter implements RetailerAdapter {
     // affiliate buy link is monetized and must NEVER be replaced (Case A).
     const isAffiliate = isNaverAffiliate(listing.url) || isNaverAffiliate(listing.affiliate_url);
 
-    // ── Non-anchored fallback (Tier-2 official store / Tier-3 catalog) ─────────
-    // Price/link handling follows the operator 3-case rules via fallbackPolicy:
+    // ── Non-anchored fallback (Tier-2 official store only) ────────────────────
+    // Price/link handling via fallbackPolicy:
     //   A2 official + affiliate  → keep naver.me link, warning, record affiliate URL.
     //   B2 official + non-affil. → update buy link to the official store, NO warning.
-    //   A3/B3 catalog            → keep operator link, warning (temp · 공식 아님).
     if (result.fallbackTier) {
       const { updateLink, warn } = fallbackPolicy(result.fallbackTier, isAffiliate);
       const priceStr = parsedPrice.toLocaleString('ko-KR');
@@ -1235,26 +1214,19 @@ export class NaverAdapter implements RetailerAdapter {
       let storeName: string | null;
       let sourceText: string;
 
-      if (result.fallbackTier === 'official-store') {
-        matchedUrl = updateLink ? item.link || null : null; // B2 updates; A2 keeps affiliate
-        matchedMallName = item.mallName || null;
-        storeName = allowedStoreName || item.mallName;
-        if (warn) {
-          // A2: price from an official store but buy link stays the affiliate → record
-          // the affiliate URL (for later affiliate-application review) + flag mismatch.
-          inspectionWarning =
-            `비앵커 공식몰 매칭(검수): ${item.mallName} ${priceStr}원 · 구매링크=어필리에이트 유지(가격주체 불일치 가능) · affiliate=${listing.url}`;
-          sourceText = `Naver official-store fallback (affiliate kept): ${stripHtml(item.title)} — affiliate=${listing.url} — ${result.reason}`;
-        } else {
-          // B2: link updated to the official store → price/link same owner → coherent.
-          sourceText = `Naver official-store match (link → 공식몰): ${stripHtml(item.title)} — ${result.reason}`;
-        }
+      // official-store fallback only (catalog removed).
+      matchedUrl = updateLink ? item.link || null : null; // B2 updates; A2 keeps affiliate
+      matchedMallName = item.mallName || null;
+      storeName = allowedStoreName || item.mallName;
+      if (warn) {
+        // A2: price from an official store but buy link stays the affiliate → record
+        // the affiliate URL (for later affiliate-application review) + flag mismatch.
+        inspectionWarning =
+          `비앵커 공식몰 매칭(검수): ${item.mallName} ${priceStr}원 · 구매링크=어필리에이트 유지(가격주체 불일치 가능) · affiliate=${listing.url}`;
+        sourceText = `Naver official-store fallback (affiliate kept): ${stripHtml(item.title)} — affiliate=${listing.url} — ${result.reason}`;
       } else {
-        // catalog (A3/B3): all-sellers lowest; not the official store → always warning.
-        matchedMallName = '네이버 가격비교';
-        storeName = null;
-        inspectionWarning = `비앵커 · 가격비교 최저가(리셀러 가능 · 공식 스토어 아님, 임시): ${priceStr}원`;
-        sourceText = `Naver catalog lprice fallback (temp): ${stripHtml(item.title)} — ${result.reason}`;
+        // B2: link updated to the official store → price/link same owner → coherent.
+        sourceText = `Naver official-store match (link → 공식몰): ${stripHtml(item.title)} — ${result.reason}`;
       }
 
       console.warn(
