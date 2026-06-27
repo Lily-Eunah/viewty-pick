@@ -10,6 +10,7 @@ import {
   rowKey,
   mergeInspectionRows,
   approvalOverrides,
+  manualParseEntries,
   InspectionItem,
   InspectionRow,
 } from '../inspection';
@@ -133,6 +134,25 @@ it('O but unknown product/seller, or null price → skipped', () => {
   assert(approvalOverrides([row({ product_key: 'ZZ', seller: 'naver', approval: 'O' })], PRODUCTS, SELLERS).length === 0, 'unknown product');
   assert(approvalOverrides([row({ product_key: 'P1', seller: 'zigzag', approval: 'O' })], PRODUCTS, SELLERS).length === 0, 'unknown seller');
   assert(approvalOverrides([row({ product_key: 'P1', seller: 'naver', approval: 'O', estimated_price: null })], PRODUCTS, SELLERS).length === 0, 'null price');
+});
+
+// ── stage-2: manualParseEntries (O 확정 → manual ParsePackageResult) ──
+it('manualParseEntries: O row with title+pred → manual bundle result', () => {
+  const e = manualParseEntries([
+    row({ product_key: 'P1', seller: 'naver', approval: 'O', title: '센카 폼클렌징 120ml 2개', pred_count: 2, pred_volume: 120, pred_unit: 'ml', composition: 'homogeneous_bundle' }),
+  ]);
+  assert(e.length === 1, 'one entry');
+  assert(e[0].title === '센카 폼클렌징 120ml 2개', 'title carried');
+  assert(e[0].result.method === 'manual' && e[0].result.unitCount === 2 && e[0].result.unitAmount === 120, 'manual count/volume');
+  assert(e[0].result.promoType === 'bundle' && e[0].result.confidence === 'high', 'bundle + high');
+});
+it('manualParseEntries: heterogeneous → unitCount null + hetero', () => {
+  const e = manualParseEntries([row({ product_key: 'P1', seller: 'naver', approval: 'O', title: '토너 75ml 세럼 35ml', composition: 'heterogeneous_set' })]);
+  assert(e.length === 1 && e[0].result.heterogeneous === true && e[0].result.unitCount === null, 'hetero');
+});
+it('manualParseEntries: blank/X or no title → skipped', () => {
+  assert(manualParseEntries([row({ product_key: 'P1', seller: 'naver', approval: '', title: 'x', pred_count: 2 })]).length === 0, 'blank skipped');
+  assert(manualParseEntries([row({ product_key: 'P1', seller: 'naver', approval: 'O', title: '' })]).length === 0, 'no title skipped');
 });
 
 console.log('\n=== inspection.test.ts Results ===');
