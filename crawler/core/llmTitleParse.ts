@@ -75,8 +75,9 @@ function isMock(): boolean {
 }
 
 // 프롬프트 정책 버전 — 변경 시 bump(영속 캐시 무효화 키).
-// v2 = 동일제품 보너스 합산. v3 = 소량 샘플 sachet은 합산 제외(샘플로 둠).
-export const LLM_PROMPT_VERSION = 'v3-sample-exclude';
+// v2 = 동일제품 보너스 합산. v3 = 소량 샘플 sachet 합산 제외.
+// v4 = 개수/용량 판단불가 시 기본값(1/null) + confidence는 구성 확신도(표기유무 아님).
+export const LLM_PROMPT_VERSION = 'v4-default-and-confidence';
 
 const SYSTEM = [
   '너는 한국 화장품 판매 제목에서 "본품"의 용량/개수/구성을 추출한다.',
@@ -91,6 +92,8 @@ const SYSTEM = [
   '- "N종 중 택1"(옵션선택)은 실구매가 단품이므로 composition=option_select, main_count=1.',
   '- "세트/패키지/콜렉션/기프트"로 서로 다른 제품을 묶은 것은 heterogeneous_set, per_unit_computable=false.',
   '- 단품은 single, main_count=1. main_unit_volume/main_unit 은 본품 1개의 용량(미표기면 null).',
+  '- **기본값**: 개수를 제목에서 판단할 수 없으면 main_count=1(단품이 기본). 용량을 판단할 수 없으면 main_unit_volume=null, main_unit=null로 두라 — 시스템이 DB 용량을 사용한다. 절대 없는 용량을 지어내지 마라.',
+  '- **confidence 기준**: confidence는 "구성 판단(단품/번들/세트 여부, 증정 분리)의 확신도"다. 개수·용량 표기가 제목에 없다는 이유만으로 confidence를 낮추지 마라 — "단품 1개 + 용량 null(=DB)"은 정상이며 그 자체로 high다. low/medium은 구성 자체가 모호할 때만.',
   '- evidence 에는 판단 근거가 된 제목 substring을 적는다.',
   '예시:',
   '  "에스쁘아 비벨벳 커버쿠션 15g 본품+리필" → {composition:"homogeneous_bundle", main_unit_volume:15, main_unit:"g", main_count:2, gifts:[], per_unit_computable:true, confidence:"high", evidence:"본품+리필"}',
