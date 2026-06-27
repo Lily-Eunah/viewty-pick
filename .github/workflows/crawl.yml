@@ -40,3 +40,8 @@ jobs:
           COUPANG_SECRET_KEY: ${{ secrets.COUPANG_SECRET_KEY }}
           NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
           NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
+          # LLM 제목 파싱(개수/용량/구성). GEMINI_API_KEYS 시크릿(쉼표로 다계정 가능) 필요.
+          # 키 없으면 run.ts가 자동 off(안전). 모델은 미설정 시 코드 기본값(gemini-3.1-flash-lite).
+          LLM_TITLE_PARSE: 'on'
+          GEMINI_API_KEYS: ${{ secrets.GEMINI_API_KEYS }}
+          GEMINI_MODEL: ${{ secrets.GEMINI_MODEL }}
