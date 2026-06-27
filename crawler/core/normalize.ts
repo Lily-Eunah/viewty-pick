@@ -136,8 +136,9 @@ export function normalizePrice(product: Product, offer: PriceOffer): NormalizedP
       parse_confidence = 'low';
     }
   } else if (promo_type === 'none' && !promo_text && offer.sourceText) {
-    // Derive bundle quantity from product title
-    const ext = extractPackageFromTitle(offer.sourceText);
+    // Derive bundle quantity from product title. Stage-2: prefer run.ts-injected
+    // parsePackage result (gate+LLM) over re-parsing; falls back to regex when absent.
+    const ext = offer.parsedPackage ?? extractPackageFromTitle(offer.sourceText);
     if (ext.detected && ext.confidence === 'high') {
       const uCount = ext.unitCount || 1;
       const uAmount = ext.unitAmount;
@@ -189,8 +190,9 @@ export function normalizePrice(product: Product, offer: PriceOffer): NormalizedP
       volume_mismatch_detail = `판매처 용량 ${offer.parsedVolumeRaw}ml (DB ${product.volume_ml}ml와 다름) — 판매처 용량으로 ml당 계산`;
     }
   } else if (offer.sourceText && (promo_type === 'bundle' || promo_type === 'none')) {
-    // Check 2: derive volume from title for bundle/none promos
-    const ext = extractPackageFromTitle(offer.sourceText);
+    // Check 2: derive volume from title for bundle/none promos. Stage-2: prefer the
+    // run.ts-injected parsePackage result over re-parsing (fallback to regex when absent).
+    const ext = offer.parsedPackage ?? extractPackageFromTitle(offer.sourceText);
     if (ext.detected && ext.confidence === 'high' && ext.unitAmount !== null) {
       volume_ml = ext.unitAmount;
       if (product.volume_ml && ext.unitAmount !== product.volume_ml) {

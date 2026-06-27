@@ -37,6 +37,15 @@ export interface ParsePackageResult extends PackageExtractionResult {
 
 export type LlmExtractFn = (title: string, ctx: ParseContext) => Promise<LlmTitleResult | null>;
 
+/**
+ * 영속 파싱 캐시(선택 주입). 조회 우선순위는 구현 책임(manual > llm[같은 prompt_version]).
+ * get 히트면 LLM/게이트를 건너뛰고 그대로 반환 → "제목 변경 시에만 호출"로 쿼터 보호.
+ */
+export interface ParseCache {
+  get(title: string): Promise<ParsePackageResult | null>;
+  set(title: string, result: ParsePackageResult): Promise<void>;
+}
+
 // 제품 form noun(카운트가 본품에 붙었는지 판정하는 allowlist). 길이순 무관(endsWith).
 const FORM_NOUNS = [
   '올인원', '선크림', '선스틱', '선세럼', '선쿠션', '선밤', '클렌징폼', '클렌징오일', '클렌징젤',
@@ -169,20 +178,42 @@ function regexFallback(title: string): ParsePackageResult {
 export async function parsePackage(
   title: string,
   ctx: ParseContext,
-  llmExtract?: LlmExtractFn
+  llmExtract?: LlmExtractFn,
+  cache?: ParseCache
 ): Promise<ParsePackageResult> {
-  const g = analyzeGate(title, ctx);
-  if (g.route !== 'needs-llm') return fromGate(g);
-
-  if (!llmExtract) return regexFallback(title);
-  let llm: LlmTitleResult | null = null;
-  try {
-    llm = await llmExtract(title, ctx);
-  } catch {
-    llm = null;
+  // 캐시 우선(manual 확정 / 같은 prompt_version의 llm) → 0콜 재사용.
+  if (cache) {
+    try {
+      const hit = await cache.get(title);
+      if (hit) return hit;
+    } catch {
+      /* 캐시 장애는 무시하고 계속 */
+    }
   }
-  if (!llm) return regexFallback(title);
 
-  const checked = applyTitleParseGuards(llm, title, ctx);
-  return checked ?? regexFallback(title);
+  const g = analyzeGate(title, ctx);
+  let result: ParsePackageResult;
+  if (g.route !== 'needs-llm') {
+    result = fromGate(g);
+  } else if (!llmExtract) {
+    result = regexFallback(title);
+  } else {
+    let llm: LlmTitleResult | null = null;
+    try {
+      llm = await llmExtract(title, ctx);
+    } catch {
+      llm = null;
+    }
+    result = llm ? applyTitleParseGuards(llm, title, ctx) ?? regexFallback(title) : regexFallback(title);
+  }
+
+  // LLM 확정 결과만 캐시(게이트는 재계산이 공짜, 폴백은 일시적이라 재시도 위해 캐시 안 함).
+  if (cache && result.method === 'llm') {
+    try {
+      await cache.set(title, result);
+    } catch {
+      /* best-effort */
+    }
+  }
+  return result;
 }

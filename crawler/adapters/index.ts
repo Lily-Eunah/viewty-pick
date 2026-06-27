@@ -1,4 +1,5 @@
 import { Listing, PromoType } from '../../lib/types';
+import type { ParsePackageResult } from '../core/parsePackage';
 
 /**
  * Outcome of a fetch attempt — distinguishes a legitimate "no qualified offer"
@@ -56,6 +57,9 @@ export interface PriceOffer {
   // fetch with no qualified offer MUST set 'no_offer' so it does not increment
   // fail_count. (Technical failures throw instead → run.ts classifies 'failed'.)
   outcome?: FetchOutcome;
+  // Stage-2: parsePackage(게이트+LLM) 결과를 run.ts가 미리 채워 normalize에 전달(이중 파싱
+  // 제거). 있으면 normalize가 sourceText 재파싱 대신 이 값을 사용. 없으면 기존 거동(regex).
+  parsedPackage?: ParsePackageResult;
 }
 
 export interface RetailerAdapter {

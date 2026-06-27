@@ -102,6 +102,20 @@ for (const c of gateCases) {
   const r6 = await parsePackage('토너 (단독) 에디션', CTX(), stubHallucinate);
   check('parsePackage guard rejects hallucinated count → fallback(regex)', r6.method === 'regex' && r6.needsInspection === true);
 
+  // ── 캐시 주입: get 히트 → 게이트/LLM 건너뜀 ──
+  const cached = { detected: true, unitType: 'ml' as const, unitAmount: 99, unitCount: 1, totalAmount: 99, promoType: 'none' as const, confidence: 'high' as const, evidence: 'cached', method: 'llm' as const, heterogeneous: false, route: 'needs-llm' as const };
+  let llmCalledDespiteCache = false;
+  const hitCache = { get: async () => cached, set: async () => {} };
+  const r7 = await parsePackage('아무 제목 세트', CTX(), async () => { llmCalledDespiteCache = true; return null; }, hitCache);
+  check('parsePackage cache hit → returns cached, no LLM call', r7.unitAmount === 99 && r7.method === 'llm' && !llmCalledDespiteCache);
+
+  // ── 캐시 miss + LLM 채택 → set 호출 / 게이트(자명)는 set 안 함 ──
+  const setKeys: string[] = [];
+  const recCache = { get: async () => null, set: async (t: string) => { setKeys.push(t); } };
+  await parsePackage('센카 폼클렌징 120ml 2개', CTX(), undefined, recCache); // 게이트 multipack → method regex
+  await parsePackage('에스쁘아 커버쿠션 15g 본품+리필', CTX({ volumeMl: 15 }), stubBundle, recCache); // llm 채택
+  check('parsePackage caches LLM result only (not gate)', setKeys.length === 1 && setKeys[0].includes('본품+리필'));
+
   console.log(log.join('\n'));
   console.log(failed ? '\n✗ FAILED' : '\n✓ ALL PASSED');
   process.exit(failed ? 1 : 0);
