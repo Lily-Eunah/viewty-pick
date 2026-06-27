@@ -572,7 +572,9 @@ export class CoupangAdapter implements RetailerAdapter {
       };
     }
 
-    return { ...parseCoupangItem(match), outcome: 'ok' };
+    // Exact productId match = anchored to the operator-curated SKU → run.ts shows it
+    // directly and never downgrades to inspection on LLM parse uncertainty.
+    return { ...parseCoupangItem(match), anchored: true, outcome: 'ok' };
   }
 
   private async _loadProduct(productId: number): Promise<Product | null> {

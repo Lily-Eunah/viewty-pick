@@ -68,6 +68,10 @@ export interface PriceOffer {
   // Raw candidate lprice for §B verify-rescue (heterogeneous set keeps inspectionEstimatedPrice
   // null but still carries suspectedPrice so a verified single can adopt that price).
   suspectedPrice?: number | null;
+  // True → matched offer is ANCHORED to the operator-curated SKU (Naver /products/{N},
+  // Coupang productId, OliveYoung goodsNo). Operator-vetted → run.ts shows it directly
+  // and never downgrades it to inspection on LLM parse uncertainty.
+  anchored?: boolean;
   // Explicit fetch outcome. Absent ⇒ treated as 'ok' (priced). A successful
   // fetch with no qualified offer MUST set 'no_offer' so it does not increment
   // fail_count. (Technical failures throw instead → run.ts classifies 'failed'.)

@@ -79,6 +79,10 @@ export interface OfferMatchResult {
   // still carries suspectedPrice so that, IF the LLM overturns it to a single, that
   // price can be adopted).
   suspectedPrice?: number | null;
+  // True → this matched offer is ANCHORED to the operator-curated SKU (Naver
+  // /products/{N}, OliveYoung goodsNo). It is operator-vetted, so run.ts shows it
+  // directly and does NOT downgrade it to inspection on LLM uncertainty.
+  anchored?: boolean;
 }
 
 // productType: individual mall offers vs price-comparison catalog representative.
@@ -926,9 +930,28 @@ export function pickOliveYoungOffer(
   }
   // goodsNo 앵커: 큐레이션 SKU(goodsNo)와 동일한 offer만 남긴다(정확 SKU 고정 → 형제 변종
   // 오매칭 제거). 일치 offer가 없으면(이번 검색에 큐레이션 SKU 미노출) 기존 느슨 매칭으로 폴백.
+  let anchored = false;
   if (anchorGoodsNo) {
-    const anchored = oy.filter((it) => goodsNoFromOyOfferLink(it.link) === anchorGoodsNo);
-    if (anchored.length > 0) oy = anchored;
+    const hit = oy.filter((it) => goodsNoFromOyOfferLink(it.link) === anchorGoodsNo);
+    if (hit.length > 0) {
+      oy = hit;
+      anchored = true;
+    }
+  }
+  // goodsNo로 큐레이션 SKU가 확정되면 = 운영자가 검토해 넣은 제품. 유사도/밴드/세트 판정 없이
+  // 그대로 채택(노출)한다 — 개수/용량은 run.ts의 LLM 파싱 + normalize가 산출하고, anchored
+  // 플래그로 LLM 저신뢰여도 검수로 강등되지 않는다(검수 불필요).
+  if (anchored) {
+    const chosen = oy.reduce((lo, it) => (parseInt(it.lprice, 10) < parseInt(lo.lprice, 10) ? it : lo), oy[0]);
+    const ext = extractPackageFromTitle(stripPromoGifts(stripHtml(chosen.title)));
+    const parsedVolumeRaw = ext.detected && ext.unitType === 'ml' && ext.unitAmount !== null ? ext.unitAmount : null;
+    return {
+      matched: chosen,
+      parsedVolumeRaw,
+      identityScore: 1,
+      reason: `올리브영 goodsNo-anchored (${anchorGoodsNo}) — 큐레이션 SKU 채택`,
+      anchored: true,
+    };
   }
   // Score/judge on the GIFT-STRIPPED title so a freebie ("(+올인원크림 30ml)") cannot
   // lend its token to a different product (e.g. a 토너 set masquerading as 올인원).
@@ -1016,6 +1039,8 @@ export function pickOliveYoungOffer(
           reason: `올리브영 동종 번들 ×${bundleQty} (본품가 추정, 확인 후 O)`,
           needsInspection: true,
           inspectionEstimatedPrice: Number.isFinite(lp) && lp > 0 ? Math.round(lp / bundleQty) : null,
+          suspectedTitle: stripHtml(chosen.it.title),
+          suspectedPrice: Number.isFinite(lp) && lp > 0 ? lp : null,
         };
       }
     }
@@ -1285,6 +1310,7 @@ export class NaverAdapter implements RetailerAdapter {
       parsedVolumeRaw: result.parsedVolumeRaw,
       matchedUrl: isAffiliate ? null : item.link || null,
       matchedMallName: item.mallName || null,
+      anchored: true, // Tier-1: id-anchored to the curated SKU (operator-vetted)
       // Bare "N종" option-select OR a case-C 본품+부스트 strip → Discord set/구성 verify.
       nJongVerify: containsBareNJong(item.title) || !!result.nJongVerify,
       outcome: 'ok',

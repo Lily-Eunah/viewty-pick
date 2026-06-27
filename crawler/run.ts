@@ -351,6 +351,9 @@ export async function crawlPipeline(): Promise<void> {
             offer.outcome = 'ok';
             offer.parsedPackage = verify;
             offer.sourceText = offer.suspectedTitle; // 4.2c가 다시 파싱(캐시 히트) → 동일 결과
+          } else {
+            // 자동적용 X(검수 유지) — 그래도 verify 결과를 붙여 inspection 행 prefill에 사용.
+            offer.parsedPackage = verify;
           }
         } catch (e) {
           console.warn(`[Pipeline] LLM verify failed for ${product.name}: ${(e as Error).message}`);
@@ -455,9 +458,11 @@ export async function crawlPipeline(): Promise<void> {
           console.warn(`[Pipeline] parsePackage failed for ${product.name}: ${(e as Error).message}`);
         }
         // 저신뢰/세트 의심/환각-가드 parse → 자동 노출 대신 보류(warning) + 예측 prefill 검수.
+        // 단, ANCHORED offer(네이버 /products/{N} · 쿠팡 productId · 올영 goodsNo = 운영자가
+        // 검토해 넣은 SKU)는 LLM이 불확실해도 검수로 보내지 않고 그대로 노출한다.
         // inspectionWarning을 세팅하면 healthcheck가 status='warning'(숨김)로 잡고, 아래 priced
         // warning 블록이 예측과 함께 inspection 탭에 push한다. 운영자 O로 확정.
-        if (offer.parsedPackage?.needsInspection && !offer.inspectionWarning) {
+        if (offer.parsedPackage?.needsInspection && !offer.inspectionWarning && !offer.anchored) {
           offer.inspectionWarning = `LLM 파싱 저신뢰/세트 의심 — 예측 확인 후 O${offer.parsedPackage.evidence ? ` (${offer.parsedPackage.evidence})` : ''}`.slice(0, 200);
         }
       }

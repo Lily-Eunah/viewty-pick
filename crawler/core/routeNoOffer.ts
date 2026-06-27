@@ -43,6 +43,9 @@ export function routeNoOffer(
   // (bad source URL) is always a link_only fix, never an inspection price review.
   if (outcome === 'no_offer' && offer.needsInspection) {
     const why = (offer.sourceText ?? '').trim();
+    // Stage-2 prefill: the suspected offer title + LLM-predicted 개수/용량/구성 (attached
+    // by run.ts §B verify) so the operator confirms (O) / corrects rather than fills blank.
+    const pp = offer.parsedPackage;
     return {
       kind: 'inspection',
       item: {
@@ -54,6 +57,11 @@ export function routeNoOffer(
         source: offer.matchedMallName ?? offer.storeName ?? ctx.sellerName,
         reason: `세트/저신뢰 의심 — 단품이면 가격 확인 후 O${why ? ` · ${why}` : ''}`.slice(0, 300),
         link: offer.matchedUrl ?? ctx.affiliateUrl ?? ctx.url ?? '',
+        title: offer.suspectedTitle ?? undefined,
+        pred_count: pp?.unitCount ?? null,
+        pred_volume: pp?.unitAmount ?? null,
+        pred_unit: pp?.unitType ?? null,
+        composition: pp ? (pp.heterogeneous ? 'heterogeneous_set' : pp.promoType === 'bundle' ? 'homogeneous_bundle' : 'single') : null,
       },
     };
   }
