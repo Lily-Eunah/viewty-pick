@@ -20,9 +20,16 @@
  */
 import { google } from 'googleapis';
 import { ManualOverride } from '../../lib/types';
+import type { ParsePackageResult } from '../core/parsePackage';
 
 export const INSPECTION_TAB = 'inspection';
-export const INSPECTION_HEADERS = ['product_key', 'product_name', 'seller', '추정가격', '출처', '사유', '링크', '승인'];
+// Stage-2: 제목 + LLM 예측(개수/용량/단위/구성) prefill 컬럼 추가. 운영자는 맞으면 승인=O,
+// 틀리면 예측 셀을 고치고 O. (LLM_TITLE_PARSE off면 예측 컬럼은 비어 있음.)
+export const INSPECTION_HEADERS = [
+  'product_key', 'product_name', 'seller',
+  '제목', '예측개수', '예측용량', '예측단위', '구성',
+  '추정가격', '출처', '사유', '링크', '승인',
+];
 
 /** A crawler-produced inspection candidate (one held/warning offer). */
 export interface InspectionItem {
@@ -33,6 +40,13 @@ export interface InspectionItem {
   source: string;              // matched mallName / '네이버 가격비교' / store name
   reason: string;              // why it is held (healthcheck/inspection message)
   link: string;                // buy/audit link
+  // Stage-2 prefill (선택): 보류된 priced offer의 제목 + LLM 예측 파싱. 운영자 O 시
+  // (편집됐을 수 있는) 예측이 title_parse_cache에 manual로 확정된다(setManualParse).
+  title?: string;              // raw offer title (cache key)
+  pred_count?: number | null;  // 본품 개수
+  pred_volume?: number | null; // 본품 1개 용량
+  pred_unit?: string | null;   // ml | g | sheet
+  composition?: string | null; // single | homogeneous_bundle | heterogeneous_set | option_select
 }
 
 /** A row of the inspection tab = an item plus the operator's 승인 cell. */
@@ -126,11 +140,56 @@ export function approvalOverrides(
   return out;
 }
 
+/**
+ * O로 승인된 행 중 제목 + 예측 파싱이 있는 것을 title_parse_cache용 manual 결과로 변환
+ * (stage-2 §2). 운영자가 셀을 고쳤다면 그 값이 반영된다. 다음 sync부터 그 제목은
+ * LLM/규칙 대신 이 확정 파싱을 쓰고 재호출하지 않는다(setManualParse는 run.ts에서 호출).
+ */
+export function manualParseEntries(rows: InspectionRow[]): { title: string; result: ParsePackageResult }[] {
+  const out: { title: string; result: ParsePackageResult }[] = [];
+  for (const r of rows) {
+    if (parseApproval(r.approval) !== 'O') continue;
+    const title = (r.title || '').trim();
+    if (!title) continue;
+    const count = r.pred_count != null && r.pred_count >= 1 ? Math.round(r.pred_count) : 1;
+    const volume = r.pred_volume != null && r.pred_volume > 0 ? r.pred_volume : null;
+    const unit = (r.pred_unit || '').toLowerCase();
+    const unitType: ParsePackageResult['unitType'] =
+      unit === 'ml' || unit === 'g' || unit === 'sheet' ? unit : volume != null ? 'ml' : 'count';
+    const comp = (r.composition || '').trim();
+    const heterogeneous = comp === 'heterogeneous_set';
+    const promoType: ParsePackageResult['promoType'] =
+      comp === 'homogeneous_bundle' ? 'bundle' : heterogeneous ? 'set' : 'none';
+    out.push({
+      title,
+      result: {
+        detected: true,
+        unitType,
+        unitAmount: heterogeneous ? null : volume,
+        unitCount: heterogeneous ? null : count,
+        totalAmount: !heterogeneous && volume != null ? volume * count : null,
+        promoType,
+        confidence: 'high', // operator-confirmed
+        evidence: '운영자 검수 O',
+        method: 'manual',
+        heterogeneous,
+        route: 'needs-llm',
+      },
+    });
+  }
+  return out;
+}
+
 function rowToValues(r: InspectionRow): (string | number)[] {
   return [
     r.product_key,
     r.product_name,
     r.seller,
+    r.title ?? '',
+    r.pred_count != null ? r.pred_count : '',
+    r.pred_volume != null ? r.pred_volume : '',
+    r.pred_unit ?? '',
+    r.composition ?? '',
     r.estimated_price != null ? r.estimated_price : '',
     r.source,
     r.reason,
@@ -171,7 +230,7 @@ export async function readInspectionRows(): Promise<InspectionRow[]> {
   try {
     const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID!;
     const sheets = sheetsClient();
-    const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${INSPECTION_TAB}!A:H` });
+    const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${INSPECTION_TAB}!A:M` });
     const rows = res.data.values ?? [];
     if (rows.length < 2) return [];
     const headers = rows[0].map((h: string) => String(h).trim());
@@ -180,11 +239,20 @@ export async function readInspectionRows(): Promise<InspectionRow[]> {
       const i = idx(name);
       return i >= 0 ? (row[i] ?? '') : '';
     };
+    const numOrNull = (s: string): number | null => {
+      const n = parseFloat(String(s).replace(/[^\d.]/g, ''));
+      return Number.isFinite(n) && n > 0 ? n : null;
+    };
     return rows.slice(1)
       .map((row) => ({
         product_key: String(col(row, 'product_key')).trim(),
         product_name: String(col(row, 'product_name')),
         seller: String(col(row, 'seller')).trim(),
+        title: String(col(row, '제목')),
+        pred_count: numOrNull(String(col(row, '예측개수'))),
+        pred_volume: numOrNull(String(col(row, '예측용량'))),
+        pred_unit: String(col(row, '예측단위')).trim() || null,
+        composition: String(col(row, '구성')).trim() || null,
         estimated_price: parsePrice(String(col(row, '추정가격'))),
         source: String(col(row, '출처')),
         reason: String(col(row, '사유')),
@@ -207,7 +275,7 @@ export async function writeInspectionRows(rows: InspectionRow[]): Promise<void> 
   try {
     const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID!;
     const sheets = sheetsClient();
-    await sheets.spreadsheets.values.clear({ spreadsheetId, range: `${INSPECTION_TAB}!A1:H100000` });
+    await sheets.spreadsheets.values.clear({ spreadsheetId, range: `${INSPECTION_TAB}!A1:M100000` });
     await sheets.spreadsheets.values.update({
       spreadsheetId,
       range: `${INSPECTION_TAB}!A1`,

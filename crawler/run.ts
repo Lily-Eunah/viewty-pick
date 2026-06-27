@@ -2,13 +2,13 @@ import { runSheetImport } from './sheets/import';
 import { CoupangAdapter, NaverAdapter, OliveYoungAdapter, RetailerAdapter, PriceOffer, FetchOutcome } from './adapters/index';
 import { resolveCoupangImageAuto, extractCoupangProductId } from './adapters/coupang';
 import { clearNaverSearchCache } from './adapters/naver';
-import { readInspectionRows, upsertInspection, approvalOverrides, InspectionItem } from './sheets/inspection';
+import { readInspectionRows, upsertInspection, approvalOverrides, manualParseEntries, InspectionItem } from './sheets/inspection';
 import { upsertLinkOnly, LinkOnlyItem } from './sheets/linkOnly';
 import { routeNoOffer } from './core/routeNoOffer';
 import { applyManualOverrides, normalizePrice } from './core/normalize';
 import { parsePackage } from './core/parsePackage';
 import { llmExtractTitle, llmRunStats, resetLlmRunStats, llmKeyCount, getLlmModel } from './core/llmTitleParse';
-import { makeDbParseCache, clearParseCacheMemo } from './core/titleParseCache';
+import { makeDbParseCache, clearParseCacheMemo, setManualParse } from './core/titleParseCache';
 import { rawOfferTitle } from './core/offerTitle';
 import { runHealthCheck, resolveListingOutcome } from './core/healthcheck';
 import { resolveListingOutcome as _unused, runHealthCheck as _unused2 } from './core/healthcheck'; // just in case
@@ -228,6 +228,13 @@ export async function crawlPipeline(): Promise<void> {
         manualOverrides.push(...oOverrides);
         console.log(`[Pipeline] Applied ${oOverrides.length} inspection O-approval(s) as price overrides.`);
       }
+      // Stage-2: O로 확정된 (편집됐을 수 있는) 예측 파싱을 title_parse_cache에 manual로 박는다
+      // → 그 제목은 이후 LLM/규칙이 재결정/덮어쓰기 하지 않음.
+      if (llmTitleParseOn) {
+        const mEntries = manualParseEntries(rows);
+        for (const e of mEntries) await setManualParse(e.title, e.result);
+        if (mEntries.length > 0) console.log(`[Pipeline] Pinned ${mEntries.length} operator-confirmed parse(s) as manual.`);
+      }
     } catch (e) {
       console.warn('[Pipeline] Inspection approvals read failed (continuing):', (e as Error).message);
     }
@@ -406,6 +413,12 @@ export async function crawlPipeline(): Promise<void> {
         } catch (e) {
           console.warn(`[Pipeline] parsePackage failed for ${product.name}: ${(e as Error).message}`);
         }
+        // 저신뢰/세트 의심/환각-가드 parse → 자동 노출 대신 보류(warning) + 예측 prefill 검수.
+        // inspectionWarning을 세팅하면 healthcheck가 status='warning'(숨김)로 잡고, 아래 priced
+        // warning 블록이 예측과 함께 inspection 탭에 push한다. 운영자 O로 확정.
+        if (offer.parsedPackage?.needsInspection && !offer.inspectionWarning) {
+          offer.inspectionWarning = `LLM 파싱 저신뢰/세트 의심 — 예측 확인 후 O${offer.parsedPackage.evidence ? ` (${offer.parsedPackage.evidence})` : ''}`.slice(0, 200);
+        }
       }
 
       // 4.3 Normalize raw prices
@@ -510,6 +523,7 @@ export async function crawlPipeline(): Promise<void> {
         // A held (warning) price with a value → inspection candidate: the crawler
         // pre-fills it into the OX tab so the operator can approve (O) / reject (X).
         if (check.status === 'warning' && snapshot.sale_price != null) {
+          const pp = offer.parsedPackage;
           inspectionCandidates.push({
             product_key: product.product_key,
             product_name: product.name,
@@ -518,6 +532,12 @@ export async function crawlPipeline(): Promise<void> {
             source: offer.matchedMallName ?? offer.storeName ?? '',
             reason: (check.message ?? offer.inspectionWarning ?? '').slice(0, 300),
             link: offer.matchedUrl ?? listing.affiliate_url ?? listing.url ?? '',
+            // Stage-2 prefill: LLM 예측을 검수행에 채워 운영자가 O/수정+O 하도록.
+            title: pp ? rawOfferTitle(offer.sourceText) : undefined,
+            pred_count: pp?.unitCount ?? null,
+            pred_volume: pp?.unitAmount ?? null,
+            pred_unit: pp?.unitType ?? null,
+            composition: pp ? (pp.heterogeneous ? 'heterogeneous_set' : pp.promoType === 'bundle' ? 'homogeneous_bundle' : 'single') : null,
           });
         }
 
