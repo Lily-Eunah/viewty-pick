@@ -161,6 +161,14 @@ function fromGate(g: GateResult): ParsePackageResult {
   };
 }
 
+/**
+ * §B 검증 통과 판정: LLM이 high-confidence로 comparable single/bundle(이종세트 아님,
+ * 검수 불필요)라고 본 경우만 inspection 대신 자동 적용. (medium/low/이종/환각 → 검수 유지.)
+ */
+export function canAutoApplyVerify(r: ParsePackageResult): boolean {
+  return r.method === 'llm' && r.confidence === 'high' && !r.needsInspection && !r.heterogeneous;
+}
+
 /** needs-llm 폴백: 기존 regex 최선 결과 + 저신뢰·검수 플래그. sync를 절대 실패시키지 않는다. */
 function regexFallback(title: string): ParsePackageResult {
   return {

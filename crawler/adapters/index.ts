@@ -61,6 +61,13 @@ export interface PriceOffer {
   // band's lprice). null when no per-unit price is derivable (e.g. a heterogeneous
   // set price) — the operator types the price in the tab before approving.
   inspectionEstimatedPrice?: number | null;
+  // Stage-2 §B: candidate offer title that triggered needsInspection (suspected set /
+  // low-confidence). run.ts gives it ONE LLM verify pass; if highly confident it is a
+  // comparable single/bundle, suspectedPrice is auto-applied (no inspection).
+  suspectedTitle?: string | null;
+  // Raw candidate lprice for §B verify-rescue (heterogeneous set keeps inspectionEstimatedPrice
+  // null but still carries suspectedPrice so a verified single can adopt that price).
+  suspectedPrice?: number | null;
   // Explicit fetch outcome. Absent ⇒ treated as 'ok' (priced). A successful
   // fetch with no qualified offer MUST set 'no_offer' so it does not increment
   // fail_count. (Technical failures throw instead → run.ts classifies 'failed'.)
