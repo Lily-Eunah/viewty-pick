@@ -4,7 +4,8 @@
  *
  * Run: tsx crawler/core/__tests__/parsePackage.test.ts
  */
-import { analyzeGate, parsePackage } from '../parsePackage';
+import { analyzeGate, parsePackage, canAutoApplyVerify } from '../parsePackage';
+import type { ParsePackageResult } from '../parsePackage';
 import type { ParseContext } from '../parsePackage';
 import type { LlmTitleResult } from '../titleParseGuards';
 
@@ -123,6 +124,17 @@ for (const c of gateCases) {
   await parsePackage('센카 폼클렌징 120ml 2개', CTX(), undefined, recCache); // 게이트 multipack → method regex
   await parsePackage('에스쁘아 커버쿠션 15g 본품+리필', CTX({ volumeMl: 15 }), stubBundle, recCache); // llm 채택
   check('parsePackage caches LLM result only (not gate)', setKeys.length === 1 && setKeys[0].includes('본품+리필'));
+
+  // ── §B canAutoApplyVerify: high LLM single/bundle → 자동 적용, 그 외 → 검수 ──
+  const mk = (o: Partial<ParsePackageResult>): ParsePackageResult => ({
+    detected: true, unitType: 'ml', unitAmount: 50, unitCount: 1, totalAmount: 50,
+    promoType: 'none', confidence: 'high', evidence: 'x', method: 'llm', heterogeneous: false, route: 'needs-llm', ...o,
+  });
+  check('verify: llm high single → auto-apply', canAutoApplyVerify(mk({})) === true);
+  check('verify: medium → no auto', canAutoApplyVerify(mk({ confidence: 'medium' })) === false);
+  check('verify: heterogeneous → no auto', canAutoApplyVerify(mk({ heterogeneous: true })) === false);
+  check('verify: needsInspection → no auto', canAutoApplyVerify(mk({ needsInspection: true })) === false);
+  check('verify: regex method → no auto', canAutoApplyVerify(mk({ method: 'regex' })) === false);
 
   console.log(log.join('\n'));
   console.log(failed ? '\n✗ FAILED' : '\n✓ ALL PASSED');
