@@ -69,6 +69,16 @@ export interface OfferMatchResult {
   // does NOT block the price): a bare "N종" option-select, OR a 본품+소량 부스트 that was
   // add-on-stripped (case C). The price IS shown; the operator confirms set-vs-단품.
   nJongVerify?: boolean;
+  // The candidate offer title that triggered needsInspection (heterogeneous/low-band/
+  // suspected set). Carried so run.ts can give it ONE LLM verification pass — if the
+  // LLM is highly confident it is a comparable single/bundle, the price is auto-applied
+  // instead of held for inspection (stage-2 §B).
+  suspectedTitle?: string | null;
+  // Raw candidate lprice for §B verify-rescue (distinct from inspectionEstimatedPrice:
+  // a heterogeneous SET keeps a null operator hint — a set price is not per-unit — but
+  // still carries suspectedPrice so that, IF the LLM overturns it to a single, that
+  // price can be adopted).
+  suspectedPrice?: number | null;
 }
 
 // productType: individual mall offers vs price-comparison catalog representative.
@@ -1017,18 +1027,26 @@ export function pickOliveYoungOffer(
   // No candidate qualifies for auto-price → hold for manual_override. Report the top
   // candidate's reason (heterogeneous set, or below band / no core token).
   const top = candidates[0];
+  const topPrice0 = Number.isFinite(parseInt(top.it.lprice, 10)) && parseInt(top.it.lprice, 10) > 0 ? parseInt(top.it.lprice, 10) : null;
   if (extractPackageFromTitle(top.t).heterogeneous) {
-    // A heterogeneous set price is not a per-unit price → no hint; operator fills it.
-    return { matched: null, parsedVolumeRaw: null, identityScore: top.s, reason: '올리브영 offer is a heterogeneous set — hold/inspection', needsInspection: true, inspectionEstimatedPrice: null };
+    // A heterogeneous set price is not a per-unit price → null operator hint. But carry
+    // suspectedTitle + suspectedPrice so run.ts can LLM-verify it; if overturned to a
+    // single, that price is adopted (§B).
+    return {
+      matched: null, parsedVolumeRaw: null, identityScore: top.s,
+      reason: '올리브영 offer is a heterogeneous set — hold/inspection', needsInspection: true,
+      inspectionEstimatedPrice: null,
+      suspectedTitle: stripHtml(top.it.title), suspectedPrice: topPrice0,
+    };
   }
   // Low-confidence band: the top candidate's lprice is a usable price hint for the
   // operator (it just falls below the auto-price band / lacks a core token).
-  const topPrice = parseInt(top.it.lprice, 10);
   return {
     matched: null, parsedVolumeRaw: null, identityScore: top.s,
     reason: `올리브영 below auto-price band (sim ${top.s.toFixed(2)}${top.s >= OY_AUTO_PRICE_SIMILARITY ? ', no core token' : ''}) — hold/inspection`,
     needsInspection: true,
-    inspectionEstimatedPrice: Number.isFinite(topPrice) && topPrice > 0 ? topPrice : null,
+    inspectionEstimatedPrice: topPrice0,
+    suspectedTitle: stripHtml(top.it.title), suspectedPrice: topPrice0,
   };
 }
 

@@ -6,7 +6,7 @@ import { readInspectionRows, upsertInspection, approvalOverrides, manualParseEnt
 import { upsertLinkOnly, LinkOnlyItem } from './sheets/linkOnly';
 import { routeNoOffer } from './core/routeNoOffer';
 import { applyManualOverrides, normalizePrice } from './core/normalize';
-import { parsePackage } from './core/parsePackage';
+import { parsePackage, canAutoApplyVerify } from './core/parsePackage';
 import { llmExtractTitle, llmRunStats, resetLlmRunStats, llmKeyCount, getLlmModel } from './core/llmTitleParse';
 import { makeDbParseCache, clearParseCacheMemo, setManualParse } from './core/titleParseCache';
 import { rawOfferTitle } from './core/offerTitle';
@@ -322,6 +322,40 @@ export async function crawlPipeline(): Promise<void> {
 
       // 4.2 Apply active overrides (a manual price flips no_offer → ok)
       offer = applyManualOverrides(product, listing, offer, manualOverrides);
+
+      // 4.2a Stage-2 §B: LLM verify a suspected-set / low-confidence no_offer. If the
+      // LLM is highly confident the candidate title is a comparable single/bundle, adopt
+      // its estimated price as a normal priced offer (skip inspection). Otherwise it
+      // stays no_offer → inspection as before. Gated on LLM_TITLE_PARSE=on.
+      const verifyPrice = offer.suspectedPrice ?? offer.inspectionEstimatedPrice ?? null;
+      if (
+        llmTitleParseOn &&
+        (offer.outcome === 'no_offer') &&
+        offer.needsInspection &&
+        offer.suspectedTitle &&
+        verifyPrice
+      ) {
+        try {
+          const verify = await parsePackage(
+            rawOfferTitle(offer.suspectedTitle),
+            { volumeMl: product.volume_ml ?? null, volumeUnit: product.volume_unit ?? null, productName: product.name, brand: product.brand ?? null },
+            llmExtractTitle,
+            parseCache
+          );
+          if (canAutoApplyVerify(verify)) {
+            console.log(`[Pipeline] LLM-verified single → auto-price ${product.name} @ ${seller.name} (₩${verifyPrice})`);
+            offer.salePrice = verifyPrice;
+            offer.inStock = true;
+            offer.matchExcluded = false;
+            offer.needsInspection = false;
+            offer.outcome = 'ok';
+            offer.parsedPackage = verify;
+            offer.sourceText = offer.suspectedTitle; // 4.2c가 다시 파싱(캐시 히트) → 동일 결과
+          }
+        } catch (e) {
+          console.warn(`[Pipeline] LLM verify failed for ${product.name}: ${(e as Error).message}`);
+        }
+      }
 
       // 4.2b Classify the fetch outcome. A successful fetch with no qualified
       // offer ('no_offer') is NOT a failure — it resets fail_count and leaves the

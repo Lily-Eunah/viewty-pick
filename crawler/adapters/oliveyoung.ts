@@ -138,6 +138,8 @@ export class OliveYoungAdapter implements RetailerAdapter {
         // fill a price, and approve (O). A plain no-offer leaves these false.
         needsInspection: result.needsInspection ?? false,
         inspectionEstimatedPrice: result.inspectionEstimatedPrice ?? null,
+        suspectedTitle: result.suspectedTitle ?? null, // §B: LLM verify 후보 제목
+        suspectedPrice: result.suspectedPrice ?? null,
       };
     }
 
