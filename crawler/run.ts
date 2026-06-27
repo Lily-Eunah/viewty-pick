@@ -14,6 +14,7 @@ import { runHealthCheck, resolveListingOutcome } from './core/healthcheck';
 import { resolveListingOutcome as _unused, runHealthCheck as _unused2 } from './core/healthcheck'; // just in case
 import { recalculateViewtyScores } from './core/score';
 import { sendDailySummary, sendCriticalAlarm } from './core/notify';
+import { writeBackNaverSubstitutions, NaverLinkSubstitution } from './sheets/linkWriteback';
 import { isSupabaseServerConfigured, supabaseServer } from '../lib/supabase/server';
 import { loadMockDB, saveMockDB } from '../lib/supabase/mockDb';
 import { Listing, Product, PriceSnapshot, CurrentPrice, ManualOverride, RetailerAllowlist, Badge, ProductBadge, ScoreConfig } from '../lib/types';
@@ -267,6 +268,12 @@ export async function crawlPipeline(): Promise<void> {
   // but possibly a real set. Informational only (price IS shown); surfaced in the
   // daily summary so the operator confirms set-vs-option.
   const nJongVerifyItems: string[] = [];
+  // Naver B2 link substitutions this run — a non-affiliate operator-linked SKU went
+  // missing (품절) and the price/link were adopted from another official-mall 구성.
+  // `naverLinkSubs` drives the sheet write-back (operator 원본 → naver_prev); the
+  // message list is surfaced in the Discord daily summary.
+  const naverLinkSubs: NaverLinkSubstitution[] = [];
+  const naverLinkSubMsgs: string[] = [];
 
   // Step 4: Crawl Prices Listing by Listing
   console.log(`[Pipeline] Beginning crawl of ${listings.length} active listings...`);
@@ -520,6 +527,23 @@ export async function crawlPipeline(): Promise<void> {
           nJongVerifyItems.push(`${product.name} @ ${seller.name} ${link}`.trim());
         }
 
+        // Naver B2 link substitution: the operator-linked (non-affiliate) SKU was
+        // missing (e.g. 품절 → dropped from Shopping results) and the price came from a
+        // DIFFERENT official-mall 구성. Adopt that offer's link end-to-end — update the
+        // DB url/affiliate_url now (so the /go redirect, which prefers affiliate_url,
+        // points to the live offer before the next import) — and queue a sheet
+        // write-back that preserves the operator's 원본 in product_links.naver_prev.
+        if (offer.linkSubstituted && seller.slug === 'naver' && offer.matchedUrl) {
+          const subIdx = updatedListings.findIndex((l) => l.id === listing.id);
+          if (subIdx >= 0) {
+            const original = updatedListings[subIdx].affiliate_url || updatedListings[subIdx].url || listing.url || '';
+            updatedListings[subIdx].affiliate_url = offer.matchedUrl;
+            updatedListings[subIdx].url = offer.matchedUrl;
+            naverLinkSubs.push({ productKey: product.product_key, productName: product.name, newUrl: offer.matchedUrl });
+            naverLinkSubMsgs.push(`${product.name} @ ${seller.name}: ${original || '(원본 없음)'} → ${offer.matchedUrl}`);
+          }
+        }
+
         // A held (warning) price with a value → inspection candidate: the crawler
         // pre-fills it into the OX tab so the operator can approve (O) / reject (X).
         if (check.status === 'warning' && snapshot.sale_price != null) {
@@ -759,6 +783,11 @@ export async function crawlPipeline(): Promise<void> {
         await supabaseServer.from('listings').update({
           fail_count: list.fail_count,
           is_active: list.is_active,
+          // url/affiliate_url may have been swapped to a B2 substitute offer this run
+          // (품절 SKU → other official-mall 구성). Persist so /go points at the live
+          // offer immediately; the sheet write-back keeps it across the next import.
+          url: list.url,
+          affiliate_url: list.affiliate_url ?? null,
           latest_matched_url: list.latest_matched_url ?? null,
           latest_image_url: list.latest_image_url ?? null,
           // Freshness: record when this listing was last processed (was never
@@ -819,7 +848,7 @@ export async function crawlPipeline(): Promise<void> {
     db.listings = db.listings.map((orig) => {
       const updated = updatedListings.find((l) => l.id === orig.id);
       return updated
-        ? { ...orig, fail_count: updated.fail_count, is_active: updated.is_active, latest_matched_url: updated.latest_matched_url ?? orig.latest_matched_url ?? null, latest_image_url: updated.latest_image_url ?? orig.latest_image_url ?? null }
+        ? { ...orig, fail_count: updated.fail_count, is_active: updated.is_active, url: updated.url ?? orig.url, affiliate_url: updated.affiliate_url ?? orig.affiliate_url ?? null, latest_matched_url: updated.latest_matched_url ?? orig.latest_matched_url ?? null, latest_image_url: updated.latest_image_url ?? orig.latest_image_url ?? null }
         : orig;
     });
 
@@ -843,6 +872,20 @@ export async function crawlPipeline(): Promise<void> {
     });
 
     saveMockDB(db);
+  }
+
+  // Step 7b: Write B2 link substitutions back to the product_links sheet so the
+  // adopted link survives the next import (which re-upserts url/affiliate_url from
+  // the sheet). The operator's 원본 is preserved write-once in `naver_prev`. Real
+  // Sheets only (Supabase prod run + Google configured); best-effort, never fatal.
+  if (useSupabase && naverLinkSubs.length > 0) {
+    const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
+    if (spreadsheetId && process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
+      console.log(`[Pipeline] Writing ${naverLinkSubs.length} Naver link substitution(s) back to product_links...`);
+      await writeBackNaverSubstitutions(spreadsheetId, naverLinkSubs);
+    } else {
+      console.warn('[Pipeline] Naver link substitutions detected but Google Sheets not configured — sheet write-back skipped (DB updated).');
+    }
   }
 
   // Step 8: Trigger Page Revalidation (ISR on-demand)
@@ -924,6 +967,7 @@ export async function crawlPipeline(): Promise<void> {
       inspectionItems: inspectionPending,
       linkOnlyUnmatchedCount: linkOnlyTotal,
       nJongVerifyItems,
+      naverLinkSubstitutions: naverLinkSubMsgs,
     });
   }
 

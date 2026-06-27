@@ -547,6 +547,18 @@ it('fallbackPolicy: catalog always warns, never updates link (A3/B3)', () => {
   assert(fallbackPolicy('catalog', true).warn === true && fallbackPolicy('catalog', true).updateLink === false, 'A3');
   assert(fallbackPolicy('catalog', false).warn === true && fallbackPolicy('catalog', false).updateLink === false, 'B3');
 });
+// fetchOffer sets offer.linkSubstituted = (fallbackTier === 'official-store' && updateLink).
+// Only B2 (official store on a NON-affiliate listing) substitutes the buy link end-to-end
+// (DB url/affiliate_url + sheet naver_prev write-back); A2/catalog/anchor never do.
+it('linkSubstituted rule: true only for B2 (official-store + non-affiliate)', () => {
+  const sub = (tier: 'official-store' | 'catalog' | null, isAffiliate: boolean): boolean =>
+    tier === 'official-store' && (tier ? fallbackPolicy(tier, isAffiliate).updateLink : false);
+  assert(sub('official-store', false) === true, 'B2 → substituted');
+  assert(sub('official-store', true) === false, 'A2 (affiliate kept) → not substituted');
+  assert(sub('catalog', false) === false, 'catalog → not substituted');
+  assert(sub('catalog', true) === false, 'catalog affiliate → not substituted');
+  assert(sub(null, false) === false, 'anchor (no fallbackTier) → not substituted');
+});
 it('pickOfficialStoreFallback matches official store single → fallbackTier official-store', () => {
   const off = item({ title: '코스알엑스 아드보훼이셜 토너 150ml', mallName: '코스알엑스', link: 'https://smartstore.naver.com/cosrx/products/5', lprice: '21390', productType: '2' });
   const r = pickOfficialStoreFallback([off], { brand: '코스알엑스', name: '코스알엑스 아드보훼이셜 토너', volumeMl: 150, allowedStoreName: null });

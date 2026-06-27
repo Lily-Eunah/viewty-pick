@@ -90,6 +90,12 @@ export interface DailySummaryStats {
   // (priced as a single/본품), but possibly a real set. Informational only (price IS
   // shown); operator confirms set-vs-단품 from this list.
   nJongVerifyItems?: string[];
+  // Naver buy links auto-substituted this run: a non-affiliate operator-linked SKU
+  // went missing (품절 → dropped from Shopping results) and the price + link were
+  // adopted from a DIFFERENT official-mall 구성 (B2 fallback). The operator's original
+  // link is preserved in the product_links `naver_prev` column. Informational (price
+  // IS shown); operator confirms the substituted 구성 is acceptable or restores 원본.
+  naverLinkSubstitutions?: string[];
 }
 
 /**
@@ -105,6 +111,7 @@ export function buildDailySummaryMessage(stats: DailySummaryStats): string {
   const inspectionItems = stats.inspectionItems ?? [];
   const linkOnlyUnmatched = stats.linkOnlyUnmatchedCount ?? 0;
   const nJongVerify = stats.nJongVerifyItems ?? [];
+  const naverLinkSubs = stats.naverLinkSubstitutions ?? [];
 
   let message = `📊 **[ViewtyPick Crawl Run Summary]**
 - **시작/종료 상태**: 완료 (Success)
@@ -143,6 +150,12 @@ export function buildDailySummaryMessage(stats: DailySummaryStats): string {
     const shown = nJongVerify.slice(0, 10);
     const more = nJongVerify.length > shown.length ? ` 외 ${nJongVerify.length - shown.length}건` : '';
     message += `\n🔎 **세트/구성 확인 (N종 옵션·본품+부스트, 정보·가격 노출 유지)**: ${nJongVerify.length}건${more} — 대개 'N종 중 택1' 옵션선택(단품) 또는 본품+소량 부스트, 진짜 세트면 조치\n${shown.map((d) => `  • ${d}`).join('\n')}`;
+  }
+
+  if (naverLinkSubs.length > 0) {
+    const shown = naverLinkSubs.slice(0, 10);
+    const more = naverLinkSubs.length > shown.length ? ` 외 ${naverLinkSubs.length - shown.length}건` : '';
+    message += `\n🔁 **네이버 링크 교체 (품절 SKU → 공식몰 다른 구성, 가격·링크 자동 반영)**: ${naverLinkSubs.length}건${more} — 운영자 원본은 product_links 시트 naver_prev에 보존, 구성 확인 후 유지/원복\n${shown.map((d) => `  • ${d}`).join('\n')}`;
   }
 
   return message;
