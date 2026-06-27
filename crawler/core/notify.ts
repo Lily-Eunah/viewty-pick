@@ -1,4 +1,6 @@
 export async function sendDiscordMessage(content: string): Promise<boolean> {
+  console.log('[DEBUG] Entered sendDiscordMessage');
+
   const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
   const isMock =
     process.env.VIEWTYPICK_MOCK_MODE === 'true' ||
@@ -10,19 +12,38 @@ export async function sendDiscordMessage(content: string): Promise<boolean> {
     webhookUrl.trim() === '' ||
     !webhookUrl.startsWith('https://discord.com/api/webhooks/');
 
+  console.log('[DEBUG] sendDiscordMessage called');
+  console.log('[DEBUG] DISCORD_WEBHOOK_URL:', webhookUrl);
+  console.log('[DEBUG] isMock:', isMock);
   if (isMock) {
     console.log(`[Discord Notification (Mock)]:\n${content}\n`);
     return true;
   }
 
   try {
-    const response = await fetch(webhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content }),
-    });
-
-    return response.ok;
+    // Discord webhook limit: 2000 characters per message
+    const MAX_LEN = 2000;
+    const chunks: string[] = [];
+    let remaining = content;
+    while (remaining.length > 0) {
+      const slice = remaining.slice(0, MAX_LEN);
+      chunks.push(slice);
+      remaining = remaining.slice(MAX_LEN);
+    }
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      const response = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: chunk }),
+      });
+      console.log(`[DEBUG] Discord webhook chunk ${i + 1}/${chunks.length} ok:`, response.ok, 'status:', response.status);
+      if (!response.ok) {
+        console.error(`[Discord Alerting] Chunk ${i + 1} failed`);
+        return false;
+      }
+    }
+    return true;
   } catch (e) {
     console.error('[Discord Alerting] Failed to send webhook message:', e);
     return false;
