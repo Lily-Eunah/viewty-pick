@@ -103,6 +103,27 @@ it('OY heterogeneous set → inspection (blank price), link uses curator affilia
   }
 });
 
+it('inspection prefill: title + LLM-predicted count/volume/composition from offer', () => {
+  const offer = noOffer({
+    needsInspection: true,
+    inspectionEstimatedPrice: 19900,
+    storeName: '올리브영',
+    suspectedTitle: 'VDL 커버스테인 쿠션 본품+리필',
+    parsedPackage: {
+      detected: true, unitType: 'g', unitAmount: 15, unitCount: 2, totalAmount: 30,
+      promoType: 'bundle', confidence: 'medium', evidence: '본품+리필', method: 'llm',
+      heterogeneous: false, route: 'needs-llm', needsInspection: true,
+    },
+  });
+  const r = routeNoOffer('no_offer', offer, oyCtx);
+  assert(r.kind === 'inspection', `inspection, got ${r.kind}`);
+  if (r.kind === 'inspection') {
+    assert(r.item.title === 'VDL 커버스테인 쿠션 본품+리필', 'title prefilled');
+    assert(r.item.pred_count === 2 && r.item.pred_volume === 15 && r.item.pred_unit === 'g', 'pred prefilled');
+    assert(r.item.composition === 'homogeneous_bundle', `composition, got ${r.item.composition}`);
+  }
+});
+
 it('OY low-confidence band (price hint) → inspection with estimated = lprice', () => {
   const offer = noOffer({
     needsInspection: true,
