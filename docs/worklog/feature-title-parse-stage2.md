@@ -19,7 +19,12 @@ stage-1(shadow)을 실 sync에 주입. 설계: `docs/title-parse-stage2-design.m
 2. `GEMINI_API_KEYS`(또는 `GEMINI_API_KEY`) + `GEMINI_MODEL`(기본 gemini-3.1-flash-lite) 설정.
 3. `LLM_TITLE_PARSE=on`.
 
-## 남은 stage-2 작업 (다음 PR)
-- [ ] **검수 prefill(step 4):** inspection 탭에 예측 개수/용량/구성 컬럼 추가 + 운영자 O 시 `setManualParse`로 확정(manual, 재호출/덮어쓰기 방지). 저신뢰 priced offer를 자동노출 대신 prefill 검수로 라우팅.
+## step 4 — 검수 prefill (part 2, 구현 완료)
+- inspection 탭 확장: `제목 / 예측개수 / 예측용량 / 예측단위 / 구성` 컬럼 추가(범위 A:M). 헤더는 매 sync 자동 기록(운영자 sheets:headers 불필요). off면 예측 컬럼은 빈 칸.
+- **저신뢰 priced offer 보류**: `LLM_TITLE_PARSE=on` + `parsedPackage.needsInspection`(저신뢰/세트/환각-가드) → `offer.inspectionWarning` 세팅 → healthcheck status=warning(숨김) → 기존 priced-warning push 경로로 **예측 prefill된 검수행** 생성. 자동 노출 안 함.
+- **O 확정 → manual**: run.ts 시작 시 O행을 `manualParseEntries`로 변환 → `setManualParse`(title_parse_cache, source='manual'). 이후 그 제목은 LLM/규칙이 재결정/덮어쓰기 안 함. 가격은 기존 `approvalOverrides` 경로 그대로.
+- 테스트: `manualParseEntries`(번들/이종/스킵) + `test:all` ✅, `tsc` ✅. 전부 off-flag 뒤라 prod 무변경(빈 컬럼만 추가).
+
+## 남은 작업
 - [ ] **flip & cleanup(stage-3):** brittle fallback을 "검수로" 단순화, 기존 production 경로 완전 이관.
 - 별개: 올리브영 goodsNo 앵커(식별 문제).
