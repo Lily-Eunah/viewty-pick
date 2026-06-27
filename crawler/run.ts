@@ -523,8 +523,8 @@ export async function crawlPipeline(): Promise<void> {
         // A priced offer whose matched title has a BARE "N종" (option-select page):
         // surface for an operator set-vs-option check. Price is NOT blocked.
         if (offer.nJongVerify) {
-          const link = offer.matchedUrl ?? listing.affiliate_url ?? listing.url ?? '';
-          nJongVerifyItems.push(`${product.name} @ ${seller.name} ${link}`.trim());
+          // No link in the Discord line (message-length trim); the sheet/data carries it.
+          nJongVerifyItems.push(`${product.name} @ ${seller.name}`);
         }
 
         // Naver B2 link substitution: the operator-linked (non-affiliate) SKU was
@@ -907,12 +907,13 @@ export async function crawlPipeline(): Promise<void> {
       const res = await upsertInspection(inspectionCandidates);
       pendingInspection = res.pending;
       // List only the UNREVIEWED (blank O/X) rows — already-decided items stay in the
-      // sheet but are not re-surfaced — with 제품·추정가·출처·사유·링크 for the operator.
+      // sheet but are not re-surfaced. NO link in the Discord line (it only bloated the
+      // message; the link lives in the inspection sheet row for the operator).
       for (const c of res.pendingItems) {
         const why = (c.reason || '').slice(0, 80);
         inspectionPending.push(
           `${c.product_name} @ ${c.seller} ≈${c.estimated_price?.toLocaleString('ko-KR') ?? '-'}원 (${c.source || '?'})` +
-            `${why ? ` — ${why}` : ''}${c.link ? ` ${c.link}` : ''}`
+            `${why ? ` — ${why}` : ''}`
         );
       }
       console.log(`[Pipeline] Inspection tab upserted: ${res.written} row(s), ${res.pending} pending O/X.`);
