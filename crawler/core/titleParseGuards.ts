@@ -92,8 +92,11 @@ export function applyTitleParseGuards(
   }
   if (llm.composition === 'option_select' || llm.composition === 'single') count = Math.max(1, count);
 
+  // 자동 노출은 high-confidence만. medium/low(구성 모호) · 이종세트 · per-unit 불가 ·
+  // 용량 환각 → prefill 검수로(조용한 기본값 노출 방지). 표기 없는 정상 단품은 프롬프트가
+  // high로 두므로 여기서 검수로 새지 않는다.
   const needsInspection =
-    heterogeneous || llm.per_unit_computable === false || llm.confidence === 'low' || volumeHallucinated;
+    heterogeneous || llm.per_unit_computable === false || llm.confidence !== 'high' || volumeHallucinated;
 
   const unitType: ParsePackageResult['unitType'] = heterogeneous
     ? 'unknown'

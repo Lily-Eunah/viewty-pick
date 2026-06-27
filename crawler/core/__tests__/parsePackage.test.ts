@@ -102,6 +102,14 @@ for (const c of gateCases) {
   const r6 = await parsePackage('토너 (단독) 에디션', CTX(), stubHallucinate);
   check('parsePackage guard rejects hallucinated count → fallback(regex)', r6.method === 'regex' && r6.needsInspection === true);
 
+  // ── medium confidence → 검수(자동 노출 X) ──
+  const stubMedium = async (): Promise<LlmTitleResult> => ({
+    composition: 'homogeneous_bundle', main_unit_volume: 50, main_unit: 'ml', main_count: 2,
+    gifts: [], per_unit_computable: true, confidence: 'medium', evidence: '50ml 2개',
+  });
+  const r6c = await parsePackage('애매 세트 50ml 2개', CTX(), stubMedium);
+  check('parsePackage medium confidence → needsInspection', r6c.method === 'llm' && r6c.needsInspection === true);
+
   // ── 캐시 주입: get 히트 → 게이트/LLM 건너뜀 ──
   const cached = { detected: true, unitType: 'ml' as const, unitAmount: 99, unitCount: 1, totalAmount: 99, promoType: 'none' as const, confidence: 'high' as const, evidence: 'cached', method: 'llm' as const, heterogeneous: false, route: 'needs-llm' as const };
   let llmCalledDespiteCache = false;
