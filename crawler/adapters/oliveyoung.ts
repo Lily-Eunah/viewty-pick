@@ -19,6 +19,7 @@ import { PriceOffer, RetailerAdapter } from './index';
 import { isSupabaseServerConfigured, supabaseServer } from '../../lib/supabase/server';
 import { loadMockDB } from '../../lib/supabase/mockDb';
 import { matchOliveYoungOffer, stripHtml, containsBareNJong } from './naver';
+import { resolveCuratedOyGoodsNo } from '../core/oliveyoungAnchor';
 
 function isPlaceholderKey(v: string | undefined): boolean {
   return !v || v.includes('placeholder') || v.includes('example') || v.includes('dummy') || v.trim() === '';
@@ -102,9 +103,13 @@ export class OliveYoungAdapter implements RetailerAdapter {
     }
     if (!product) throw new Error(`Product not found for ID: ${listing.product_id}`);
 
-    // Tier-2: loose OliveYoung match on Naver (mallName='올리브영'). No N anchor (oy.run);
-    // see matchOliveYoungOffer. Sets/bundles included with per-unit; ambiguity → Tier 3/4.
-    const result = await matchOliveYoungOffer(product, clientId as string, clientSecret as string);
+    // goodsNo 앵커: 큐레이션 oy.run/affiliate URL → goodsNo. 네이버 올영 offer의 goodsNo와
+    // 일치하는 것만 정확 SKU로 채택(형제 변종 오매칭 제거). 미해석 시 기존 느슨 매칭 폴백.
+    const anchorGoodsNo = await resolveCuratedOyGoodsNo(listing.affiliate_url || listing.url);
+
+    // Tier-2: OliveYoung match on Naver (mallName='올리브영'), goodsNo-anchored when resolvable.
+    // Sets/bundles included with per-unit; ambiguity → Tier 3/4.
+    const result = await matchOliveYoungOffer(product, clientId as string, clientSecret as string, anchorGoodsNo);
 
     if (!result.matched) {
       // No confident OliveYoung offer (Tier 3 manual_override / Tier 4 link-only).

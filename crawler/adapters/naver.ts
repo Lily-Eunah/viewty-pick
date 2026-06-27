@@ -22,6 +22,7 @@ import { PriceOffer, RetailerAdapter } from './index';
 import { isSupabaseServerConfigured, supabaseServer } from '../../lib/supabase/server';
 import { loadMockDB } from '../../lib/supabase/mockDb';
 import { extractPackageFromTitle, stripPromoGifts, isBareNJong } from '../core/packageExtractor';
+import { goodsNoFromOyOfferLink } from '../core/oliveyoungAnchor';
 import { crawlNaverPagePrice, isNaverStorefrontUrl } from '../core/naverPageCrawl';
 
 // ---------------------------------------------------------------------------
@@ -926,11 +927,18 @@ export function pickOliveYoungOffer(
   items: NaverShoppingItem[],
   productName: string,
   referencePrice?: number | null,
-  mainVolumeMl?: number | null
+  mainVolumeMl?: number | null,
+  anchorGoodsNo?: string | null
 ): OfferMatchResult {
-  const oy = items.filter((it) => isIndividualMallOffer(it) && normalizeMallName(it.mallName) === OY_MALL);
+  let oy = items.filter((it) => isIndividualMallOffer(it) && normalizeMallName(it.mallName) === OY_MALL);
   if (oy.length === 0) {
     return { matched: null, parsedVolumeRaw: null, identityScore: null, reason: 'no 올리브영 offer on Naver (Tier 4 link-only)' };
+  }
+  // goodsNo 앵커: 큐레이션 SKU(goodsNo)와 동일한 offer만 남긴다(정확 SKU 고정 → 형제 변종
+  // 오매칭 제거). 일치 offer가 없으면(이번 검색에 큐레이션 SKU 미노출) 기존 느슨 매칭으로 폴백.
+  if (anchorGoodsNo) {
+    const anchored = oy.filter((it) => goodsNoFromOyOfferLink(it.link) === anchorGoodsNo);
+    if (anchored.length > 0) oy = anchored;
   }
   // Score/judge on the GIFT-STRIPPED title so a freebie ("(+올인원크림 30ml)") cannot
   // lend its token to a different product (e.g. a 토너 set masquerading as 올인원).
@@ -1048,7 +1056,8 @@ export function pickOliveYoungOffer(
 export async function matchOliveYoungOffer(
   product: NaverProductLike,
   clientId: string,
-  clientSecret: string
+  clientSecret: string,
+  anchorGoodsNo: string | null = null
 ): Promise<OfferMatchResult> {
   // Recall: brand+name queries PLUS a "+올리브영" query that pulls the OliveYoung
   // sales-point's own listing into the result window (brand+name alone often ranks
@@ -1061,7 +1070,7 @@ export async function matchOliveYoungOffer(
   let inspection: OfferMatchResult | null = null;
   for (const query of candidates) {
     const items = await searchNaverShopping(query, clientId, clientSecret);
-    const r = pickOliveYoungOffer(items, product.name, null, product.volume_ml ?? null);
+    const r = pickOliveYoungOffer(items, product.name, null, product.volume_ml ?? null, anchorGoodsNo);
     if (r.matched) return r;
     if (r.needsInspection && !inspection) inspection = r;
   }
