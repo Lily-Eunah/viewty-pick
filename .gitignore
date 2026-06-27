@@ -61,3 +61,6 @@ docs/reports/
 docs/TBD.md
 viewtypick-resume-summary.md
 
+
+# title-parse LLM 시험 캐시
+.cache/
