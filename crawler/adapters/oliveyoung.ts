@@ -158,6 +158,7 @@ export class OliveYoungAdapter implements RetailerAdapter {
       parsedVolumeRaw: result.parsedVolumeRaw,
       matchedUrl: item.link || null,
       matchedMallName: item.mallName || null,
+      anchored: result.anchored ?? false, // goodsNo-anchored → run.ts shows directly (no inspection)
       nJongVerify: containsBareNJong(item.title),
       outcome: 'ok',
     };
