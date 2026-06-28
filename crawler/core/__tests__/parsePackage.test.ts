@@ -118,6 +118,52 @@ for (const c of gateCases) {
   const r7 = await parsePackage('아무 제목 세트', CTX(), async () => { llmCalledDespiteCache = true; return null; }, hitCache);
   check('parsePackage cache hit → returns cached, no LLM call', r7.unitAmount === 99 && r7.method === 'llm' && !llmCalledDespiteCache);
 
+  // ── 엣지 케이스 가드 & 보정 테스트 ──
+  // 1) 기기 본품에 화장품 ml 용량이 오독된 경우 교정 (오큐라 티타늄셀 케이스)
+  const stubDeviceWithMl = async (): Promise<LlmTitleResult> => ({
+    composition: 'single', main_unit_volume: 200, main_unit: 'ml', main_count: 1,
+    gifts: [], per_unit_computable: true, confidence: 'high', evidence: '200ml',
+  });
+  const rEdge1 = await parsePackage(
+    '오큐라 티타늄셀 4.0(부스터젤 200ml 2개 포함)',
+    CTX({ volumeUnit: '개', volumeMl: null }),
+    stubDeviceWithMl
+  );
+  check(
+    'Edge 1: Device(개) with ml volume in LLM -> corrected to volume=null & unitType=count',
+    rEdge1.unitAmount === null && rEdge1.unitType === 'count'
+  );
+
+  // 2) 시트(매) 본품에 액체 용량 ml이 오독된 경우 교정 (비플레인 패드 케이스)
+  const stubSheetWithMl = async (): Promise<LlmTitleResult> => ({
+    composition: 'single', main_unit_volume: 185, main_unit: 'ml', main_count: 1,
+    gifts: [], per_unit_computable: true, confidence: 'high', evidence: '185ml',
+  });
+  const rEdge2 = await parsePackage(
+    '비플레인 시카테롤 블레미쉬 패드 185ml, 80개입, 1개',
+    CTX({ volumeUnit: '매', volumeMl: 80 }),
+    stubSheetWithMl
+  );
+  check(
+    'Edge 2: Sheet(매) with ml volume in LLM -> corrected to volume=null (fallback to DB) & unitType=sheet',
+    rEdge2.unitAmount === null && rEdge2.unitType === 'sheet'
+  );
+
+  // 3) 마스크팩 번들 및 단위 매핑 검증 (리얼베리어 케이스)
+  const stubMaskBundle = async (): Promise<LlmTitleResult> => ({
+    composition: 'single', main_unit_volume: 27, main_unit: 'ml', main_count: 10,
+    gifts: [], per_unit_computable: true, confidence: 'high', evidence: '27ml, 10개입',
+  });
+  const rEdge3 = await parsePackage(
+    '리얼베리어 익스트림 크림 마스크 27ml, 10개입, 1개',
+    CTX({ volumeUnit: 'ml', volumeMl: 27 }),
+    stubMaskBundle
+  );
+  check(
+    'Edge 3: Bundle mask 27ml 10-pack -> unitAmount=27 & unitCount=10',
+    rEdge3.unitAmount === 27 && rEdge3.unitCount === 10
+  );
+
   // ── 캐시 miss + LLM 채택 → set 호출 / 게이트(자명)는 set 안 함 ──
   const setKeys: string[] = [];
   const recCache = { get: async () => null, set: async (t: string) => { setKeys.push(t); } };
