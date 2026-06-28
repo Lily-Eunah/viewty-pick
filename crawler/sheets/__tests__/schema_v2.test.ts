@@ -168,6 +168,12 @@ it('매 / 장 / 시트 / p / 매입 → 매', () => {
     assert(p.success && p.data.volume_unit === '매', `"${v}" should → 매, got ${JSON.stringify(p)}`);
   }
 });
+it('개 / ea / count / 입 → 개', () => {
+  for (const v of ['개', 'ea', 'count', '입', 'EA']) {
+    const p = simpleProductRowSchema.safeParse({ ...baseProd, volume_unit: v });
+    assert(p.success && p.data.volume_unit === '개', `"${v}" should → 개, got ${JSON.stringify(p)}`);
+  }
+});
 
 // ---------------------------------------------------------------------------
 console.log('\n--- product_key freeze plan ---');
