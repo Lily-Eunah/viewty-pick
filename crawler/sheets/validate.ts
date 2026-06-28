@@ -61,6 +61,7 @@ export const simpleProductRowSchema = z.object({
       const t = (v ?? '').trim().toLowerCase();
       if (t === 'g') return 'g';
       if (['매', '장', '시트', 'p', '매입'].includes(t)) return '매';
+      if (['개', 'ea', 'count', '입'].includes(t)) return '개';
       return 'ml';
     }),
   // 정가 / MSRP for volume_ml. Blank → null (discount simply hidden). A non-positive

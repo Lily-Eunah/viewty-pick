@@ -39,9 +39,11 @@ function countHasEvidence(title: string): boolean {
 export function applyTitleParseGuards(
   llm: LlmTitleResult,
   title: string,
-  _ctx: ParseContext
+  ctx: ParseContext
 ): ParsePackageResult | null {
   if (!llm || typeof llm !== 'object') return null;
+
+  const heterogeneous = llm.composition === 'heterogeneous_set';
 
   // --- count clamp ---
   const isSheet = llm.main_unit === 'sheet';
@@ -65,6 +67,25 @@ export function applyTitleParseGuards(
     volumeHallucinated = true;
   }
 
+  // --- 단위 정합성 가드 및 오독 교정 ---
+  let unitType: ParsePackageResult['unitType'] = heterogeneous
+    ? 'unknown'
+    : llm.main_unit ?? (volume != null ? 'ml' : 'count');
+
+  if (ctx.volumeUnit === '개') {
+    // 본품이 기기(개)인데 파싱된 단위가 ml/g인 경우 -> 용량을 제거하고 count 단위로 고정
+    if (unitType === 'ml' || unitType === 'g') {
+      volume = null;
+      unitType = 'count';
+    }
+  } else if (ctx.volumeUnit === '매' || ctx.volumeUnit === 'sheet') {
+    // 본품이 시트(매)인데 파싱된 단위가 ml/g인 경우 -> 에센스 용량 오독이므로 용량 제거
+    if (unitType === 'ml' || unitType === 'g') {
+      volume = null;
+      unitType = 'sheet';
+    }
+  }
+
   // --- 근거 교차검증: 다수 개수 주장엔 제목 신호가 있어야 한다 ---
   if (count > 1 && !countHasEvidence(title)) return null;
 
@@ -78,7 +99,6 @@ export function applyTitleParseGuards(
   }
 
   // --- composition 매핑 ---
-  const heterogeneous = llm.composition === 'heterogeneous_set';
   let promoType: ParsePackageResult['promoType'];
   switch (llm.composition) {
     case 'homogeneous_bundle':
@@ -98,13 +118,12 @@ export function applyTitleParseGuards(
   const needsInspection =
     heterogeneous || llm.per_unit_computable === false || llm.confidence !== 'high' || volumeHallucinated;
 
-  const unitType: ParsePackageResult['unitType'] = heterogeneous
-    ? 'unknown'
-    : llm.main_unit ?? (volume != null ? 'ml' : 'count');
+  // unitType은 위에서 가드와 정합성 비교를 거쳐 결정된 값을 사용합니다.
+  const finalUnitType = heterogeneous ? 'unknown' : unitType;
 
   return {
     detected: true,
-    unitType,
+    unitType: finalUnitType,
     unitAmount: heterogeneous ? null : volume,
     unitCount: heterogeneous ? null : count,
     totalAmount: !heterogeneous && volume != null ? volume * count : null,

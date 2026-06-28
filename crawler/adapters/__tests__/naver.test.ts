@@ -280,10 +280,12 @@ it('anchored HOMOGENEOUS bundle (×2) → priced (per-unit derived downstream)',
   assert(r !== null && r.matched !== null, 'homogeneous bundle is included (priced), not excluded');
   assert(/×2/.test(r!.reason), `reason should note the bundle qty: ${r!.reason}`);
 });
-it('anchored HETEROGENEOUS 2-product set → needsInspection (no price)', () => {
+it('anchored HETEROGENEOUS 2-product set → needsInspection (no price, carries suspectedTitle/Price)', () => {
   const het = item({ title: '랑콤 제니피끄 세럼 21ml + 토너 100ml', link: 'https://brand.naver.com/lancome/products/10791745136', lprice: '282200' });
   const r = pickAnchoredOffer([het], '10791745136');
   assert(r !== null && r.matched === null && r.needsInspection === true, 'heterogeneous set → inspection, no price');
+  assert(r!.suspectedTitle === '랑콤 제니피끄 세럼 21ml + 토너 100ml', 'suspectedTitle populated');
+  assert(r!.suspectedPrice === 282200, 'suspectedPrice populated');
 });
 it('anchor number not in results → null (caller → link-only)', () => {
   const r = pickAnchoredOffer([item({ link: 'https://smartstore.naver.com/x/products/111' })], '999');
@@ -342,6 +344,8 @@ it('VDL: anchored 동종 번들 (본품+리필, no vol) → inspection with per-
   const r = pickAnchoredOffer([refill], '992', 15, 'VDL 커버 스테인 하이커버 쿠션');
   assert(r !== null && r.matched === null && r.needsInspection === true, '동종 번들 → inspection, not auto');
   assert(r!.inspectionEstimatedPrice === 20000, `per-unit = bundle/2, got ${r!.inspectionEstimatedPrice}`);
+  assert(r!.suspectedTitle === 'VDL 커버스테인 하이커버 쿠션 기획 (본품+리필)', 'suspectedTitle populated');
+  assert(r!.suspectedPrice === 40000, 'suspectedPrice populated');
 });
 it('본품 식별 불가 2종 동등 세트 → inspection (추정가 = 앵커가), NOT link_only', () => {
   const set = item({ title: '세럼 50ml + 크림 50ml 세트', link: 'https://brand.naver.com/x/products/993', lprice: '99000' });

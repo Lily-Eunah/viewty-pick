@@ -77,7 +77,9 @@ function isMock(): boolean {
 // 프롬프트 정책 버전 — 변경 시 bump(영속 캐시 무효화 키).
 // v2 = 동일제품 보너스 합산. v3 = 소량 샘플 sachet 합산 제외.
 // v4 = 개수/용량 판단불가 시 기본값(1/null) + confidence는 구성 확신도(표기유무 아님).
-export const LLM_PROMPT_VERSION = 'v4-default-and-confidence';
+// v5 = 제품명 자체의 숫자/접미사(X2, 2종 등) 번들 판정 예외 추가.
+// v6 = DB 본품 단위(volumeUnit) 매칭 및 수량 결정 규칙 추가.
+export const LLM_PROMPT_VERSION = 'v6-volume-unit-constraint';
 
 const SYSTEM = [
   '너는 한국 화장품 판매 제목에서 "본품"의 용량/개수/구성을 추출한다.',
@@ -92,6 +94,11 @@ const SYSTEM = [
   '- "N종 중 택1"(옵션선택)은 실구매가 단품이므로 composition=option_select, main_count=1.',
   '- "세트/패키지/콜렉션/기프트"로 서로 다른 제품을 묶은 것은 heterogeneous_set, per_unit_computable=false.',
   '- 단품은 single, main_count=1. main_unit_volume/main_unit 은 본품 1개의 용량(미표기면 null).',
+  '- **제품명 자체의 숫자/접미사 예외**: 참고 제공되는 큐레이션 제품명(`productName`) 자체에 "X2", "2종", "3종" 등 숫자나 수량 접미사가 포함되어 있고 이것이 제목 내의 명칭과 매칭되는 경우(예: "부스터 프로 X2"), 제목의 해당 부분(예: "X2")은 제품 고유 명칭의 일부이며 번들 배수(multiplier)가 아닙니다. 따라서 제목 내의 다른 명확한 번들 표시(예: "1+1", "2개입")가 없다면 기본적으로 단품(main_count: 1)으로 판단하고, 제목에 "X2" 외에 추가적인 번들 표시가 명확히 존재할 때만 그에 맞게 번들 수량을 산정해야 합니다.',
+  '- **DB 본품 단위 매칭 및 수량 결정 규칙**: 제공되는 `DB 본품 단위(참고)` 정보를 확인하고, 제목 내에 여러 단위가 나타나면 DB 단위와 동일하거나 호환되는(일치하는) 수치를 본품 용량(`main_unit_volume` 및 `main_unit`)으로 최우선 추출하라.',
+  '    · DB 본품 단위가 `매` 또는 `sheet`인 경우: 제목 내의 액체 용량 `ml`(예: 185ml)은 에센스 함량일 뿐 본품의 크기/수량이 아닙니다. 이 경우 제목 내의 패드/시트 매수(예: 80개입, 80매)만을 `main_unit_volume`으로 추출하고, `main_unit`은 `"sheet"`로 설정해야 합니다.',
+  '    · DB 본품 단위가 `개`인 경우 (기기 등 디바이스 제품): 제목 내의 `ml/g` 수치(예: 젤 200ml)는 기기 자체의 용량이 아니므로 `main_unit_volume`에 넣지 마십시오. 기기의 본품 개수는 기본적으로 `main_count: 1`, `main_unit_volume: null`로 추출하고, 동봉된 화장품(젤, 앰플 등)은 `gifts`로 분리해야 합니다.',
+  '    · DB 본품 단위가 `ml` 또는 `g`인 경우: 제목의 `ml`/`g` 단위를 가진 용량(예: 27ml)을 본품 용량(`main_unit_volume`)으로 추출하며, `main_unit`은 그에 맞게 `"ml"` 또는 `"g"`로 매핑합니다. 이때 묶음 표기(10개입, 1개 등)가 혼재되면 `main_count`는 최종 번들 총량(예: 10)을 가리키도록 해야 합니다.',
   '- **기본값**: 개수를 제목에서 판단할 수 없으면 main_count=1(단품이 기본). 용량을 판단할 수 없으면 main_unit_volume=null, main_unit=null로 두라 — 시스템이 DB 용량을 사용한다. 절대 없는 용량을 지어내지 마라.',
   '- **confidence 기준**: confidence는 "구성 판단(단품/번들/세트 여부, 증정 분리)의 확신도"다. 개수·용량 표기가 제목에 없다는 이유만으로 confidence를 낮추지 마라 — "단품 1개 + 용량 null(=DB)"은 정상이며 그 자체로 high다. low/medium은 구성 자체가 모호할 때만.',
   '- evidence 에는 판단 근거가 된 제목 substring을 적는다.',
@@ -106,6 +113,9 @@ const SYSTEM = [
   '  "제니피끄 세럼 2종 세트" → {composition:"heterogeneous_set", main_unit_volume:null, main_unit:null, main_count:1, gifts:[], per_unit_computable:false, confidence:"high", evidence:"2종 세트"}',
   '  "토너 75ml + 세럼 35ml" → {composition:"heterogeneous_set", main_unit_volume:null, main_unit:null, main_count:1, gifts:[], per_unit_computable:false, confidence:"high", evidence:"토너 75ml + 세럼 35ml"}',
   '  "마스크팩 70매" → {composition:"single", main_unit_volume:70, main_unit:"sheet", main_count:1, gifts:[], per_unit_computable:true, confidence:"high", evidence:"70매"}',
+  '  "비플레인 시카테롤 블레미쉬 패드 185ml, 80개입, 1개" (DB 본품 단위: 매) → {composition:"single", main_unit_volume:80, main_unit:"sheet", main_count:1, gifts:[], per_unit_computable:true, confidence:"high", evidence:"80개입, 1개"}',
+  '  "[6월 행사] 오큐라 티타늄셀 4.0(부스터젤 200ml 2개 포함)" (DB 본품 단위: 개) → {composition:"heterogeneous_set", main_unit_volume:null, main_unit:null, main_count:1, gifts:[{name:"부스터젤",volume:200,unit:"ml",reason:"포함"},{name:"부스터젤",volume:200,unit:"ml",reason:"포함"}], per_unit_computable:false, confidence:"high", evidence:"부스터젤 200ml 2개 포함"}',
+  '  "리얼베리어 익스트림 크림 마스크 27ml, 10개입, 1개" (DB 본품 단위: ml) → {composition:"single", main_unit_volume:27, main_unit:"ml", main_count:10, gifts:[], per_unit_computable:true, confidence:"high", evidence:"27ml, 10개입"}',
 ].join('\n');
 
 const RESPONSE_SCHEMA = {
@@ -148,6 +158,7 @@ export const llmExtractTitle: LlmExtractFn = async (title, ctx) => {
     ctx.brand ? `브랜드(참고): ${ctx.brand}` : '',
     ctx.productName ? `큐레이션 제품명(참고): ${ctx.productName}` : '',
     ctx.volumeMl != null ? `DB 본품 용량(참고): ${ctx.volumeMl}${ctx.volumeUnit || 'ml'}` : '',
+    ctx.volumeUnit ? `DB 본품 단위(참고): ${ctx.volumeUnit}` : '',
   ]
     .filter(Boolean)
     .join('\n');
