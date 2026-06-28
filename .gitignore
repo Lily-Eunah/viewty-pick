@@ -64,3 +64,6 @@ viewtypick-resume-summary.md
 
 # title-parse LLM 시험 캐시
 .cache/
+
+# scripts/ 하위의 임시 개발용 스크립트들 (앞에 _가 붙은 파일)
+scripts/**/_*
