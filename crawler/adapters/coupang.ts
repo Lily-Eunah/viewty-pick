@@ -584,22 +584,43 @@ export class CoupangAdapter implements RetailerAdapter {
     const product = await this._loadProduct(listing.product_id);
     if (!product) throw new Error(`Product not found for ID: ${listing.product_id}`);
 
-    const keyword = buildSearchKeyword(product.brand, product.name);
-    console.log(`[Coupang Adapter] Searching "${keyword}" → anchor productId ${productId}, vendorItemId ${vendorItemId ?? 'none'}`);
+    // Try the operator's q= query first, then brand+name. De-dupe so we never spend a
+    // call on an identical keyword (keeps it to ≤2 searches and honors the rate limit).
+    const query = extractCoupangQuery(listing.url);
+    const fallback = buildSearchKeyword(product.brand, product.name);
+    const keywords = [query, fallback].filter(
+      (kw, i, arr): kw is string => !!kw && arr.indexOf(kw) === i
+    );
 
-    // HTTP error / timeout throws here → run.ts classifies 'failed' (§4.4 staircase).
-    const productData = await searchCoupang(keyword, accessKey, secretKey);
+    let match: CoupangApiItem | null = null;
+    const productData: CoupangApiItem[] = [];
+    let matchedKeyword = '';
 
-    // Exact anchor: prefer the operator's vendorItemId (exact seller), then fall
-    // back to the lowest-price option among all vendors of the same productId.
-    const match = pickCoupangMatch(productData, productId, vendorItemId);
+    for (const keyword of keywords) {
+      console.log(`[Coupang Adapter] Searching "${keyword}" → anchor productId ${productId}, vendorItemId ${vendorItemId ?? 'none'}`);
+      try {
+        const hits = await searchCoupang(keyword, accessKey, secretKey);
+        productData.push(...hits);
+        match = pickCoupangMatch(productData, productId, vendorItemId);
+        if (match) {
+          matchedKeyword = keyword;
+          break; // Found the exact vendor, skip the fallback search
+        }
+      } catch (e: unknown) {
+        console.warn(`[Coupang Adapter] Search failed for "${keyword}": ${(e as Error).message}`);
+        // If this is the last keyword, throw; otherwise continue to fallback keyword
+        if (keyword === keywords[keywords.length - 1]) {
+          throw e;
+        }
+      }
+    }
 
     if (!match) {
       // Search SUCCEEDED but the anchored product is not among results → legitimate
       // no-match (delisted / not surfaced for this keyword). Reset fail_count,
       // keep link-only. (PR #14 no_offer semantics.)
       console.warn(
-        `[Coupang Adapter] productId ${productId} (vendorItemId ${vendorItemId ?? 'none'}) not in ${productData.length} search results — link-only (no_offer)`
+        `[Coupang Adapter] productId ${productId} (vendorItemId ${vendorItemId ?? 'none'}) not in ${productData.length} search results for keywords [${keywords.join(', ')}] — link-only (no_offer)`
       );
       return {
         regularPrice: null,
@@ -607,7 +628,7 @@ export class CoupangAdapter implements RetailerAdapter {
         inStock: false,
         promoType: 'none',
         promoText: null,
-        sourceText: `Coupang: productId ${productId} not in search results for "${keyword}"`,
+        sourceText: `Coupang: productId ${productId} not in search results for keywords [${keywords.join(', ')}]`,
         storeName: '쿠팡',
         matchExcluded: true,
         outcome: 'no_offer',
