@@ -338,6 +338,57 @@ describe('non-anchored fallback (inspectionWarning) → ml unit_price unreliable
   });
 });
 
+describe('parsedPackage override logic', () => {
+  it('parsedPackage (high-confidence) exists -> ignores parsedVolumeRaw and overrides volume_ml', () => {
+    const product50ml: Product = { ...BASE_PRODUCT, volume_ml: 50 };
+    const result = normalizePrice(product50ml, offer({
+      salePrice: 20000,
+      promoType: 'none',
+      parsedVolumeRaw: 200,
+      parsedPackage: {
+        detected: true,
+        unitType: 'sheet',
+        unitAmount: 80,
+        unitCount: 1,
+        totalAmount: 80,
+        promoType: 'none',
+        confidence: 'high',
+        evidence: '80개입',
+        method: 'llm',
+        heterogeneous: false,
+        route: 'needs-llm',
+      }
+    }));
+
+    expect(result.total_ml).toBe(80);
+    expect(result.volume_mismatch).toBe(true);
+  });
+
+  it('parsedPackage has null unitAmount (device) -> falls back to DB volume and ignores parsedVolumeRaw', () => {
+    const deviceProduct: Product = { ...BASE_PRODUCT, volume_ml: null };
+    const result = normalizePrice(deviceProduct, offer({
+      salePrice: 150000,
+      promoType: 'none',
+      parsedVolumeRaw: 200,
+      parsedPackage: {
+        detected: true,
+        unitType: 'count',
+        unitAmount: null,
+        unitCount: 1,
+        totalAmount: 1,
+        promoType: 'none',
+        confidence: 'high',
+        evidence: '부스터젤 200ml',
+        method: 'llm',
+        heterogeneous: false,
+        route: 'needs-llm',
+      }
+    }));
+
+    expect(result.total_ml).toBe(1);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Summary
 // ---------------------------------------------------------------------------
