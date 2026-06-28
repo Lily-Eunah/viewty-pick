@@ -183,20 +183,31 @@ export function normalizePrice(product: Product, offer: PriceOffer): NormalizedP
   let volume_ml = product.volume_ml || 50;
   let volume_mismatch_detail: string | null = null;
 
-  // Check 1: explicit parsedVolumeRaw from adapter (Naver crawl provides this)
-  if (offer.parsedVolumeRaw !== undefined && offer.parsedVolumeRaw !== null) {
+  // Check 1: Stage-2: prefer the run.ts-injected parsePackage result (gate+LLM with guards) over anything else
+  const ext = offer.parsedPackage;
+  if (ext && ext.detected && ext.confidence === 'high') {
+    if (ext.unitAmount !== null) {
+      volume_ml = ext.unitAmount;
+      if (product.volume_ml && ext.unitAmount !== product.volume_ml) {
+        volume_mismatch_detail = `판매처 용량 ${ext.unitAmount}ml (DB ${product.volume_ml}ml와 다름) — 판매처 용량으로 ml당 계산`;
+      }
+    } else {
+      // 기기 제품 등 volume=null로 교정된 경우
+      volume_ml = product.volume_ml || 1;
+    }
+  } else if (offer.parsedVolumeRaw !== undefined && offer.parsedVolumeRaw !== null) {
+    // Check 2: explicit parsedVolumeRaw from adapter (if parsedPackage is absent or low-confidence)
     volume_ml = offer.parsedVolumeRaw;
     if (product.volume_ml && offer.parsedVolumeRaw !== product.volume_ml) {
       volume_mismatch_detail = `판매처 용량 ${offer.parsedVolumeRaw}ml (DB ${product.volume_ml}ml와 다름) — 판매처 용량으로 ml당 계산`;
     }
   } else if (offer.sourceText && (promo_type === 'bundle' || promo_type === 'none')) {
-    // Check 2: derive volume from title for bundle/none promos. Stage-2: prefer the
-    // run.ts-injected parsePackage result over re-parsing (fallback to regex when absent).
-    const ext = offer.parsedPackage ?? extractPackageFromTitle(offer.sourceText);
-    if (ext.detected && ext.confidence === 'high' && ext.unitAmount !== null) {
-      volume_ml = ext.unitAmount;
-      if (product.volume_ml && ext.unitAmount !== product.volume_ml) {
-        volume_mismatch_detail = `판매처 용량 ${ext.unitAmount}ml (DB ${product.volume_ml}ml와 다름) — 판매처 용량으로 ml당 계산`;
+    // Check 3: fallback to regex parse
+    const regexExt = extractPackageFromTitle(offer.sourceText);
+    if (regexExt.detected && regexExt.confidence === 'high' && regexExt.unitAmount !== null) {
+      volume_ml = regexExt.unitAmount;
+      if (product.volume_ml && regexExt.unitAmount !== product.volume_ml) {
+        volume_mismatch_detail = `판매처 용량 ${regexExt.unitAmount}ml (DB ${product.volume_ml}ml와 다름) — 판매처 용량으로 ml당 계산`;
       }
     }
   }
