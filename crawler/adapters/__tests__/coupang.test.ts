@@ -297,14 +297,13 @@ it('prefers exact vendorItemId match over lowest-price fallback', () => {
   expect(m!.productPrice).toBe(12000);
 });
 
-it('falls back to lowest-price when vendorItemId not in results', () => {
+it('returns null (no match) when vendorItemId is requested but not in results', () => {
   const data: CoupangApiItem[] = [
     item({ productId: 7975902054, vendorItemId: 11111, productPrice: 10000 }),
     item({ productId: 7975902054, vendorItemId: 22222, productPrice: 8000 }),
   ];
   const m = pickCoupangMatch(data, '7975902054', '99999');
-  expect(m).not.toBeNull();
-  expect(m!.productPrice).toBe(8000);
+  expect(m).toBeNull();
 });
 
 it('falls back to lowest-price when vendorItemId is null/undefined', () => {
