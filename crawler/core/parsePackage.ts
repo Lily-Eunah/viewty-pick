@@ -203,6 +203,22 @@ export async function parsePackage(
   let result: ParsePackageResult;
   if (g.route !== 'needs-llm') {
     result = fromGate(g);
+    // Apply unit guards on gate outcomes (same logic as applyTitleParseGuards)
+    if (ctx.volumeUnit === '개') {
+      if (result.unitType === 'ml' || result.unitType === 'g') {
+        result.unitAmount = null;
+        result.unitType = 'count';
+        result.totalAmount = null;
+        result.needsInspection = true;
+      }
+    } else if (ctx.volumeUnit === '매' || ctx.volumeUnit === 'sheet') {
+      if (result.unitType === 'ml' || result.unitType === 'g') {
+        result.unitAmount = null;
+        result.unitType = 'sheet';
+        result.totalAmount = null;
+        result.needsInspection = true;
+      }
+    }
   } else if (!llmExtract) {
     result = regexFallback(title);
   } else {
