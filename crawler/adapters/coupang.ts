@@ -613,10 +613,28 @@ export class CoupangAdapter implements RetailerAdapter {
       };
     }
 
-    // Exact productId (+ vendorItemId when available) match = anchored to the
-    // operator-curated SKU → run.ts shows it directly and never downgrades to
-    // inspection on LLM parse uncertainty.
-    return { ...parseCoupangItem(match), anchored: true, outcome: 'ok' };
+    // Check if this is an EXACT vendor match or a vendor-fallback (same product,
+    // different seller). When vendorItemId was specified but the matched item's
+    // vendorItemId differs, the PRICE is still valid (same product) but the
+    // DEEPLINK and IMAGE belong to a different seller — strip them so they don't
+    // overwrite the operator's curated URL/image. The redirect route falls back
+    // to listing.url (the operator's original Coupang product-detail URL).
+    const isExactVendor = !vendorItemId ||
+      (match.vendorItemId != null && String(match.vendorItemId) === vendorItemId);
+
+    const offer = parseCoupangItem(match);
+
+    if (!isExactVendor) {
+      console.warn(
+        `[Coupang Adapter] vendorItemId mismatch: wanted ${vendorItemId}, got ${match.vendorItemId} — using price, stripping deeplink/image`
+      );
+      // Price is kept (same product, different vendor — still a valid reference price).
+      // Deeplink and image are stripped — they belong to the wrong vendor.
+      offer.matchedUrl = null;
+      offer.imageUrl = null;
+    }
+
+    return { ...offer, anchored: isExactVendor, outcome: 'ok' };
   }
 
   private async _loadProduct(productId: number): Promise<Product | null> {
