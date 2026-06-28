@@ -507,6 +507,8 @@ export function pickAnchoredOffer(
         reason: `${base} — 증정/번들, 본품 ${mainVolumeMl}ml 기준 추정(확인 후 O)`,
         needsInspection: true,
         inspectionEstimatedPrice: priceHint, // whole bundle price on the 본품 (conservative)
+        suspectedTitle: stripHtml(anchored.title),
+        suspectedPrice: priceHint,
       };
     }
     // (c) 본품 식별 불가 (진짜 다중-main 이종 세트) → inspection with the anchor price as a
@@ -518,6 +520,8 @@ export function pickAnchoredOffer(
       reason: `${base} — 이종 세트 의심(본품 식별 불가, 확인 후 O)`,
       needsInspection: true,
       inspectionEstimatedPrice: priceHint,
+      suspectedTitle: stripHtml(anchored.title),
+      suspectedPrice: priceHint,
     };
   }
 
@@ -541,6 +545,8 @@ export function pickAnchoredOffer(
         reason: `${base} — 동종 번들 ×${bundleQty}, 본품가 추정(확인 후 O)`,
         needsInspection: true,
         inspectionEstimatedPrice: priceHint ? Math.round(priceHint / bundleQty) : null,
+        suspectedTitle: stripHtml(anchored.title),
+        suspectedPrice: priceHint,
       };
     }
   }
@@ -1233,6 +1239,8 @@ export class NaverAdapter implements RetailerAdapter {
         // false → stays link_only.
         needsInspection: result.needsInspection ?? false,
         inspectionEstimatedPrice: result.inspectionEstimatedPrice ?? null,
+        suspectedTitle: result.suspectedTitle ?? null,
+        suspectedPrice: result.suspectedPrice ?? null,
       };
     }
 
