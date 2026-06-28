@@ -22,6 +22,7 @@ import {
   looksLikeImageUrl,
   pickCoupangImage,
   resolveCoupangImageAuto,
+  resolveVendorItemId,
   CoupangApiItem,
 } from '../coupang';
 
@@ -334,6 +335,48 @@ it('returns null when vendorItemId is absent', () => {
 
 it('returns null for empty URL', () => {
   expect(extractCoupangVendorItemId('')).toBeNull();
+});
+
+// ---------------------------------------------------------------------------
+// Fixture 10d: resolveVendorItemId & matching via productUrl query
+// ---------------------------------------------------------------------------
+console.log('\n--- [Fixture 10d] resolveVendorItemId via productUrl ---');
+it('resolves vendorItemId from root if present', () => {
+  const v = resolveVendorItemId(item({ productId: 123, vendorItemId: 55555 }));
+  expect(v).toBe(55555);
+});
+
+it('resolves vendorItemId from productUrl query string if missing from root', () => {
+  const v = resolveVendorItemId(
+    item({
+      productId: 123,
+      vendorItemId: undefined,
+      productUrl: 'https://link.coupang.com/re/AFFSDP?vendorItemId=77777',
+    })
+  );
+  expect(v).toBe(77777);
+});
+
+it('returns null if both are missing', () => {
+  const v = resolveVendorItemId(
+    item({
+      productId: 123,
+      vendorItemId: undefined,
+      productUrl: 'https://link.coupang.com/re/AFFSDP?itemId=11111',
+    })
+  );
+  expect(v).toBeNull();
+});
+
+it('pickCoupangMatch successfully anchors vendorItemId parsed from productUrl query', () => {
+  const data: CoupangApiItem[] = [
+    item({ productId: 7975902054, vendorItemId: undefined, productUrl: 'https://link?vendorItemId=11111', productName: '저가', productPrice: 8000 }),
+    item({ productId: 7975902054, vendorItemId: undefined, productUrl: 'https://link?vendorItemId=85566203806', productName: '정확', productPrice: 12000 }),
+    item({ productId: 7975902054, vendorItemId: undefined, productUrl: 'https://link?vendorItemId=33333', productName: '타사', productPrice: 10000 }),
+  ];
+  const m = pickCoupangMatch(data, '7975902054', '85566203806');
+  expect(m).not.toBeNull();
+  expect(m!.productPrice).toBe(12000);
 });
 
 // ---------------------------------------------------------------------------

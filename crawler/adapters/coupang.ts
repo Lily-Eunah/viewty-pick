@@ -311,6 +311,22 @@ export function pickCoupangImage(
 }
 
 /**
+ * Resolve the vendorItemId from either root level or productUrl query parameter.
+ * Coupang Partners Search API response items lack vendorItemId at root, but
+ * contain it inside productUrl query string parameters.
+ */
+export function resolveVendorItemId(item: CoupangApiItem): number | null {
+  if (item.vendorItemId !== undefined && item.vendorItemId !== null) {
+    return item.vendorItemId;
+  }
+  if (item.productUrl) {
+    const extracted = extractCoupangVendorItemId(item.productUrl);
+    if (extracted) return parseInt(extracted, 10);
+  }
+  return null;
+}
+
+/**
  * Pick the offer for an anchored Coupang listing. Matching priority:
  *   1. productId + vendorItemId — exact operator-curated vendor (when provided).
  *      A single productId can have MULTIPLE vendors/sellers, each with a distinct
@@ -331,9 +347,10 @@ export function pickCoupangMatch(
 
   // Priority 1: exact vendor match (operator's curated seller).
   if (vendorItemId) {
-    const vendorMatch = productMatches.find(
-      (pd) => pd.vendorItemId != null && String(pd.vendorItemId) === vendorItemId
-    );
+    const vendorMatch = productMatches.find((pd) => {
+      const resolved = resolveVendorItemId(pd);
+      return resolved !== null && String(resolved) === vendorItemId;
+    });
     if (vendorMatch) return vendorMatch;
     // vendorItemId not in search results — do NOT fall back to other vendors
     // if a specific vendor was requested. Return null to treat as no_offer.
