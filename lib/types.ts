@@ -250,6 +250,9 @@ export interface SeoPage {
   category: string | null;
   skin_type: string | null;
   badge_type: string | null;
+  // CSV of synonym keywords (OR-matched against product name/features/tags) — lets
+  // a topic like 여드름·블랙헤드·미백 select products beyond category/skin filters.
+  keywords?: string | null;
   is_active: boolean;
 }
 

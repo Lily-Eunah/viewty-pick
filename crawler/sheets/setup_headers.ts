@@ -14,7 +14,11 @@ const HEADERS: Record<string, string[]> = {
   badges:             ['product_name', 'brand', 'directorpi_detail', 'directorpi_source', 'directorpi_ref_url', 'directorpi_date'],
   retailer_allowlist: ['seller', 'brand', 'allowed_store_name'],
   manual_overrides:   ['product_name', 'seller', 'override_type', 'value', 'reason', 'expires_at', 'product_key'],
-  seo_pages:          ['slug', 'page_type', 'title', 'h1', 'description', 'category', 'skin_type', 'badge_type', 'is_active'],
+  // keywords (APPENDED at the end on purpose): like naver_prev above, setup_headers
+  // overwrites only row 1 without shifting data, so a new column must go last to keep
+  // existing seo_pages cells aligned on a live sheet. Column order is irrelevant to the
+  // importer (resolves by header name).
+  seo_pages:          ['slug', 'page_type', 'title', 'h1', 'description', 'category', 'skin_type', 'badge_type', 'is_active', 'keywords'],
   // Inspection OX tab — crawler pre-fills held (warning) prices; operator types O/X.
   inspection:         ['product_key', 'product_name', 'seller', '추정가격', '출처', '사유', '링크', '승인'],
   // link_only tab — crawler auto-lists crawl-target links that got NO price

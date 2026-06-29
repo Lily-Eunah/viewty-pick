@@ -1,7 +1,8 @@
 import { cache } from 'react';
 import { isSupabaseConfigured, supabase } from '../supabase/client';
 import { loadMockDB } from '../supabase/mockDb';
-import { Category, UIProduct, UIStorePrice, Product, Listing, CurrentPrice, PriceSnapshot, PublicListingPrice, ProductBadge, Badge } from '../types';
+import { Category, UIProduct, UIStorePrice, Product, Listing, CurrentPrice, PriceSnapshot, PublicListingPrice, ProductBadge, Badge, SeoPage } from '../types';
+import { matchSeoProducts, SeoFilters } from '../seo/match';
 
 /**
  * Determines if a price snapshot is valid and safe to display.
@@ -550,6 +551,38 @@ export async function getPickPageData(badgeSlug: string, categorySlug: string) {
     return true;
   });
   return { category, products };
+}
+
+// ---------------------------------------------------------------------------
+// SEO landing pages (/best/[slug]) — driven by the seo_pages table (sheet-sourced)
+// ---------------------------------------------------------------------------
+
+/** All active SEO pages (anon-readable view per migration 0002 RLS). */
+export const getActiveSeoPages = cache(async (): Promise<SeoPage[]> => {
+  if (isSupabaseConfigured()) {
+    const { data, error } = await supabase.from('seo_pages').select('*').eq('is_active', true);
+    if (!error && data) return data as SeoPage[];
+  }
+  const db = loadMockDB();
+  return (db.seo_pages ?? []).filter((s) => s.is_active);
+});
+
+/**
+ * Resolve one SEO page + the products it lists. Reuses getProducts (display gate +
+ * recommend sort) and the shared matcher so the live list and the generator's
+ * "≥4 products" gate stay identical. Returns page=null for unknown/inactive slugs.
+ */
+export async function getSeoPageData(slug: string): Promise<{ page: SeoPage | null; products: UIProduct[] }> {
+  const [pages, allProducts] = await Promise.all([getActiveSeoPages(), getProducts({ sortBy: 'recommend' })]);
+  const page = pages.find((p) => p.slug === slug) ?? null;
+  if (!page) return { page: null, products: [] };
+  const filters: SeoFilters = {
+    category: page.category,
+    skinType: page.skin_type,
+    badge: page.badge_type,
+    keywords: page.keywords,
+  };
+  return { page, products: matchSeoProducts(allProducts, filters) };
 }
 
 export async function getSkinPageData(skinTypeSlug: string, categorySlug: string) {

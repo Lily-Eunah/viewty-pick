@@ -208,6 +208,7 @@ export const seoPageRowSchema = z.object({
   category:    z.string().optional(),
   skin_type:   z.string().optional(),
   badge_type:  z.string().optional(),
+  keywords:    z.string().optional(),
   is_active:   boolField,
 });
 
