@@ -31,7 +31,10 @@ export interface Product {
   name: string;
   brand: string | null;
   category_id: number | null;
-  volume_ml: number;
+  // Nullable to match the DB (products.volume_ml NUMERIC, no NOT NULL): devices and
+  // other volume-less products carry null. Consumers already guard (normalizePrice
+  // `|| 50`/`|| 1`, naver/run `?? null`, discountVsRegular accepts null).
+  volume_ml: number | null;
   // Unit of volume_ml: 'ml' | 'g' | '매'. Default 'ml' (migration 0017). Display-only;
   // the per-unit price math is unit-agnostic. Optional so the legacy mock compiles.
   volume_unit?: string | null;
