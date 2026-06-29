@@ -47,6 +47,9 @@ export interface Product {
   volume_verified?: boolean;
   image_url: string | null;
   features: string | null;
+  // 운영자가 직접 작성한 상세 원문(추천 사유 백업). features는 이 원문을 화면용으로
+  // 요약·정규화한 값이며, features_detail은 표시에 쓰이지 않고 원본 보존 용도다.
+  features_detail?: string | null;
   skin_types: string[]; // e.g. ['민감성', '지성', '건성', '수부지']
   hwahae_url: string | null;
   official_info_url: string | null;
