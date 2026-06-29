@@ -492,6 +492,7 @@ export async function runSheetImport(): Promise<ImportStats> {
           category:    p.data.category    ?? null,
           skin_type:   p.data.skin_type   ?? null,
           badge_type:  p.data.badge_type  ?? null,
+          keywords:    p.data.keywords    ?? null,
           is_active:   p.data.is_active,
         }, { onConflict: 'slug' });
       }
@@ -653,7 +654,7 @@ export async function runSheetImport(): Promise<ImportStats> {
       const p = v.seoPageRowSchema.safeParse(row);
       if (!p.success) continue;
       const existing = db.seo_pages.find((sp) => sp.slug === p.data.slug);
-      const data = { slug: p.data.slug, page_type: p.data.page_type ?? null, title: p.data.title ?? null, h1: p.data.h1 ?? null, description: p.data.description ?? null, category: p.data.category ?? null, skin_type: p.data.skin_type ?? null, badge_type: p.data.badge_type ?? null, is_active: p.data.is_active };
+      const data = { slug: p.data.slug, page_type: p.data.page_type ?? null, title: p.data.title ?? null, h1: p.data.h1 ?? null, description: p.data.description ?? null, category: p.data.category ?? null, skin_type: p.data.skin_type ?? null, badge_type: p.data.badge_type ?? null, keywords: p.data.keywords ?? null, is_active: p.data.is_active };
       if (existing) { Object.assign(existing, data); }
       else { db.seo_pages.push({ id: (db.seo_pages.length ? Math.max(...db.seo_pages.map((sp) => sp.id)) + 1 : 1), ...data }); }
     }
