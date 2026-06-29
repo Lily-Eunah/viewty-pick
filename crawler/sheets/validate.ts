@@ -76,6 +76,8 @@ export const simpleProductRowSchema = z.object({
     .default(null),
   skin_types:  z.string().transform((v) => v.split(',').map((s) => s.trim()).filter(Boolean)).default([]),
   features:    z.string().optional(),
+  // 운영자 상세 원문(백업). features는 이 값을 요약·정규화한 화면용 추천 사유다.
+  features_detail: z.string().optional(),
   hwahae_url:  z.string().url().or(z.literal('')).optional(),
   image_url:   z.string().url().or(z.literal('')).optional(),
   is_disabled: disabledField,

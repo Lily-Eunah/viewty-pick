@@ -3,7 +3,13 @@ import { google } from 'googleapis';
 // Column headers must match validate.ts schemas exactly (sheet schema v2).
 const HEADERS: Record<string, string[]> = {
   _categories:        ['대분류', '대분류_slug', '소분류', '소분류_slug', 'sort_order'],
-  products:           ['product_key', 'name', 'brand', 'category', 'volume_ml', 'volume_unit', 'skin_types', 'features', 'hwahae_url', 'image_url', 'is_disabled', 'slug', 'regular_price'],
+  // features_detail (APPENDED at the end on purpose): write-once backup of the
+  // operator's ORIGINAL detailed write-up. `features` is the screen-facing summary
+  // normalized from it. It MUST stay last for the same reason as product_links's
+  // naver_prev below — setup_headers overwrites only row 1 without shifting data, so
+  // inserting mid-row would misalign existing cells on a live sheet. Column order is
+  // irrelevant to the importer (columns resolve by header name).
+  products:           ['product_key', 'name', 'brand', 'category', 'volume_ml', 'volume_unit', 'skin_types', 'features', 'hwahae_url', 'image_url', 'is_disabled', 'slug', 'regular_price', 'features_detail'],
   // naver_prev (APPENDED at the end on purpose): write-once backup of the operator's
   // ORIGINAL naver link, preserved when a 품절 SKU is auto-substituted with another
   // official-mall 구성 (B2 fallback). It MUST stay last — setup_headers overwrites only
