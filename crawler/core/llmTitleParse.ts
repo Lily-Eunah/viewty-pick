@@ -49,7 +49,7 @@ function nextAvailableKey(): string | null {
 /** ```json 펜스/잡문을 걷어내고 첫 번째 { … } 객체를 파싱(Gemma 자유텍스트 대비). */
 function extractJson<T>(text: string): T | null {
   if (!text) return null;
-  let s = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+  const s = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
   try {
     return JSON.parse(s) as T;
   } catch {

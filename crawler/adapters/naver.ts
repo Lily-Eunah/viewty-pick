@@ -1261,14 +1261,12 @@ export class NaverAdapter implements RetailerAdapter {
       const priceStr = parsedPrice.toLocaleString('ko-KR');
       let inspectionWarning: string | null = null;
       let matchedUrl: string | null = null;
-      let matchedMallName: string | null;
-      let storeName: string | null;
       let sourceText: string;
 
       // official-store fallback only (catalog removed).
       matchedUrl = updateLink ? item.link || null : null; // B2 updates; A2 keeps affiliate
-      matchedMallName = item.mallName || null;
-      storeName = allowedStoreName || item.mallName;
+      const matchedMallName = item.mallName || null;
+      const storeName = allowedStoreName || item.mallName;
       if (warn) {
         // A2: price from an official store but buy link stays the affiliate → record
         // the affiliate URL (for later affiliate-application review) + flag mismatch.
