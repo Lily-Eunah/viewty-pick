@@ -42,7 +42,8 @@ export async function POST(request: NextRequest) {
     console.log('[Revalidation API] Revalidating all core web routes...');
     revalidatePath('/');
     revalidatePath('/c/sunscreen');
-    revalidatePath('/pick/directorpi/sunscreen');
+    revalidatePath('/best');
+    revalidatePath('/best/directorpi-sunscreen');
     revalidatePath('/skin/sensitive/sunscreen');
 
     return NextResponse.json({ revalidated: true, now: Date.now() });

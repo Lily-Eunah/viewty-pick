@@ -64,6 +64,18 @@ Search Console / 네이버 서치어드바이저 소유확인과 sitemap·robots
 6. **배포**: `npm run cf:deploy`.
 7. 배포 후 GSC/네이버에서 `https://viewtypick.com/sitemap.xml` 제출.
 
+## 홈 동선 통합 (후속)
+검색 전용으로 두지 않고 추천 가이드 시스템을 `/best`로 일원화했다.
+- `components/home/CurationCarousel.tsx` — 홈 "뷰티 PICK 추천 가이드" 캐러셀 카드를
+  `/best/[slug]`(directorpi-sunscreen·skincare-best·cleansing-best·cushion-best·device-best,
+  큐레이션 비주얼 유지)로, "전체보기"를 `/best`로 변경.
+- `app/pick/page.tsx`, `app/pick/[badge]/[category]/page.tsx` — 레거시 `/pick`을 `/best`로
+  redirect(알려진 조합은 매핑, 그 외 허브). 두 시스템 → 하나로 통합.
+- `app/skin/[type]/[category]/page.tsx` 관련 링크, `app/api/revalidate/route.ts` 경로도 `/best`로 정정.
+- `/c` 카테고리 탭은 그대로(영향 없음).
+- 검증: `/pick`→307→`/best`, `/pick/directorpi/sunscreen`→`/best/directorpi-sunscreen`,
+  홈 캐러셀 5개 카드 모두 `/best/*` 200(prod DB 40 active 확인). typecheck/lint clean.
+
 ## 남은 이슈 / TODO
 - 키워드 컬럼이 DB에 없을 때(마이그레이션 전) keyword 기반 inactive 행은 import되지 않으므로
   영향 없음. 마이그레이션 → import 순서 유지.
