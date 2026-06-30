@@ -15,7 +15,7 @@
 
 > 바인딩명은 OpenNext override가 `env`에서 **이 이름 그대로** 찾는다(임의 변경 불가). 리소스 *이름*(bucket_name, 네임스페이스 title)은 자유.
 
-queue(재검증 dedupe)는 isolate-local `memoryQueue`(바인딩 불필요)로 충분. regional cache(읽기 지연 최적화)는 Cache API 사용으로 바인딩 불필요 — §5 선택.
+queue(재검증 dedupe)는 isolate-local `memoryQueue`(바인딩 불필요)로 충분. regional cache(Cache API, 바인딩 불필요)는 읽기 지연 단축 + R2 Class B 무료 한도 보호 — **§5, 처음부터 권장**.
 
 ---
 
@@ -104,7 +104,7 @@ import kvNextTagCache from "@opennextjs/cloudflare/overrides/tag-cache/kv-next-t
 import memoryQueue from "@opennextjs/cloudflare/overrides/queue/memory-queue";
 
 const config = defineCloudflareConfig({
-  // ISR/SSG 페이지 + unstable_cache 데이터 → R2
+  // ISR/SSG 페이지 + unstable_cache 데이터 → R2 (§5 regional cache로 감싸 사용 권장)
   incrementalCache: r2IncrementalCache,
   // revalidateTag('products') / revalidatePath → KV
   tagCache: kvNextTagCache,
@@ -124,9 +124,9 @@ export default config;
 
 ---
 
-## 5. (선택) regional cache — 읽기 지연 최적화
+## 5. regional cache — 읽기 지연 + R2 무료 한도 보호 (★처음부터 권장)
 
-R2 직접 조회 대신 colo 내 Cache API로 한 겹 더 캐시해 TTFB를 줄인다. 바인딩 불필요.
+R2 직접 조회 대신 colo 내 Cache API로 한 겹 더 캐시한다. 바인딩 불필요(Cache API는 R2 ops로 안 침).
 
 ```ts
 import { withRegionalCache } from "@opennextjs/cloudflare/overrides/incremental-cache/regional-cache";
@@ -134,8 +134,22 @@ import { withRegionalCache } from "@opennextjs/cloudflare/overrides/incremental-
 incrementalCache: withRegionalCache(r2IncrementalCache, { mode: "short-lived" }),
 ```
 
-- `short-lived`: 가져온 항목을 ~1분간 재사용(재검증과 충돌 적어 **안전한 시작점**).
-- `long-lived`: 재검증 전까지 리전별 재사용(더 공격적 — 태그 무효화 전파/cache purge 고려 필요). 처음엔 `short-lived` 권장, 안정화 후 검토.
+두 가지 효과:
+1. **TTFB 단축** — 같은 리전 반복 요청이 R2를 다시 안 읽음.
+2. **R2 Class B(읽기) 무료 한도 보호** — regional cache 없으면 R2 읽기가 *페이지뷰에 비례*(요청당 ~1회), 있으면 *페이지수 × 리전수 × 갱신주기*로 트래픽과 디커플링. 무료 10M/월(≈하루 33만)을 트래픽 급증에도 지킨다.
+
+- `short-lived`: 가져온 항목을 ~1분간 재사용(재검증과 충돌 적어 **안전한 기본값**).
+- `long-lived`: 재검증 전까지 리전별 재사용(더 공격적 — 태그 무효화 전파/cache purge 고려). 안정화 후 검토.
+
+### R2 무료 한도 점검 (참고)
+
+| 자원 | 무료/월 | viewtypick 예상(캐시 페이지 ~200개) | 여유 |
+|---|---|---|---|
+| Storage | 10 GB | 수십 MB(키 덮어쓰기, 안 쌓임) | 압도적 |
+| Class A(쓰기) | 1M | 재검증+온디맨드 ≈ 월 수천~수만 | 압도적 |
+| Class B(읽기) | 10M | 캐시 요청당 ~1회 → regional cache로 트래픽 디커플링 | 월 수백만 PV 전까지 안전 |
+
+→ 대시보드에서 **R2 사용량 알림** 설정 권장. 순수 정적(revalidate 없는) 페이지는 ASSETS에서 서빙되어 R2 ops 0.
 
 ---
 
