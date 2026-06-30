@@ -6,6 +6,10 @@ import ProductListCard from '../../../../components/product/ProductListCard';
 import Badge from '../../../../components/common/Badge';
 import { getSkinPageData } from '../../../../lib/queries';
 
+// ISR: serve from cache, regenerate at most daily (+ on-demand via revalidateTag
+// ('products') from the crawler). Product data is computed once globally.
+export const revalidate = 86400;
+
 interface PageProps {
   params: Promise<{ type: string; category: string }>;
 }
