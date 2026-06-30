@@ -96,7 +96,7 @@ export default async function SkinPage({ params }: PageProps) {
         <div className="flex justify-center gap-3.5 flex-wrap">
           <Link href="/skin/oily/sunscreen" className="underline hover:text-primary">지성 선크림 가이드</Link>
           <Link href="/skin/dry/sunscreen" className="underline hover:text-primary">건성 선크림 가이드</Link>
-          <Link href="/pick/directorpi/sunscreen" className="underline hover:text-primary">디렉터파이 전체 선크림</Link>
+          <Link href="/best/directorpi-sunscreen" className="underline hover:text-primary">디렉터파이 전체 선크림</Link>
         </div>
       </section>
     </AppShell>
