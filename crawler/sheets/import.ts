@@ -258,7 +258,7 @@ export async function runSheetImport(): Promise<ImportStats> {
       fetchSheet(id, 'manual_overrides!A:Z'),
       fetchSheet(id, 'seo_pages!A:Z'),
     ]);
-    console.log(`[Sheet Import] Fetched: ${rawProducts.length} products, ${rawLinks.length} listings, ${rawBadges.length} badges`);
+    console.log(`[Sheet Import] Fetched: ${rawProducts.length} products, ${rawLinks.length} listings, ${rawBadges.length} badges, ${rawAllowlist.length} allowlist, ${rawOverrides.length} overrides, ${rawSeoPages.length} seo_pages`);
   } else {
     rawCategories = mockSheets.mockCategoriesRefSheet;
     rawProducts   = mockSheets.mockProductsSheet;
@@ -451,8 +451,9 @@ export async function runSheetImport(): Promise<ImportStats> {
 
       // 5. Retailer allowlist
       for (const row of rawAllowlist) {
+        if (Object.values(row).every((v) => !v)) continue; // skip blank rows
         const p = v.simpleAllowlistRowSchema.safeParse(row);
-        if (!p.success) { stats.errorCount++; continue; }
+        if (!p.success) { stats.errorCount++; stats.errors.push(`Allowlist: seller="${row.seller ?? ''}" brand="${row.brand ?? ''}" — ${p.error.issues.map((i) => i.message).join('; ')}`); continue; }
         const sellerId = dbSellers?.find((s) => s.slug === p.data.seller)?.id;
         if (!sellerId) continue;
         await supabaseServer.from('retailer_allowlist').upsert(
@@ -463,8 +464,9 @@ export async function runSheetImport(): Promise<ImportStats> {
 
       // 6. Manual overrides
       for (const row of rawOverrides) {
+        if (Object.values(row).every((v) => !v)) continue; // skip blank rows
         const p = v.simpleOverrideRowSchema.safeParse(row);
-        if (!p.success) { stats.errorCount++; continue; }
+        if (!p.success) { stats.errorCount++; stats.errors.push(`Override: name="${row.product_name ?? ''}" seller="${row.seller ?? ''}" type="${row.override_type ?? ''}" — ${p.error.issues.map((i) => i.message).join('; ')}`); continue; }
         const productKey = v.resolveProductKey(p.data, nameToKey);
         const productId  = dbProducts?.find((pr) => pr.product_key === productKey)?.id;
         const sellerId   = dbSellers?.find((s) => s.slug === p.data.seller)?.id;
@@ -482,8 +484,9 @@ export async function runSheetImport(): Promise<ImportStats> {
 
       // 7. SEO pages
       for (const row of rawSeoPages) {
+        if (Object.values(row).every((v) => !v)) continue; // skip blank rows
         const p = v.seoPageRowSchema.safeParse(row);
-        if (!p.success) { stats.errorCount++; continue; }
+        if (!p.success) { stats.errorCount++; stats.errors.push(`SEO page: slug="${row.slug ?? ''}" — ${p.error.issues.map((i) => i.message).join('; ')}`); continue; }
         await supabaseServer.from('seo_pages').upsert({
           slug:        p.data.slug,
           page_type:   p.data.page_type   ?? null,
@@ -677,6 +680,14 @@ export async function runSheetImport(): Promise<ImportStats> {
 
   const finishedAt = new Date().toISOString();
   console.log(`[Sheet Import] Import finished at ${finishedAt}. Success: ${stats.productsCount} products, ${stats.linksCount} links, ${stats.badgesCount} badges. Deactivated: ${stats.productsDeactivated} products, ${stats.listingsDeactivated} listings. Errors: ${stats.errorCount}`);
+  if (stats.errors.length > 0) {
+    const shown = stats.errors.slice(0, 30);
+    console.log(`[Sheet Import] First ${shown.length}/${stats.errorCount} error detail(s):`);
+    shown.forEach((e, i) => console.log(`  [${i + 1}] ${e}`));
+    if (stats.errorCount > stats.errors.length) {
+      console.log(`  ... ${stats.errorCount - stats.errors.length} additional error(s) have no detail (check categories/allowlist/overrides/seo_pages rows above)`);
+    }
+  }
   return stats;
 }
 
