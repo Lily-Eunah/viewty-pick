@@ -5,56 +5,50 @@ import Link from 'next/link';
 
 interface CurationItem {
   id: string;
-  slug: string; // /best/[slug] SEO landing page
+  badge: string;
+  category: string;
   title: string;
   subtitle: string;
   emoji: string;
   gradient: string;
 }
 
-// Curated spotlight of /best SEO landing pages. Editorially chosen (with card
-// visuals) — the full data-driven list lives at /best. `slug` must match an active
-// seo_pages row; the route 404s any page below 4 products, so keep these high-count.
 const curations: CurationItem[] = [
   {
     id: 'directorpi-sunscreen',
-    slug: 'directorpi-sunscreen',
+    badge: 'directorpi',
+    category: 'sunscreen',
     title: '피부에 밸런스를,\n가격에는 합리성을',
-    subtitle: '화장품 성분 전문가 안심 오리지널 선크림 픽',
+    subtitle: '화장품 성분 전문가 안심 오리지널 픽',
     emoji: '🧴',
     gradient: 'linear-gradient(135deg, #F6E7EC 0%, #FBF7F1 52%, #F7EFE7 100%)',
   },
   {
-    id: 'skincare-best',
-    slug: 'skincare-best',
+    id: 'hwahae-sunscreen',
+    badge: 'hwahae',
+    category: 'sunscreen',
+    title: '랭킹과 성분으로\n검증된 선케어 비교',
+    subtitle: '광고 제로! 진짜 평점 순위와 최저가',
+    emoji: '☀️',
+    gradient: 'linear-gradient(135deg, #EAF0F3 0%, #FBF7F1 52%, #FFFDF9 100%)',
+  },
+  {
+    id: 'directorpi-skincare',
+    badge: 'directorpi',
+    category: 'skincare',
     title: '피부 장벽 탄탄,\n수분 집중 안심 케어',
-    subtitle: '토너·세럼·크림까지 기초 스킨케어 최저가 비교',
+    subtitle: '민감 피부 탈출을 위한 솔루션 픽',
     emoji: '💦',
     gradient: 'linear-gradient(135deg, #F6E7EC 0%, #FFFDF9 50%, #EAF0F3 100%)',
   },
   {
-    id: 'cleansing-best',
-    slug: 'cleansing-best',
+    id: 'directorpi-cleansing-care',
+    badge: 'directorpi',
+    category: 'cleansing-care',
     title: '자극 없이 깨끗하게,\n촉촉한 안심 세안',
-    subtitle: '유해성분 없는 순한 클렌징 추천 리스트',
+    subtitle: '유해성분 없는 순한 세안제 추천 리스트',
     emoji: '🧼',
     gradient: 'linear-gradient(135deg, #F7EFE7 0%, #FBF7F1 52%, #FAEEF2 100%)',
-  },
-  {
-    id: 'cushion-best',
-    slug: 'cushion-best',
-    title: '커버와 지속력,\n둘 다 잡은 쿠션',
-    subtitle: '커버력·지속력 검증 쿠션 최저가 비교',
-    emoji: '💄',
-    gradient: 'linear-gradient(135deg, #FAEEF2 0%, #FBF7F1 52%, #EAF0F3 100%)',
-  },
-  {
-    id: 'device-best',
-    slug: 'device-best',
-    title: '집에서 즐기는\n홈 뷰티 디바이스',
-    subtitle: '리프팅·고주파 뷰티 디바이스 최저가 비교',
-    emoji: '✨',
-    gradient: 'linear-gradient(135deg, #EAF0F3 0%, #FBF7F1 52%, #F7EFE7 100%)',
   },
 ];
 
@@ -112,7 +106,7 @@ export default function CurationCarousel() {
           뷰티 PICK 추천 가이드
         </h3>
         <Link
-          href="/best"
+          href="/pick"
           className="text-[11px] text-[#A8A0A0] hover:text-primary font-black transition-colors flex items-center gap-0.5"
           aria-label="추천 가이드 전체보기"
         >
@@ -135,7 +129,7 @@ export default function CurationCarousel() {
             style={{ contentVisibility: 'auto' }}
           >
             <Link
-              href={`/best/${item.slug}`}
+              href={`/pick/${item.badge}/${item.category}`}
               className="relative block w-full p-5 flex flex-col justify-between hover:opacity-98 active:scale-[0.99] transition-all overflow-hidden min-h-[190px]"
               style={{ background: item.gradient }}
             >
