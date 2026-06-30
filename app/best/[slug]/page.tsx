@@ -7,7 +7,7 @@ import Header from '../../../components/layout/Header';
 import ProductListCard from '../../../components/product/ProductListCard';
 import Badge from '../../../components/common/Badge';
 import PriceText from '../../../components/common/PriceText';
-import { getSeoPageData } from '../../../lib/queries';
+import { getSeoPageData, getActiveSeoPages } from '../../../lib/queries';
 import { MIN_SEO_PRODUCTS } from '../../../lib/seo/match';
 import { SEO_PAGE_SPECS } from '../../../lib/seo/specs';
 import { isSiteIndexable, SITE_URL } from '../../../lib/seo/indexable';
@@ -54,14 +54,20 @@ function formatDate(isoString: string): string {
   return new Date(isoString).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' });
 }
 
+function applySellerFilter(products: UIProduct[], seller?: string | null): UIProduct[] {
+  if (!seller) return products;
+  return products.filter((p) => p.stores.some((s) => s.sellerSlug === seller));
+}
+
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
-  const { page, products } = await getSeoPageData(slug);
+  const { page, products: rawProducts } = await getSeoPageData(slug);
+  const spec = SEO_PAGE_SPECS.find((s) => s.slug === slug);
+  const products = applySellerFilter(rawProducts, spec?.seller);
   if (!page || products.length < MIN_SEO_PRODUCTS) {
     return { title: 'ViewtyPick', robots: { index: false, follow: false } };
   }
   const url = `${SITE_URL}/best/${slug}`;
-  const spec = SEO_PAGE_SPECS.find((s) => s.slug === slug);
   const title = page.title || page.h1 || 'ViewtyPick 추천';
   // Enrich meta description with product count and top brand for uniqueness/CTR.
   const topBrand = products[0]?.brand;
@@ -82,13 +88,25 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function BestPage({ params }: PageProps) {
   const { slug } = await params;
-  const { page, products } = await getSeoPageData(slug);
+  const [{ page, products: rawProducts }, allPages] = await Promise.all([
+    getSeoPageData(slug),
+    getActiveSeoPages(),
+  ]);
+
+  const spec = SEO_PAGE_SPECS.find((s) => s.slug === slug);
+  const products = applySellerFilter(rawProducts, spec?.seller);
 
   // Thin-content guard: a page must back >= MIN_SEO_PRODUCTS products to exist.
   if (!page || products.length < MIN_SEO_PRODUCTS) notFound();
 
+  // P4 related guides: same category first, then same page_type, up to 5.
+  const seen = new Set([slug]);
+  const related = [
+    ...allPages.filter((p) => p.slug !== slug && p.category && p.category === page.category),
+    ...allPages.filter((p) => p.slug !== slug && (p.page_type || 'category') === (page.page_type || 'category')),
+  ].filter((p) => { if (seen.has(p.slug)) return false; seen.add(p.slug); return true; }).slice(0, 5);
+
   const h1 = page.h1 || page.title || '추천 최저가 비교';
-  const spec = SEO_PAGE_SPECS.find((s) => s.slug === slug);
   const faqs = buildFaqs(h1, spec?.uniqueFaqs);
   const url = `${SITE_URL}/best/${slug}`;
 
@@ -265,10 +283,27 @@ export default async function BestPage({ params }: PageProps) {
         </div>
       </section>
 
-      {/* Internal links to related guides */}
-      <section className="px-4 py-6 bg-[#F0EEE2] text-center border-t border-line text-[11px] text-[#A2A08E] font-bold">
-        <p className="mb-2">다른 추천 가이드 둘러보기</p>
-        <Link href="/best" className="underline hover:text-primary">전체 추천 가이드 보기 →</Link>
+      {/* P4: Related guides — internal link equity circulation */}
+      <section className="px-4 pt-4 pb-6 bg-[#F0EEE2] border-t border-line">
+        <h2 className="text-[12px] font-black text-[#8A8877] mb-3">관련 추천 가이드</h2>
+        {related.length > 0 && (
+          <ul className="flex flex-col gap-2 mb-3">
+            {related.map((p) => (
+              <li key={p.slug}>
+                <Link
+                  href={`/best/${p.slug}`}
+                  className="flex items-center justify-between bg-white border border-line rounded-card px-3 py-2.5 shadow-sm active:opacity-70 transition-opacity"
+                >
+                  <span className="text-[12px] font-bold text-title truncate">{p.h1 || p.title}</span>
+                  <span className="text-[11px] font-black text-sub shrink-0 ml-3">→</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+        <Link href="/best" className="block text-center text-[11px] text-[#A2A08E] font-bold underline">
+          전체 추천 가이드 보기 →
+        </Link>
       </section>
     </AppShell>
   );

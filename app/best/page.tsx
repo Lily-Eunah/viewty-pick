@@ -6,6 +6,7 @@ import Header from '../../components/layout/Header';
 import { getActiveSeoPages, getProducts } from '../../lib/queries';
 import { matchSeoProducts, MIN_SEO_PRODUCTS } from '../../lib/seo/match';
 import { isSiteIndexable, SITE_URL } from '../../lib/seo/indexable';
+import { SEO_PAGE_SPECS } from '../../lib/seo/specs';
 
 export const revalidate = 3600;
 
@@ -45,7 +46,8 @@ export default async function BestIndexPage() {
   // per-page thin-content guard, so the hub never links to a 404).
   const live = pages
     .map((p) => {
-      const matched = matchSeoProducts(products, { category: p.category, skinType: p.skin_type, badge: p.badge_type, keywords: p.keywords });
+      const spec = SEO_PAGE_SPECS.find((s) => s.slug === p.slug);
+      const matched = matchSeoProducts(products, { category: p.category, skinType: p.skin_type, badge: p.badge_type, keywords: p.keywords, seller: spec?.seller });
       const lowestPrice = matched
         .filter((prod) => prod.hasAnyPrice !== false && prod.lowestPrice > 0)
         .map((prod) => prod.lowestPrice)
