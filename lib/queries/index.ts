@@ -1,7 +1,7 @@
 import { cache } from 'react';
 import { isSupabaseConfigured, supabase } from '../supabase/client';
 import { loadMockDB } from '../supabase/mockDb';
-import { Category, UIProduct, UIStorePrice, Product, Listing, CurrentPrice, PriceSnapshot, PublicListingPrice, ProductBadge, Badge, SeoPage } from '../types';
+import { Category, UIProduct, UIStorePrice, Product, Listing, PriceSnapshot, PublicListingPrice, ProductBadge, Badge, SeoPage } from '../types';
 import { matchSeoProducts, SeoFilters } from '../seo/match';
 
 /**
@@ -112,7 +112,6 @@ type DbSeller = { id: number; slug: string; name: string; is_price_comparison_en
 function mapToUIProduct(
   prod: Product,
   dbListings: Listing[],
-  dbPrices: CurrentPrice[],
   dbCategories: Category[],
   dbProductBadges: ProductBadge[],
   dbBadges: Badge[],
@@ -349,7 +348,6 @@ export function byPriceThen(
 interface RawData {
   dbProducts: Product[];
   dbListings: Listing[];
-  dbPrices: CurrentPrice[];
   dbCategories: Category[];
   dbProductBadges: ProductBadge[];
   dbBadges: Badge[];
@@ -359,10 +357,9 @@ interface RawData {
 
 const fetchAllData = cache(async (): Promise<RawData> => {
   if (isSupabaseConfigured()) {
-    const [pRes, lRes, prRes, cRes, pbRes, bRes, sRes, lpRes] = await Promise.all([
+    const [pRes, lRes, cRes, pbRes, bRes, sRes, lpRes] = await Promise.all([
       supabase.from('products').select('*').eq('is_active', true),
       supabase.from('listings').select('*').eq('is_active', true),
-      supabase.from('current_prices').select('*'),
       supabase.from('categories').select('*'),
       supabase.from('product_badges').select('*'),
       supabase.from('badges').select('*'),
@@ -374,7 +371,6 @@ const fetchAllData = cache(async (): Promise<RawData> => {
       return {
         dbProducts: pRes.data,
         dbListings: lRes.data || [],
-        dbPrices: prRes.data || [],
         dbCategories: cRes.data || [],
         dbProductBadges: pbRes.data || [],
         dbBadges: bRes.data || [],
@@ -389,7 +385,6 @@ const fetchAllData = cache(async (): Promise<RawData> => {
   return {
     dbProducts: db.products.filter((p) => p.is_active),
     dbListings,
-    dbPrices: db.current_prices,
     dbCategories: db.categories,
     dbProductBadges: db.product_badges,
     dbBadges: db.badges,
@@ -430,7 +425,7 @@ export async function getProducts(filters?: {
   skinType?: string;
   sortBy?: 'recommend' | 'price_asc' | 'price_desc' | 'discount' | 'popularity';
 }): Promise<UIProduct[]> {
-  const { dbProducts, dbListings, dbPrices, dbCategories, dbProductBadges, dbBadges, dbListingPrices, dbSellers } =
+  const { dbProducts, dbListings, dbCategories, dbProductBadges, dbBadges, dbListingPrices, dbSellers } =
     await fetchAllData();
 
   // Convert to UI structure. Single common filter for ALL list consumers (every
@@ -438,7 +433,7 @@ export async function getProducts(filters?: {
   // seller link (네이버/쿠팡/올영) so they never appear in any list.
   let uiProducts = dbProducts
     .map((p) =>
-      mapToUIProduct(p, dbListings, dbPrices, dbCategories, dbProductBadges, dbBadges, dbListingPrices, dbSellers)
+      mapToUIProduct(p, dbListings, dbCategories, dbProductBadges, dbBadges, dbListingPrices, dbSellers)
     )
     .filter(hasDisplayedSellerLink);
 
@@ -477,11 +472,11 @@ export async function getProducts(filters?: {
  * Fetch a single product by its slug.
  */
 export async function getProductBySlug(slug: string): Promise<UIProduct | null> {
-  const { dbProducts, dbListings, dbPrices, dbCategories, dbProductBadges, dbBadges, dbListingPrices, dbSellers } =
+  const { dbProducts, dbListings, dbCategories, dbProductBadges, dbBadges, dbListingPrices, dbSellers } =
     await fetchAllData();
   const prod = dbProducts.find((p) => p.slug === slug);
   if (!prod) return null;
-  return mapToUIProduct(prod, dbListings, dbPrices, dbCategories, dbProductBadges, dbBadges, dbListingPrices, dbSellers);
+  return mapToUIProduct(prod, dbListings, dbCategories, dbProductBadges, dbBadges, dbListingPrices, dbSellers);
 }
 
 /**
@@ -571,8 +566,13 @@ export const getActiveSeoPages = cache(async (): Promise<SeoPage[]> => {
  * Resolve one SEO page + the products it lists. Reuses getProducts (display gate +
  * recommend sort) and the shared matcher so the live list and the generator's
  * "≥4 products" gate stay identical. Returns page=null for unknown/inactive slugs.
+ *
+ * Wrapped in React cache() so the per-request dedup covers /best/[slug], which calls
+ * this twice in one render (generateMetadata + the page body). Keyed by the slug
+ * string, the second call returns the first's result — the full getProducts mapping
+ * + matchSeoProducts runs once per request instead of twice.
  */
-export async function getSeoPageData(slug: string): Promise<{ page: SeoPage | null; products: UIProduct[] }> {
+export const getSeoPageData = cache(async (slug: string): Promise<{ page: SeoPage | null; products: UIProduct[] }> => {
   const [pages, allProducts] = await Promise.all([getActiveSeoPages(), getProducts({ sortBy: 'recommend' })]);
   const page = pages.find((p) => p.slug === slug) ?? null;
   if (!page) return { page: null, products: [] };
@@ -583,7 +583,7 @@ export async function getSeoPageData(slug: string): Promise<{ page: SeoPage | nu
     keywords: page.keywords,
   };
   return { page, products: matchSeoProducts(allProducts, filters) };
-}
+});
 
 export async function getSkinPageData(skinTypeSlug: string, categorySlug: string) {
   const skinName = SKIN_NAME_MAP[skinTypeSlug] || '민감성';
@@ -616,7 +616,7 @@ export const getProductDetailPageData = cache(async (slug: string): Promise<{ pr
       : { data: [] };
 
     const product = mapToUIProduct(
-      prodRow as Product, (listRes.data ?? []) as Listing[], [],
+      prodRow as Product, (listRes.data ?? []) as Listing[],
       (catRes.data ?? []) as Category[], (pbRes.data ?? []) as ProductBadge[],
       (badgeRes.data ?? []) as Badge[], (lpData ?? []) as PublicListingPrice[],
       (selRes.data ?? []) as DbSeller[],
@@ -640,7 +640,7 @@ export const getProductDetailPageData = cache(async (slug: string): Promise<{ pr
       related = (relRows as Product[])
         .map((p) =>
           mapToUIProduct(
-            p, (relListRes.data ?? []) as Listing[], [],
+            p, (relListRes.data ?? []) as Listing[],
             (catRes.data ?? []) as Category[], (relPbRes.data ?? []) as ProductBadge[],
             (badgeRes.data ?? []) as Badge[], (relLpData ?? []) as PublicListingPrice[],
             (selRes.data ?? []) as DbSeller[],
@@ -657,10 +657,10 @@ export const getProductDetailPageData = cache(async (slug: string): Promise<{ pr
   const raw = await fetchAllData();
   const prod = raw.dbProducts.find((p) => p.slug === slug);
   if (!prod) return { product: null, related: [] };
-  const product = mapToUIProduct(prod, raw.dbListings, raw.dbPrices, raw.dbCategories, raw.dbProductBadges, raw.dbBadges, raw.dbListingPrices, raw.dbSellers);
+  const product = mapToUIProduct(prod, raw.dbListings, raw.dbCategories, raw.dbProductBadges, raw.dbBadges, raw.dbListingPrices, raw.dbSellers);
   const related = raw.dbProducts
     .filter((p) => p.category_id === prod.category_id && p.id !== prod.id && p.is_active)
-    .map((p) => mapToUIProduct(p, raw.dbListings, raw.dbPrices, raw.dbCategories, raw.dbProductBadges, raw.dbBadges, raw.dbListingPrices, raw.dbSellers))
+    .map((p) => mapToUIProduct(p, raw.dbListings, raw.dbCategories, raw.dbProductBadges, raw.dbBadges, raw.dbListingPrices, raw.dbSellers))
     .filter(hasDisplayedSellerLink)
     .sort(byPriceThen((a, b) => b.viewtyScore - a.viewtyScore))
     .slice(0, 6);
