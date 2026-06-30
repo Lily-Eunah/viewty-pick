@@ -1,4 +1,5 @@
 import { cache } from 'react';
+import { unstable_cache } from 'next/cache';
 import { isSupabaseConfigured, supabase } from '../supabase/client';
 import { loadMockDB } from '../supabase/mockDb';
 import { Category, UIProduct, UIStorePrice, Product, Listing, PriceSnapshot, PublicListingPrice, ProductBadge, Badge, SeoPage } from '../types';
@@ -104,7 +105,7 @@ export function isSellerDisplayed(
   return !!seller && seller.is_price_comparison_enabled === true;
 }
 
-type DbSeller = { id: number; slug: string; name: string; is_price_comparison_enabled: boolean };
+export type DbSeller = { id: number; slug: string; name: string; is_price_comparison_enabled: boolean };
 
 /**
  * Maps database tables to unified UIProduct structure.
@@ -345,7 +346,7 @@ export function byPriceThen(
 // Raw data fetch — parallelized and deduplicated per server render via cache()
 // ---------------------------------------------------------------------------
 
-interface RawData {
+export interface RawData {
   dbProducts: Product[];
   dbListings: Listing[];
   dbCategories: Category[];
@@ -417,55 +418,81 @@ export async function getCategoryBySlug(slug: string): Promise<Category | null> 
   return db.categories.find((c) => c.slug === slug) || null;
 }
 
+// Tag for the global product cache. revalidateTag(PRODUCTS_TAG) — fired by the daily
+// crawler / product import — refreshes every page derived from getAllUIProducts()
+// (home, category, skin, pick, best).
+export const PRODUCTS_TAG = 'products';
+// Time-based safety net (1 day) for when an on-demand revalidate is missed; the
+// crawler refreshes daily anyway. Pages declare the same window literally.
+const PRODUCTS_REVALIDATE_SECONDS = 86400;
+
 /**
- * Query products with options for category, skin type, and sorting.
+ * Pure mapping: raw DB rows → the display-gated full UIProduct list (drops products
+ * with no displayed-seller link — 네이버/쿠팡/올영). Extracted so the heavy mapping can
+ * be cached once globally and unit-tested without the cache/Supabase runtime.
+ */
+export function buildAllUIProducts(raw: RawData): UIProduct[] {
+  const { dbProducts, dbListings, dbCategories, dbProductBadges, dbBadges, dbListingPrices, dbSellers } = raw;
+  return dbProducts
+    .map((p) =>
+      mapToUIProduct(p, dbListings, dbCategories, dbProductBadges, dbBadges, dbListingPrices, dbSellers)
+    )
+    .filter(hasDisplayedSellerLink);
+}
+
+/**
+ * The whole display-gated catalog, computed ONCE per revalidation window and shared
+ * by every list/SEO/home render — no per-page, per-request re-mapping. Backed by the
+ * R2 incremental cache; invalidated by revalidateTag(PRODUCTS_TAG) on daily price /
+ * product updates. fetchAllData + mapToUIProduct(×N) run only on a cache miss.
+ */
+const getAllUIProducts = unstable_cache(
+  async (): Promise<UIProduct[]> => buildAllUIProducts(await fetchAllData()),
+  ['all-ui-products'],
+  { tags: [PRODUCTS_TAG], revalidate: PRODUCTS_REVALIDATE_SECONDS },
+);
+
+/**
+ * Query products with options for category, skin type, and sorting. Reads the cached
+ * global list (getAllUIProducts) and only filters + sorts per call (cheap).
  */
 export async function getProducts(filters?: {
   category?: string;
   skinType?: string;
   sortBy?: 'recommend' | 'price_asc' | 'price_desc' | 'discount' | 'popularity';
 }): Promise<UIProduct[]> {
-  const { dbProducts, dbListings, dbCategories, dbProductBadges, dbBadges, dbListingPrices, dbSellers } =
-    await fetchAllData();
+  const all = await getAllUIProducts();
 
-  // Convert to UI structure. Single common filter for ALL list consumers (every
-  // page helper below routes through getProducts): drop products with no displayed-
-  // seller link (네이버/쿠팡/올영) so they never appear in any list.
-  let uiProducts = dbProducts
-    .map((p) =>
-      mapToUIProduct(p, dbListings, dbCategories, dbProductBadges, dbBadges, dbListingPrices, dbSellers)
-    )
-    .filter(hasDisplayedSellerLink);
-
-  // Apply filters — category matches a minor (소분류) slug OR a major (대분류) slug
-  // (a major page aggregates all of its minors' products).
+  // Filter — category matches a minor (소분류) slug OR a major (대분류) slug (a major
+  // page aggregates all of its minors' products).
+  let uiProducts = all;
   if (filters?.category) {
     uiProducts = uiProducts.filter((p) => p.category === filters.category || p.majorCategory === filters.category);
   }
-
   if (filters?.skinType) {
     uiProducts = uiProducts.filter((p) => p.skinTypes.includes(filters.skinType!));
   }
 
-  // Apply sorting
+  // Sort a COPY — never mutate the shared cached array.
+  const sorted = [...uiProducts];
   const sortBy = filters?.sortBy || 'recommend';
   // Missing/0 price sorts to the BACK in price sorts (it is not "cheapest").
   const askPrice = (p: UIProduct) => (p.lowestPrice > 0 ? p.lowestPrice : Number.POSITIVE_INFINITY);
   // Every branch is wrapped in byPriceThen so price-less products sink to the bottom
   // (1차 키 = hasAnyPrice), then the chosen criterion ranks the rest.
   if (sortBy === 'recommend' || sortBy === 'popularity') {
-    uiProducts.sort(byPriceThen((a, b) => b.viewtyScore - a.viewtyScore));
+    sorted.sort(byPriceThen((a, b) => b.viewtyScore - a.viewtyScore));
   } else if (sortBy === 'price_asc') {
-    uiProducts.sort(byPriceThen((a, b) => askPrice(a) - askPrice(b)));
+    sorted.sort(byPriceThen((a, b) => askPrice(a) - askPrice(b)));
   } else if (sortBy === 'price_desc') {
-    uiProducts.sort(byPriceThen((a, b) => (b.lowestPrice || 0) - (a.lowestPrice || 0)));
+    sorted.sort(byPriceThen((a, b) => (b.lowestPrice || 0) - (a.lowestPrice || 0)));
   } else if (sortBy === 'discount') {
     // 정가 대비 할인률 기준. 정가 미입력 제품은 0으로 뒤로 밀린다.
     const disc = (p: UIProduct) => p.discountVsRegular ?? 0;
-    uiProducts.sort(byPriceThen((a, b) => disc(b) - disc(a)));
+    sorted.sort(byPriceThen((a, b) => disc(b) - disc(a)));
   }
 
-  return uiProducts;
+  return sorted;
 }
 
 /**
