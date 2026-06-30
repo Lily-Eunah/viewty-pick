@@ -4,6 +4,11 @@ import Header from '../components/layout/Header';
 import HomeInteractiveSection from '../components/home/HomeInteractiveSection';
 import { getHomePageData } from '../lib/queries';
 
+// ISR: render from the R2 cache, regenerate at most daily. The daily crawler also
+// fires revalidateTag('products') so fresh prices appear right after each sync; this
+// time window is the safety net. Data itself is computed once globally (getAllUIProducts).
+export const revalidate = 86400;
+
 export default async function Home() {
   const { allProducts, recommended, officialPicks } = await getHomePageData();
 
