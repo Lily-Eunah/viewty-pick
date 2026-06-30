@@ -566,8 +566,13 @@ export const getActiveSeoPages = cache(async (): Promise<SeoPage[]> => {
  * Resolve one SEO page + the products it lists. Reuses getProducts (display gate +
  * recommend sort) and the shared matcher so the live list and the generator's
  * "≥4 products" gate stay identical. Returns page=null for unknown/inactive slugs.
+ *
+ * Wrapped in React cache() so the per-request dedup covers /best/[slug], which calls
+ * this twice in one render (generateMetadata + the page body). Keyed by the slug
+ * string, the second call returns the first's result — the full getProducts mapping
+ * + matchSeoProducts runs once per request instead of twice.
  */
-export async function getSeoPageData(slug: string): Promise<{ page: SeoPage | null; products: UIProduct[] }> {
+export const getSeoPageData = cache(async (slug: string): Promise<{ page: SeoPage | null; products: UIProduct[] }> => {
   const [pages, allProducts] = await Promise.all([getActiveSeoPages(), getProducts({ sortBy: 'recommend' })]);
   const page = pages.find((p) => p.slug === slug) ?? null;
   if (!page) return { page: null, products: [] };
@@ -578,7 +583,7 @@ export async function getSeoPageData(slug: string): Promise<{ page: SeoPage | nu
     keywords: page.keywords,
   };
   return { page, products: matchSeoProducts(allProducts, filters) };
-}
+});
 
 export async function getSkinPageData(skinTypeSlug: string, categorySlug: string) {
   const skinName = SKIN_NAME_MAP[skinTypeSlug] || '민감성';
