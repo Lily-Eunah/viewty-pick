@@ -1,21 +1,38 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "viewtypick",
-  "main": ".open-next/worker.js",
-  "compatibility_date": "2025-03-25",
-  "compatibility_flags": ["nodejs_compat"],
-  "assets": {
-    "binding": "ASSETS",
-    "directory": ".open-next/assets"
-  },
-  "observability": {
-    "enabled": true
-  }
-  // Secrets are NOT stored here. The operator sets them in the Cloudflare
-  // dashboard (or via `wrangler secret put`):
-  //   NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY  (public, RLS read-only)
-  //   SUPABASE_SERVICE_ROLE_KEY  (server only: /go insert, /api/revalidate)
-  //   REVALIDATE_SECRET
-  //   SITE_INDEXABLE             (omit or "false" => noindex; "true" at launch)
-  // Crawler secrets (coupang/naver/google/discord) live in GitHub Actions only.
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "viewtypick",
+	"main": ".open-next/worker.js",
+	"compatibility_date": "2025-03-25",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"assets": {
+		"binding": "ASSETS",
+		"directory": ".open-next/assets"
+	},
+	"observability": {
+		"enabled": true
+	},
+	// OpenNext incremental cache (ISR/SSG page output + unstable_cache data).
+	// Binding name is fixed — the R2 override reads env.NEXT_INC_CACHE_R2_BUCKET.
+	"r2_buckets": [
+		{
+			"binding": "NEXT_INC_CACHE_R2_BUCKET",
+			"bucket_name": "viewtypick-inc-cache"
+		}
+	],
+	// OpenNext tag cache (revalidateTag / revalidatePath). Fixed binding name.
+	"kv_namespaces": [
+		{
+			"binding": "NEXT_TAG_CACHE_KV",
+			"id": "bb41e27b83bb4a4ba59df1359c8d7f04"
+		}
+	]
+	// Secrets are NOT stored here. The operator sets them in the Cloudflare
+	// dashboard (or via `wrangler secret put`):
+	//   NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY  (public, RLS read-only)
+	//   SUPABASE_SERVICE_ROLE_KEY  (server only: /go insert, /api/revalidate)
+	//   REVALIDATE_SECRET
+	//   SITE_INDEXABLE             (omit or "false" => noindex; "true" at launch)
+	// Crawler secrets (coupang/naver/google/discord) live in GitHub Actions only.
 }
