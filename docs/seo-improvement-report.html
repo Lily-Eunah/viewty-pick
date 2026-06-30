@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ViewtyPick SEO 개선 보고서 — /best 랜딩 페이지 검색 노출 전략</title>
+<style>
+  :root{
+    --bg:#FBF9F4; --surface:#fff; --ink:#2A2622; --sub:#6B635A; --line:#E7E1D6;
+    --brand:#B23A57; --brand-soft:#FBEEF1; --accent:#E8A33D; --accent-soft:#FBF1DD;
+    --good:#2E8B6F; --good-soft:#E6F3EE; --bad:#C0392B; --bad-soft:#FBEAE7;
+    --p0:#C0392B; --p1:#D9822B; --p2:#3A7CA5; --p3:#6B7A3A; --p4:#7A5BA8; --p5:#1F9B6E;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic","맑은 고딕",Pretendard,sans-serif;
+    line-height:1.7;font-size:15px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:920px;margin:0 auto;padding:0 22px 90px}
+  header.cover{background:linear-gradient(135deg,#fff 0%,#FBEEF1 55%,#FBF1DD 100%);
+    border-bottom:1px solid var(--line);padding:54px 22px 40px;margin-bottom:34px}
+  header.cover .inner{max-width:920px;margin:0 auto}
+  .tag{display:inline-block;background:var(--brand);color:#fff;font-size:11px;font-weight:800;
+    letter-spacing:.5px;padding:5px 11px;border-radius:999px}
+  h1{font-size:30px;font-weight:900;letter-spacing:-.5px;margin:16px 0 8px;line-height:1.25}
+  .sub{color:var(--sub);font-size:14px;font-weight:600}
+  .meta{margin-top:18px;font-size:12.5px;color:var(--sub);border-top:1px dashed var(--line);padding-top:14px}
+  h2{font-size:22px;font-weight:900;letter-spacing:-.3px;margin:48px 0 6px;padding-top:14px;
+    border-top:3px solid var(--ink)}
+  h2 .n{color:var(--brand);margin-right:8px}
+  h3{font-size:17px;font-weight:800;margin:30px 0 8px}
+  h4{font-size:14.5px;font-weight:800;margin:18px 0 4px}
+  p{margin:8px 0}
+  ul,ol{margin:8px 0 8px;padding-left:20px}
+  li{margin:5px 0}
+  strong{font-weight:800}
+  .lead{font-size:16px;color:#3a342e}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13px;background:var(--surface);
+    border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  th,td{padding:9px 11px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:#F3EFE7;font-weight:800;font-size:12px}
+  tr:last-child td{border-bottom:none}
+  td.num,th.num{text-align:center;white-space:nowrap}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin:16px 0;
+    box-shadow:0 6px 20px rgba(60,30,10,.04)}
+  .callout{border-left:4px solid var(--accent);background:var(--accent-soft);border-radius:0 12px 12px 0;
+    padding:13px 17px;margin:14px 0;font-size:13.5px}
+  .callout.why{border-left-color:var(--brand);background:var(--brand-soft)}
+  .callout.good{border-left-color:var(--good);background:var(--good-soft)}
+  .callout b{display:block;margin-bottom:3px;font-size:12px;letter-spacing:.3px;text-transform:uppercase;opacity:.85}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:16px 0}
+  @media(max-width:680px){.grid{grid-template-columns:1fr}}
+  .metric{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:15px 16px}
+  .metric .big{font-size:26px;font-weight:900;color:var(--brand);line-height:1.1}
+  .metric .lbl{font-size:12px;color:var(--sub);font-weight:700;margin-top:3px}
+  .pill{display:inline-block;color:#fff;font-size:11px;font-weight:800;padding:2px 9px;border-radius:999px;margin-right:6px;vertical-align:middle}
+  .P0{background:var(--p0)}.P1{background:var(--p1)}.P2{background:var(--p2)}.P3{background:var(--p3)}.P4{background:var(--p4)}.P5{background:var(--p5)}
+  .toc{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 22px;margin:8px 0 10px;columns:2;column-gap:30px}
+  @media(max-width:680px){.toc{columns:1}}
+  .toc a{color:var(--ink);text-decoration:none;font-size:13.5px;font-weight:600}
+  .toc a:hover{color:var(--brand)}
+  .toc li{margin:6px 0}
+  code{background:#F1ECE2;padding:1px 6px;border-radius:5px;font-size:12.5px;font-family:ui-monospace,Menlo,Consolas,monospace}
+  .src{font-size:12px;color:var(--sub)}
+  .src a{color:var(--p2)}
+  .step{display:flex;gap:14px;margin:12px 0}
+  .step .dot{flex:none;width:30px;height:30px;border-radius:50%;background:var(--brand);color:#fff;
+    font-weight:900;display:flex;align-items:center;justify-content:center;font-size:13px}
+  .step .body{flex:1}
+  .legend{font-size:12px;color:var(--sub);margin:6px 0 0}
+  hr{border:none;border-top:1px solid var(--line);margin:30px 0}
+  .footnote{font-size:12px;color:var(--sub)}
+</style>
+</head>
+<body>
+<header class="cover">
+  <div class="inner">
+    <span class="tag">SEO 전략 보고서</span>
+    <h1>ViewtyPick 검색 노출 개선 전략<br><span style="font-size:20px;font-weight:800;color:var(--sub)">/best 랜딩 페이지 · 캐러셀 · 인덱스 품질 진단과 개선안</span></h1>
+    <p class="sub">"검색해서 찾아오게" 만들기 위한 키워드 전략 · 콘텐츠 품질 · 구조 개선의 근거와 실행안</p>
+    <div class="meta">
+      작성일 2026-06-30 · 대상: viewtypick.com /best/[slug] (40개 활성 페이지), 홈 추천 캐러셀, /best 허브<br>
+      분석 기반: 실제 카탈로그 데이터(93개 노출 제품) + Google Trends·Naver DataLab·키워드툴(surffing/블랙키위) 리서치 + 2026 검색 알고리즘 동향
+    </div>
+  </div>
+</header>
+<div class="wrap">
+
+<!-- ============ TOC ============ -->
+<div class="toc">
+  <ol>
+    <li><a href="#summary">요약 — 종합 진단과 5대 우선순위</a></li>
+    <li><a href="#diagnosis">1. 현재 상태 진단 (실측)</a></li>
+    <li><a href="#market">2. 시장·키워드 분석</a></li>
+    <li><a href="#retailer">★ 2.5 판매처 × 최저가 키워드 전략 (핵심 기회)</a></li>
+    <li><a href="#naver">★ 2.6 네이버 공략 — 채널 분리 전략</a></li>
+    <li><a href="#tools">3. 키워드 리서치 도구 활용법</a></li>
+    <li><a href="#cause">4. 왜 지금 구조로는 안 되는가 (원인)</a></li>
+    <li><a href="#fix">5. 개선 방안 (우선순위별)</a></li>
+    <li><a href="#carousel">6. 캐러셀 · 인덱스 페이지 품질 개선</a></li>
+    <li><a href="#roadmap">7. 실행 로드맵</a></li>
+    <li><a href="#kpi">8. 성과 측정 지표</a></li>
+    <li><a href="#sources">출처</a></li>
+  </ol>
+</div>
+
+<!-- ============ SUMMARY ============ -->
+<h2 id="summary"><span class="n">요약</span>종합 진단과 5대 우선순위</h2>
+<p class="lead">기술 SEO 토대는 탄탄하지만, <strong>콘텐츠가 얇고 페이지 간 중복이 심해</strong> 현재 구조로는 경쟁 키워드 상위 노출이 어렵습니다.
+가장 큰 리스크는 두 가지 — ① 40개 페이지가 거의 같은 틀(양산형)이라 구글 <em>Helpful Content</em> 시스템에 "검색엔진용 얕은 페이지"로 걸릴 위험, ② <strong>ViewtyPick은 신규 도메인</strong>이라 화해·올리브영·글로우픽이 장악한 헤드 키워드("선크림 추천")에서는 단기간 이길 수 없다는 점입니다.</p>
+
+<div class="grid">
+  <div class="metric"><div class="big">~150–250자</div><div class="lbl">페이지당 고유 텍스트 (h1+설명+리드뿐)</div></div>
+  <div class="metric"><div class="big">40개 중 13개</div><div class="lbl">제품 4개(최소치)만 있는 얇은 페이지</div></div>
+  <div class="metric"><div class="big">18쌍</div><div class="lbl">제품 60%+ 겹치는 카니발 위험 페이지쌍</div></div>
+  <div class="metric"><div class="big">2쌍</div><div class="lbl">제품 100% 동일한 사실상 중복 페이지</div></div>
+</div>
+
+<div class="callout why"><b>핵심 결론</b>
+경쟁 키워드 상위 노출의 열쇠는 "페이지 수"가 아니라 <strong>페이지당 고유한 데이터·경험 + 검색의도에 정확히 맞춘 롱테일 키워드</strong>입니다. 다행히 아직 <code>noindex</code>(런치 전) 상태라, 인덱싱 전에 고칠 시간이 있습니다.</div>
+
+<h3>5대 우선순위 (ROI 순)</h3>
+<table>
+  <tr><th class="num">순위</th><th>과제</th><th>핵심 원인</th><th>예상 효과</th></tr>
+  <tr><td class="num"><span class="pill P0">P0</span></td><td>카니발리제이션 정리 (중복/동일 페이지 통합·차별화)</td><td>같은 제품 페이지가 서로 순위를 깎음</td><td>색인 효율↑, 자기잠식 제거</td></tr>
+  <tr><td class="num"><span class="pill P1">P1</span></td><td>페이지 콘텐츠 깊이 (고유 도입부·제품별 추천이유·주제별 FAQ·업데이트일)</td><td>고유 콘텐츠 부재 → 얕은 페이지로 평가</td><td>랭킹 가능성 최대 레버</td></tr>
+  <tr><td class="num"><span class="pill P2">P2</span></td><td>롱테일·성분 키워드 전략 (신규 도메인이 이길 수 있는 키워드 타겟)</td><td>헤드 키워드는 대형 사이트가 장악</td><td>초기 유입 확보의 유일한 현실 경로</td></tr>
+  <tr><td class="num"><span class="pill P3">P3</span></td><td>캐러셀·인덱스 페이지 품질 (썸네일·수치·고유 카피·내부링크)</td><td>허브도 얇으면 권위 전달 약함</td><td>내부링크·CTR·체류 개선</td></tr>
+  <tr><td class="num"><span class="pill P5">P5</span></td><td>네이버 특화 (C-Rank/D.I.A·데이터랩·외부 콘텐츠 연계)</td><td>네이버는 자사·경험 콘텐츠 우대</td><td>국내 검색 유입의 절반 이상</td></tr>
+</table>
+
+<div class="callout good"><b>가장 유망한 공격 기회 (별도 섹션 2.5)</b>
+방어(품질 정리)와 별개로, <strong>"올영 토너 최저가 비교" 같은 판매처×최저가 롱테일</strong>이 ViewtyPick의 최대 성장 기회입니다. 이 키워드군은 <strong>실시간 비교 답변이 SERP에 비어 있고</strong>, ViewtyPick만 매일 갱신 가격으로 답할 수 있습니다(올영 18개 카테고리 즉시 가능). → <a href="#retailer" style="color:var(--good);font-weight:800">2.5 판매처 × 최저가 키워드 전략 보기</a></div>
+
+<!-- ============ DIAGNOSIS ============ -->
+<h2 id="diagnosis"><span class="n">1</span>현재 상태 진단 (실측)</h2>
+
+<h3>1-1. 기술 SEO — 합격</h3>
+<div class="callout good"><b>잘 되어 있는 점</b>
+고유 <code>title</code>·canonical·OpenGraph, JSON-LD(ItemList·FAQPage·BreadcrumbList), 동적 sitemap, 모바일 우선, SSR(서버 렌더), <strong>제품 4개 미만이면 404로 차단</strong>(빈 페이지 방지), 실시간 가격·제품 카드. → "최저가" 검색 의도에 맞는 실효용·신선도 신호가 있습니다.</div>
+
+<h3>1-2. 콘텐츠 — 얇고 전부 같은 틀 (가장 큰 문제)</h3>
+<p>40개 페이지에서 <strong>FAQ 3개와 "왜 뷰티픽" 홍보 블록이 글자 단위로 동일</strong>합니다. 페이지마다 실제로 다른 것은 h1·설명 1문장·제품명뿐입니다.</p>
+<table>
+  <tr><th>구성요소</th><th>고유 / 공통</th><th>비고</th></tr>
+  <tr><td>h1 · 메타 설명</td><td>고유 (단, 패턴 동일)</td><td>전부 "X 추천 최저가 비교 2026" + 동일 접미사</td></tr>
+  <tr><td>리드 문장 1줄</td><td>고유</td><td>"성분 검증 통과 제품 N개를…"</td></tr>
+  <tr><td>제품 카드(이름·가격)</td><td>고유 데이터</td><td>유일한 실질 차별 콘텐츠 — 단, 제품별 <strong>추천이유는 미노출</strong></td></tr>
+  <tr><td>FAQ 3개</td><td><strong>40개 전 페이지 동일</strong></td><td>중복 콘텐츠로 평가될 위험</td></tr>
+  <tr><td>"왜 뷰티픽" 홍보 블록</td><td><strong>40개 전 페이지 동일</strong></td><td>고유성 0</td></tr>
+</table>
+<p class="legend">가장 얇은 페이지(제품 4개)는 전체 텍스트 ~700자 중 <strong>약 70%가 전 페이지 공통 보일러플레이트</strong>입니다. 페이지당 고유 에디토리얼 텍스트는 ~150–250자에 불과합니다.</p>
+
+<h3>1-3. 카니발리제이션(자기잠식) — 18쌍, 그중 2쌍은 완전 중복</h3>
+<p>같은 제품을 보여주는 페이지들이 서로 같은 검색어에서 경쟁하며 권위를 분산시킵니다.</p>
+<table>
+  <tr><th>페이지 A</th><th>페이지 B</th><th class="num">제품 중복도(Jaccard)</th></tr>
+  <tr><td>pad-best (토너패드)</td><td>acne-pad (진정·트러블 패드)</td><td class="num"><b style="color:var(--bad)">1.00 (완전 동일)</b></td></tr>
+  <tr><td>allinone-best (올인원)</td><td>men-allinone (남자 올인원)</td><td class="num"><b style="color:var(--bad)">1.00 (완전 동일)</b></td></tr>
+  <tr><td>device-best (디바이스)</td><td>dry-device (건성 디바이스)</td><td class="num">0.86</td></tr>
+  <tr><td>cleansing-oil-best</td><td>blackhead-cleansing-oil</td><td class="num">0.80</td></tr>
+  <tr><td>dry-serum (건성 세럼)</td><td>sensitive-serum (민감성 세럼)</td><td class="num">0.80</td></tr>
+  <tr><td>cream-best</td><td>dehydrated-cream (수부지 크림)</td><td class="num">0.75</td></tr>
+  <tr><td colspan="2" class="footnote">…그 외 Jaccard ≥0.6 페이지쌍 12개 더. skincare-best(36개)는 toner/serum/cream-best를 통째로 포함.</td><td class="num">+12쌍</td></tr>
+</table>
+<div class="callout why"><b>의미</b>
+<code>acne-pad</code>는 패드 6개가 전부 진정/트러블 키워드에 걸려 <code>pad-best</code>와 제품이 똑같습니다. 즉 별도 페이지로서 추가 가치가 0이고, 구글이 둘 중 하나를 색인에서 걸러내거나 둘 다 순위를 낮춥니다.</div>
+
+<!-- ============ MARKET ============ -->
+<h2 id="market"><span class="n">2</span>시장·키워드 분석</h2>
+
+<h3>2-1. 검색 의도: "추천" vs "최저가" — ViewtyPick의 포지션</h3>
+<p>ViewtyPick의 페이지 제목 "<strong>X 추천 최저가 비교</strong>"는 구매 퍼널의 두 단계를 동시에 노립니다.</p>
+<table>
+  <tr><th>키워드</th><th>검색 의도</th><th>사용자 단계</th><th>ViewtyPick 적합성</th></tr>
+  <tr><td>"○○ 추천"</td><td>상업적 조사(Commercial Investigation)</td><td>비교·리뷰 중, 아직 미결정</td><td>제품 리스트·추천이유로 대응</td></tr>
+  <tr><td>"○○ 최저가"</td><td>거래형(Transactional)</td><td>구매 결정, 채널 선택 중</td><td><b style="color:var(--good)">3사 가격 비교로 강하게 대응 — 핵심 무기</b></td></tr>
+</table>
+<div class="callout good"><b>강점</b>
+구글은 "제품 페이지보다 비교·리뷰 사이트를 우선"하는 경향이 있습니다. ViewtyPick은 직판 쇼핑몰이 아니라 <strong>비교 사이트</strong>이므로, 이 알고리즘 지형에서 유리한 쪽에 서 있습니다. "최저가 비교"는 ViewtyPick이 화해/올영보다 잘할 수 있는 차별점입니다.</div>
+
+<h3>2-2. 경쟁 현실: 신규 도메인은 헤드 키워드를 이길 수 없다</h3>
+<p>"선크림 추천", "토너 추천" 같은 헤드 키워드의 검색 결과 1페이지는 <strong>화해, 올리브영, 글로우픽, 네이버쇼핑</strong> 등 도메인 권위가 압도적인 사이트가 장악하고 있습니다. 신규 도메인이 이 벽을 넘으려면 수개월~수년의 권위 축적이 필요합니다.</p>
+<div class="callout why"><b>전략적 결론</b>
+초기 유입의 <strong>유일한 현실 경로는 롱테일</strong>입니다. "민감성 약산성 토너 최저가", "PDRN 세럼 최저가 비교"처럼 3단어 이상·구체적·경쟁 낮은 키워드는 신규 사이트도 발행 후 비교적 빨리 상단에 노출되며, 전환율도 높습니다. 헤드 키워드는 롱테일로 권위를 쌓은 뒤 장기 타겟으로 둡니다.</div>
+
+<h3>2-3. 2026 트렌드 키워드 × ViewtyPick 카탈로그 매칭</h3>
+<p>2026 검색 트렌드는 <strong>성분·기능 중심의 정밀 검색(Fine Search)</strong>으로 세분화되고 있습니다(화해 F.I.N.D 리포트). 아래는 트렌드 키워드별로 <strong>ViewtyPick이 실제로 4개 이상 제품을 보유했는지</strong>를 카탈로그에서 측정한 결과 — 페이지로 만들 수 있는지의 근거입니다.</p>
+<table>
+  <tr><th>트렌드 키워드</th><th class="num">보유 제품</th><th>판단</th></tr>
+  <tr><td>시카 · 진정</td><td class="num">30</td><td><b style="color:var(--good)">강력 — 즉시 롱테일 클러스터화</b></td></tr>
+  <tr><td>PDRN (피디알엔)</td><td class="num">5</td><td><b style="color:var(--good)">트렌드 급상승 + 페이지 가능 — 1순위 기회</b></td></tr>
+  <tr><td>약산성 / 판테놀 / 톤업</td><td class="num">각 4</td><td>페이지 가능(최소치) — 고유 콘텐츠 필수</td></tr>
+  <tr><td>나이아신아마이드 / 콜라겐</td><td class="num">각 3</td><td>1개 부족 — 제품 보강 시 활성화</td></tr>
+  <tr><td>레티놀 / 엑소좀 / 미세먼지차단</td><td class="num">0</td><td><b style="color:var(--bad)">타겟 금지 — 제품 없음</b></td></tr>
+</table>
+<div class="callout"><b>활용 포인트</b>
+<strong>PDRN·시카/진정</strong>은 검색 수요가 급증 중이고 ViewtyPick이 제품을 충분히 보유한, <strong>"이길 수 있는 트렌드 키워드"</strong>입니다. 반대로 레티놀·엑소좀은 제품이 없으니 페이지를 만들면 안 됩니다(얇은 페이지 양산).</div>
+
+<!-- ============ RETAILER × LOWEST PRICE ============ -->
+<h2 id="retailer"><span class="n">2.5</span>판매처 × 최저가 키워드 전략 — ViewtyPick의 핵심 기회</h2>
+<p class="lead">"<strong>올영 토너 최저가</strong>", "<strong>올리브영 인기 세럼 최저가 비교</strong>" 같은 <em>판매처 + 카테고리 + 최저가</em> 조합은 ViewtyPick이 <strong>구조적으로 이길 수 있는 가장 유망한 키워드군</strong>입니다. 이유는 단순합니다 — 이 질문에 <strong>실시간으로 정직하게 답할 수 있는 사이트가 지금 없기 때문</strong>입니다.</p>
+
+<h3>2.5-1. 검증된 빈틈 (SERP 정찰 결과)</h3>
+<p>구글에서 "올리브영 토너 최저가", "올리브영 세럼 최저가 비교"를 실제로 검색하면 상위 결과는 아래로 채워집니다 — <strong>어디에도 "올영 vs 쿠팡 vs 네이버 실시간 최저가" 비교가 없습니다.</strong></p>
+<table>
+  <tr><th>현재 상위 노출</th><th>한계 (= ViewtyPick의 빈틈)</th></tr>
+  <tr><td>올리브영 자사 페이지 (카테고리·검색·세일·오특)</td><td>올영 가격만 보여줌 — <strong>다른 채널과 비교 안 함</strong></td></tr>
+  <tr><td>글로우픽 "올리브영 추천 TOP20"</td><td>추천 랭킹만 — <strong>가격·최저가 정보 없음</strong></td></tr>
+  <tr><td>개인 블로그 (오특·기프트카드 팁)</td><td>일반 팁·<strong>오래된 정보</strong>, 제품별 실시간 비교 아님</td></tr>
+</table>
+<div class="callout good"><b>결론 — 이길 수 있다</b>
+구글은 비교 사이트를 우대하고, 이 키워드군엔 <strong>진짜 비교 답변이 비어 있습니다.</strong> ViewtyPick의 매일 갱신 다중 판매처 가격은 블로그·글로우픽이 복제할 수 없는 <strong>데이터 해자(moat)</strong>입니다. 1위(올영 자사)를 뺏긴 어렵지만, 롱테일 "비교" 영역은 ViewtyPick의 무대입니다.</div>
+
+<h3>2.5-2. 키워드 조합별 — 이길 수 있는 것 vs 아닌 것</h3>
+<p>같은 "올영 + 최저가"라도 데이터 뒷받침과 의도에 따라 승률이 갈립니다. (ViewtyPick 카탈로그 실측 반영)</p>
+<table>
+  <tr><th>키워드 조합 예시</th><th class="num">데이터</th><th>판단</th></tr>
+  <tr><td>"올리브영 <b>세럼</b> 최저가 비교"<br><span class="footnote">(올영 판매 제품 + 3사 비교)</span></td><td class="num">올영 18개 카테고리 가능<br>(세럼8·크림6·클렌징폼6·선크림5·패드5·토너4…)</td><td><b style="color:var(--good)">★ 최우선 — 올영 가격 + 더 싼 곳 비교</b></td></tr>
+  <tr><td>"올리브영 <b>인기</b> 토너 최저가"<br><span class="footnote">(큐레이션 추천 + 가격)</span></td><td class="num">추천+최저가 결합</td><td><b style="color:var(--good)">강력 — 큐레이션×가격은 ViewtyPick만</b></td></tr>
+  <tr><td>"<b>올영이 최저가</b>인 토너"<br><span class="footnote">(올영이 제일 싼 제품)</span></td><td class="num">올영 최저가 제품 23개뿐<br>(토너 등 소분류 대부분 &lt;4, 네이버가 보통 최저가)</td><td><b style="color:var(--p1)">한정 — 사이트 피처/대분류로만</b></td></tr>
+  <tr><td>"올영 토너 <b>성분 비교</b> 추천"</td><td class="num">성분 데이터 있으나 화해 영역</td><td><b style="color:var(--p1)">보조 — 가격을 메인, 성분은 거듦</b></td></tr>
+  <tr><td>"올영 토너 최저가 <b>보러가기</b>"</td><td class="num">—</td><td><b style="color:var(--bad)">검색어 아님 — 버튼/링크 문구(CTA)로만</b></td></tr>
+  <tr><td>"<b>쿠팡</b> 토너 최저가" 등 쿠팡 scoped</td><td class="num">쿠팡 5개 카테고리뿐</td><td><b style="color:var(--bad)">데이터 얇음 — 비추천</b></td></tr>
+</table>
+
+<h3>2.5-3. ViewtyPick의 정직함이 곧 해자</h3>
+<p>실측 결과, 토너처럼 많은 카테고리에서 <strong>실제 최저가는 네이버(공식스토어)인 경우가 47건으로 가장 많고, 올영이 최저가인 경우는 23건</strong>입니다. 즉 "올영 토너 최저가"를 검색한 사람에게 ViewtyPick의 정직한 답은 종종 <strong>"올영 말고 네이버가 N원 더 싸요"</strong>입니다.</p>
+<div class="callout why"><b>왜 이게 강점인가</b>
+올영 자사 페이지는 절대 "다른 데가 더 싸다"고 말하지 않습니다. ViewtyPick은 말할 수 있습니다 — 이 <strong>정직한 비교가 신뢰·재방문·북마크</strong>를 만들고, "최저가 확인은 ViewtyPick"이라는 포지션을 굳힙니다. 검색자를 올영-충성에서 <strong>비교 사용자로 전환</strong>하는 것이 바로 ViewtyPick의 가치 제안입니다.</div>
+
+<h3>2.5-4. 구글 vs 네이버 — 승부처를 구분하라</h3>
+<table>
+  <tr><th>채널</th><th>이 키워드군 전망</th><th>전략</th></tr>
+  <tr><td><strong>구글</strong></td><td><b style="color:var(--good)">현실적 승부처</b> — 비교 사이트 우대 + SERP 빈틈</td><td>retailer×최저가 롱테일 페이지로 정면 공략</td></tr>
+  <tr><td><strong>네이버</strong></td><td>어려움 — "최저가"는 <strong>네이버쇼핑 가격비교 블록</strong>(자사)이 차지, "추천"은 블로그 장악</td><td>웹페이지 단독 ✗ → <strong>네이버 블로그 채널 병행</strong>(추천글 본문에서 viewtypick 링크), 장기 C-Rank 누적</td></tr>
+</table>
+
+<h3>2.5-5. 경쟁자 지형과 차별화</h3>
+<table>
+  <tr><th>경쟁자</th><th>무엇을 하나</th><th>ViewtyPick의 차별점</th></tr>
+  <tr><td>올리브영 자사</td><td>올영 가격·랭킹·세일</td><td>교차 비교(올영이 안 싸면 알려줌)</td></tr>
+  <tr><td>글로우픽 / 화해</td><td>추천 랭킹·성분·리뷰</td><td>실시간 최저가</td></tr>
+  <tr><td>에누리·다나와</td><td>범용 가격비교(전 카테고리)</td><td>성분 검증 <strong>큐레이션</strong> + 뷰티 특화</td></tr>
+  <tr><td>뷰티세일(앱)</td><td>올영·쿠팡·무신사·지그재그 통합 가격비교</td><td><strong>SEO 랜딩 페이지</strong>로 검색 유입 + 추천 큐레이션 결합(앱은 검색 유입 약함)</td></tr>
+</table>
+<p class="footnote">→ ViewtyPick의 단독 포지션 = <strong>"성분 검증된 추천(큐레이션) × 실시간 최저가 × 검색 최적화 랜딩"</strong>. 세 가지를 동시에 하는 곳이 없습니다.</p>
+
+<h3>2.5-6. 실행 방안</h3>
+<ul>
+  <li><strong>판매처 필터 신설</strong> — <code>lib/seo/match.ts</code>에 <code>seller</code> 필터(해당 판매처 링크 보유 제품) 추가. <code>seo_pages</code>에 <code>seller</code> 컬럼 추가. 기존 구조의 자연스러운 확장.</li>
+  <li><strong>페이지 아키타입: "올리브영 {카테고리} 최저가 비교"</strong> — 올영 판매 제품 리스트 + 각 제품의 올영 가격 + <strong>"더 싼 곳" 배지</strong>(쿠팡/네이버가 N원 더 쌈). 올영 18개 카테고리 우선.</li>
+  <li><strong>핵심 본문 카피</strong> — "올영에서 살 거면 이 토너 추천. 단, ○○는 네이버가 N원 더 쌉니다." → 정직한 비교 = 고유 콘텐츠 + 신뢰.</li>
+  <li><strong>사이트 피처: "지금 올영이 최저가인 제품"</strong> — 23개 제품 큐레이션(대분류 단위). "올영 충성 고객이 손해 안 보는 제품" 각도.</li>
+  <li><strong>세일 시즌 푸시</strong> — 올영세일(3·6·9·12월) 검색 급증 타이밍에 "올영세일 최저가 체크" 콘텐츠·캐러셀 노출.</li>
+  <li><strong>검색량 검증 후 확정</strong> — surffing/DataLab/Trends에서 "올리브영+카테고리+최저가/추천/인기" 조합의 검색량·포화도 확인 → "검색량 충분 + 포화 낮음 + 제품 4+" 조합만 페이지화(레티놀식 빈 페이지 방지).</li>
+</ul>
+<div class="callout"><b>카니발 주의</b>
+"토너 추천"(기존) vs "올리브영 토너 최저가"(신규)는 <strong>의도가 다르므로 공존 가능</strong>하지만, 제목·h1·도입부·canonical로 의도를 명확히 분리해야 합니다. 그리고 이 retailer 페이지들도 <strong>5장의 콘텐츠 깊이 규칙(고유 도입부·추천이유·업데이트일)</strong>을 그대로 적용해야 얇은 페이지를 피합니다.</div>
+
+<!-- ============ NAVER ============ -->
+<h2 id="naver"><span class="n">2.6</span>네이버 공략 — "웹페이지로 이기려 하지 말고 채널을 분리하라"</h2>
+<p class="lead">한국 화장품 검색의 본진은 네이버입니다. 그런데 <strong>네이버 통합검색에서 ViewtyPick 같은 웹 도메인이 들어갈 자리는 거의 없습니다.</strong> 이건 콘텐츠 품질 문제가 아니라 <strong>네이버 SERP 구조 자체</strong>의 문제라, "더 좋은 페이지"가 아니라 "다른 채널"로 풀어야 합니다.</p>
+
+<h3>2.6-1. 냉정한 진실 — 네이버 SERP 구조</h3>
+<table>
+  <tr><th>네이버 통합검색 영역</th><th>누가 차지하나</th><th class="num">ViewtyPick 웹 도메인 진입 가능성</th></tr>
+  <tr><td>파워링크 (광고)</td><td>유료 입찰</td><td class="num">유료만</td></tr>
+  <tr><td>쇼핑 (가격비교)</td><td>네이버 자사·판매자·등록 CP(다나와·에누리)</td><td class="num"><b style="color:var(--bad)">불가 (CP 제휴 전까지)</b></td></tr>
+  <tr><td>VIEW — 블로그·카페</td><td>인플루언서·체험단·블로거</td><td class="num"><b style="color:var(--bad)">불가 (웹 도메인 아님)</b></td></tr>
+  <tr><td>웹사이트</td><td>일반 웹 도메인</td><td class="num"><b style="color:var(--p1)">가능하나 작고 후순위</b></td></tr>
+</table>
+<div class="callout why"><b>결정적 단서</b>
+구글에서 <code>site:blog.naver.com</code>으로 화장품 키워드를 검색하면 <strong>결과가 거의 안 나옵니다.</strong> 네이버 블로그는 구글 색인에서 빠져 있다는 뜻이고 = <strong>네이버 콘텐츠는 네이버 안에서만 삽니다.</strong> 따라서 네이버를 이기려면 <strong>네이버 안(블로그·쇼핑)에 들어가야</strong> 하며, viewtypick.com 웹페이지 단독으로 "추천"·"최저가" 헤드 키워드를 먹는 길은 없습니다.</div>
+
+<h3>2.6-2. 그래서 — 3채널 분리 전략</h3>
+<div class="card"><h4>Play A — 네이버 블로그 채널 <span class="pill P5">필수·최대 트래픽</span></h4>
+<p>공식 ViewtyPick 네이버 블로그를 운영해 "추천+최저가+성분" 롱테일 글을 발행하고, 본문에서 매칭되는 viewtypick.com 페이지로 링크합니다. 네이버 C-Rank는 <strong>주제 전문성 40%·지속성 30%</strong>를 보므로, 뷰티 한 주제에 꾸준히 쓰면 누적됩니다. ViewtyPick의 실시간 비교 데이터가 블로그 글에서도 <strong>다른 블로거가 못 가진 차별점</strong>이 됩니다.</p></div>
+<div class="card"><h4>Play B — 제품·브랜드 롱테일 <span class="pill P2">웹 도메인·즉시 가능</span></h4>
+<p>"<strong>[브랜드][제품명] 최저가</strong>"는 블로그 포화가 낮고 거래의도가 강한 롱테일입니다. ViewtyPick은 이미 <code>/p/[slug]</code> 제품 상세 페이지에 "<em>{브랜드} {제품명} 최저가 비교 · 매일 갱신</em>" 메타를 갖췄습니다 — <strong>93개 제품 = 93개 롱테일 타겟</strong>이 이미 준비돼 있습니다. 네이버에서도 웹사이트/스마트블록 영역, 구글에선 정면으로 노립니다.</p></div>
+<div class="card"><h4>Play C — 네이버쇼핑 가격비교 CP 제휴 <span class="pill P4">장기·사업 검토</span></h4>
+<p>쇼핑 블록(네이버 검색의 최대 영역)에 들어가는 유일한 길은 <strong>네이버쇼핑 가격비교 CP로 등록</strong>하는 것입니다(다나와·에누리 방식). 사업 제휴가 필요해 난도는 높지만, 성공 시 "최저가" 검색의 본진을 차지합니다.</p></div>
+
+<h3>2.6-3. 네이버에서 "이길 수 있는" 키워드 도출</h3>
+<table>
+  <tr><th>키워드 유형</th><th>예시 (ViewtyPick 데이터 기반)</th><th>채널</th><th class="num">승률 근거</th></tr>
+  <tr><td><b>제품·브랜드 롱테일</b></td><td>코스알엑스 알부틴 세럼 최저가 · 비플레인 녹두 토너 최저가 · 에뛰드 순정 토너 최저가</td><td>웹/제품페이지</td><td class="num"><b style="color:var(--good)">즉시 가능 (자산 보유)</b></td></tr>
+  <tr><td><b>경험형 추천 (블로그)</b></td><td>올영세일 토너 추천 내돈내산 · 민감성 선크림 추천 백탁없는 · PDRN 세럼 추천 비교 · 시카 크림 진정 추천</td><td>네이버 블로그</td><td class="num"><b style="color:var(--good)">블로그 vs 블로그 — 비교데이터로 차별</b></td></tr>
+  <tr><td><b>비교·질문형</b></td><td>○○ 올리브영 쿠팡 어디가 싸 · 올영 vs 쿠팡 가격 차이</td><td>블로그·웹</td><td class="num">중 (지식형 틈새)</td></tr>
+  <tr><td><b>피해야 할 키워드</b></td><td>토너 추천 · 선크림 추천(헤드) · 순수 "최저가"</td><td>—</td><td class="num"><b style="color:var(--bad)">블로그·쇼핑 블록 장악, 웹 도메인 불가</b></td></tr>
+</table>
+
+<h3>2.6-4. 네이버 블로그 운영 핵심 (C-Rank·D.I.A 맞춤)</h3>
+<ul>
+  <li><strong>뷰티 한 주제 집중</strong>(전문성 40%) + <strong>꾸준한 발행</strong>(지속성 30%) — 잡블로그는 C-Rank가 안 오름.</li>
+  <li><strong>실사용 경험·비교 데이터·사진·표·날짜</strong>(D.I.A는 "경험" 신호를 봄) — viewtypick의 최저가 표를 인용·캡처해 "직접 비교했다" 톤으로.</li>
+  <li><strong>본문에서 viewtypick.com 링크</strong> — 블로그가 유입을 받아 웹으로 전환.</li>
+  <li><strong>테일윈드</strong> — 2026 네이버는 AI 검색(Cue:)·스마트블록을 확대 중 → 구조화된 콘텐츠가 surface될 기회가 늘고 있음.</li>
+</ul>
+<div class="callout"><b>우선순위</b>
+① <strong>제품 롱테일</strong>(이미 자산 보유 → 즉시) → ② <strong>네이버 블로그 채널</strong>(중기, 최대 트래픽) → ③ <strong>네이버쇼핑 CP 제휴</strong>(장기·사업). 웹페이지 품질 개선(5장)은 ①의 전환율을 높이는 전제입니다.</div>
+<p class="footnote">※ 네이버 SERP는 자동 조회가 전 채널 차단(search.naver.com fetch·브라우저·구글 site: 모두 불가)되어, 본 전략은 네이버 SERP 구조 리서치 + ViewtyPick 카탈로그 실측으로 도출했습니다. 각 키워드의 실제 검색량·블로그 포화도는 네이버 데이터랩·surffing에서 운영자가 확정하시기 바랍니다.</p>
+
+<!-- ============ TOOLS ============ -->
+<h2 id="tools"><span class="n">3</span>키워드 리서치 도구 활용법</h2>
+<p>아래 도구로 후보 키워드의 <strong>실제 검색량·경쟁도</strong>를 확인해 "수요는 있는데 경쟁이 낮은" 롱테일을 골라냅니다. (도구별 데이터는 로그인·동적 조회가 필요하므로, 본 보고서는 조회 방법과 활용 프레임을 제시합니다.)</p>
+
+<table>
+  <tr><th>도구</th><th>무엇을 보나</th><th>ViewtyPick 활용법</th></tr>
+  <tr><td><strong>Naver DataLab</strong><br>(datalab.naver.com)</td><td>검색어 상대지수(0–100), 기기·성별·연령·지역, 쇼핑인사이트(카테고리 클릭·실구매)</td><td>"선크림 추천" vs "무기자차 선크림" 등 <strong>최대 5개 연관어 동시 비교</strong>로 계절성·상대수요 파악. 뷰티는 모바일·여성 편중 → 모바일 UX 우선.</td></tr>
+  <tr><td><strong>Google Trends</strong><br>(trends.google.co.kr)</td><td>키워드 상대 관심도·추이·급상승·연관 검색어, 지역 비교</td><td>"PDRN", "시카 크림" 등 <strong>트렌드 상승/하락</strong> 확인 → 상승 키워드를 페이지·캐러셀에 선반영. "급상승 쿼리"에서 신규 롱테일 발굴.</td></tr>
+  <tr><td><strong>surffing.net / 블랙키위</strong><br>(키워드 검색량 툴)</td><td>월간 검색량(PC·모바일), 경쟁도, 연관 키워드, <strong>콘텐츠 발행량·포화도</strong></td><td>후보 키워드의 <strong>검색량 대비 발행량(포화도)</strong>이 낮은 것을 우선 타겟 = "수요 있고 경쟁 적은" 롱테일. ViewtyPick 40개 페이지 키워드를 일괄 점검.</td></tr>
+</table>
+
+<div class="callout"><b>조회 워크플로 (권장)</b>
+① surffing/블랙키위에서 카테고리별 헤드 키워드 → 연관 롱테일 리스트 추출 → ② 각 롱테일의 월검색량·포화도 기록 → ③ DataLab으로 상대수요·계절성 교차검증 → ④ Trends로 상승 여부 확인 → ⑤ <strong>"검색량≥일정·포화도 낮음·ViewtyPick 제품 4+ 보유"</strong> 조건을 모두 만족하는 키워드만 페이지화. 이 기준을 <code>lib/seo/specs.ts</code> 신규 후보 추가 규칙으로 삼으세요.</div>
+
+<!-- ============ CAUSE ============ -->
+<h2 id="cause"><span class="n">4</span>왜 지금 구조로는 안 되는가 (원인)</h2>
+
+<div class="card">
+  <h4>원인 1 — 양산형 얇은/유사중복 페이지 → Helpful Content 필터</h4>
+  <p>구글의 Helpful Content 시스템은 <strong>"검색엔진을 위해 만든 듯한" 페이지를 사이트 단위로 감지·강등</strong>합니다. 데이터 차별화가 없는 유사중복 페이지는 개별적으로 색인에서 걸러지고, 사이트의 얇은 콘텐츠 비율이 높으면 <strong>사이트 전체 평가까지 끌어내립니다.</strong> 2025년 12월 코어 업데이트에서 전문가 감수 없는 양산 콘텐츠는 87%가 부정적 영향을 받았습니다.</p>
+</div>
+<div class="card">
+  <h4>원인 2 — 신규 도메인의 권위 부족</h4>
+  <p>도메인 권위가 낮은 신규 사이트는 경쟁 높은 헤드 키워드에서 대형 사이트의 벽을 넘지 못합니다. 권위는 단기간에 살 수 없고, <strong>롱테일 유입 → 체류·재방문 → 점진적 권위 축적</strong>의 장기 루프로만 쌓입니다.</p>
+</div>
+<div class="card">
+  <h4>원인 3 — 고유 콘텐츠·경험(E-E-A-T) 부재</h4>
+  <p>구글 품질평가와 네이버 D.I.A 모두 <strong>실제 경험·후기·전문성</strong>을 반영합니다. 현재 페이지엔 주제 설명 도입부, 작성자/전문성 표기, <strong>제품별 추천 이유(데이터에 이미 존재하나 미노출)</strong>, 가시적 업데이트일이 없어 "경험 신호"가 비어 있습니다.</p>
+</div>
+<div class="card">
+  <h4>원인 4 — 카니발리제이션으로 권위 자기분산</h4>
+  <p>같은 제품군의 여러 페이지가 같은 키워드를 노리면 백링크·클릭·권위가 분산되어 <strong>어느 페이지도 임계점을 못 넘습니다.</strong> 하나로 모았다면 상위 노출됐을 권위가 쪼개집니다.</p>
+</div>
+<div class="card">
+  <h4>원인 5 — FAQ 리치 결과 폐지 (2026.5.7)</h4>
+  <p>구글은 <strong>FAQ 리치 결과를 2026년 5월 7일부로 일반 사이트에서 폐지</strong>했습니다(정부·의료 등 권위 사이트만 노출). 현재 40개 동일 FAQ 스키마는 <strong>SERP 리치 결과를 만들지 못합니다.</strong> 다만 FAQPage 스키마는 <strong>AI Overview/생성형 인용에는 3.2배 유리</strong>하므로, 제거가 아니라 <strong>"페이지마다 고유한, 진짜 유용한 FAQ"로 전환</strong>해야 가치가 있습니다.</p>
+</div>
+
+<!-- ============ FIX ============ -->
+<h2 id="fix"><span class="n">5</span>개선 방안 (우선순위별)</h2>
+
+<h3><span class="pill P0">P0</span> 카니발리제이션 정리</h3>
+<ul>
+  <li><strong>완전 동일 쌍 통합</strong> — <code>acne-pad</code>·<code>men-allinone</code>은 (a) 약한 쪽을 강한 쪽으로 <code>canonical</code> 처리하거나, (b) 정렬·필터·카피를 실제로 다르게 만들어 차별화. 차별화가 불가능하면 <strong>비활성(404)</strong>이 정답.</li>
+  <li><strong>≥0.8 쌍 차별화</strong> — device-best/dry-device, cleansing-oil-best/blackhead-cleansing-oil 등은 "건성 전용 사용법", "블랙헤드 집중" 등 <strong>고유 관점·정렬·콘텐츠</strong>를 부여.</li>
+  <li><strong>대분류=허브 역할 분리</strong> — skincare/cleansing/maskpack 페이지는 제품 나열이 아니라 <strong>자식 페이지(토너/세럼/크림…)를 링크하는 허브</strong>로 재정의 + 고유 가이드 카피. 검색의도가 다르므로 유지하되 역할을 분리.</li>
+</ul>
+<div class="callout why"><b>원인</b> 같은 제품 페이지가 서로 순위를 깎고 색인 예산을 낭비하기 때문. 통합하면 분산됐던 권위가 한 페이지에 모입니다.</div>
+
+<h3><span class="pill P1">P1</span> 페이지 콘텐츠 깊이 — 랭킹의 최대 레버</h3>
+<ul>
+  <li><strong>페이지별 고유 도입부 2–4문장</strong> — 주제 설명 + 선정 기준 + 구매 팁. 카테고리·피부타입·키워드를 자연스럽게 포함. (300–500자만 더해도 효과 큼)</li>
+  <li><strong>제품별 "추천 이유" 노출</strong> — <code>reasonItems</code>가 데이터에 <strong>이미 있는데 랜딩에서 안 보입니다.</strong> 카드에 1–2줄 노출 → 고유 콘텐츠 + 경험(E-E-A-T) 동시 충족.</li>
+  <li><strong>주제별 고유 FAQ 1–2개</strong> — "여드름 패드 매일 써도 되나요?"처럼 페이지 주제에 맞는 질문으로 교체(공통 3개 → 일부만 공통 + 주제별 고유).</li>
+  <li><strong>"최종 업데이트 N월 N일" 노출</strong> — 매일 가격을 크롤하므로 신선도를 가시화(<code>lastUpdated</code> 데이터 활용). 신선도는 구글·네이버 공통 신호.</li>
+  <li><strong>고유 메타 설명</strong> — 공통 접미사("…한 번에 비교했어요") 제거 또는 변주. 최저가/제품수/대표 브랜드를 넣어 차별화 + CTR↑.</li>
+  <li><strong>최저가 TOP3 요약 블록</strong> — 상단에 "현재 최저가 3" 표/카드로 즉시 가치 전달(고유 데이터 + 거래의도 충족).</li>
+</ul>
+<div class="callout why"><b>원인</b> 고유 콘텐츠·경험 신호가 비어 양산형으로 평가되기 때문. 같은 데이터라도 "고유하게 가공"하면 Helpful Content 통과 + AI Overview 인용 가능성↑.</div>
+
+<h3><span class="pill P2">P2</span> 롱테일·성분 키워드 전략</h3>
+<ul>
+  <li><strong>이길 수 있는 키워드만 타겟</strong> — 신규 도메인은 헤드("토너 추천") 대신 롱테일("민감성 약산성 토너 최저가"). 제목·h1·도입부에 롱테일을 자연 포함.</li>
+  <li><strong>트렌드 성분 페이지 신설</strong> — <strong>PDRN(5개)·시카 진정(30개)</strong>은 수요 급증 + 제품 충분 → 즉시 페이지화. 약산성/판테놀/톤업(각 4개)은 고유 콘텐츠 전제로 추가.</li>
+  <li><strong>"제품 4+ · 검색량 충분 · 포화도 낮음" 3조건</strong>을 신규 페이지 추가 규칙으로 코드화(<code>lib/seo/specs.ts</code>). 제품 0개 키워드(레티놀·엑소좀)는 금지.</li>
+  <li><strong>제목 패턴 다양화 + '2026' 동적화</strong> — 전부 "X 추천 최저가 비교 2026"는 차별성↓·연도 노후화. 연도는 빌드시 자동 치환, 일부는 의도/혜택형 제목으로 변주.</li>
+</ul>
+
+<h3><span class="pill P4">P4</span> 기술·구조·AI 최적화</h3>
+<ul>
+  <li><strong>내부 링크 강화</strong> — 각 페이지 하단에 "관련 가이드"(같은 카테고리·피부타입·성분) 3–6개 맥락 링크. 허브↔자식↔형제 링크로 권위 순환·카니발 신호 정리.</li>
+  <li><strong>FAQPage 스키마 유지하되 고유화</strong> — SERP 리치 결과는 끝났지만 AI Overview 인용에 유리. 단, "페이지마다 다른 진짜 FAQ"일 때만.</li>
+  <li><strong>ItemList·Product·Offer 스키마 강화</strong> — 가격·통화·재고·평점(있으면)을 정확히. 비교 사이트의 핵심 신호.</li>
+  <li><strong>AI 검색(GEO) 대비</strong> — 명확한 소제목·표·요약 블록으로 "AI가 추출하기 쉬운 구조". 2026 검색은 "AI가 먼저 읽는다".</li>
+</ul>
+
+<!-- ============ CAROUSEL ============ -->
+<h2 id="carousel"><span class="n">6</span>캐러셀 · 인덱스 페이지 품질 개선</h2>
+
+<h3>6-1. 홈 추천 캐러셀</h3>
+<p>현재 5개 카드(선크림·기초 스킨케어·클렌징·쿠션·디바이스)는 <strong>제품 수 많고 주제가 뚜렷한 상위권</strong>이라 선택 자체는 적절합니다. 다만 "검색 유입 → 클릭 → 체류"를 끌어올릴 여지가 있습니다.</p>
+<ul>
+  <li><strong>구체 수치·후킹</strong> — 카드에 "추천 N개 · 최저가 ₩X~", "오늘 기준" 등 실데이터 노출(신뢰·CTR↑).</li>
+  <li><strong>실제 제품 썸네일</strong> — 이모지 대신 대표 제품 이미지 2–3개 미리보기(체류·기대 일치).</li>
+  <li><strong>검색의도 키워드 포함 카피</strong> — "민감성 선크림 최저가"처럼 카드 문구·alt에 타겟 키워드 반영.</li>
+  <li><strong>클릭 데이터 기반 선순환</strong> — 캐러셀·허브 클릭을 트래킹해 <strong>인기 가이드를 자동 노출</strong>(이미 affiliate_clicks 인프라 존재). 인기↑ 페이지에 내부링크 집중 → 권위 가속.</li>
+  <li><strong>비활성/얇은 페이지는 승격 금지</strong> — 4개짜리·중복 페이지는 캐러셀에 올리지 않음(품질 신호 보호).</li>
+</ul>
+
+<h3>6-2. /best 인덱스(허브) 페이지</h3>
+<p>현재는 그룹별 텍스트 링크 목록입니다. 허브도 얇으면 <strong>권위 전달·자체 랭킹이 약합니다.</strong></p>
+<ul>
+  <li><strong>가이드 카드화</strong> — 각 가이드에 대표 이미지 + 제품 수 + 최저가 미리보기 + 1줄 설명(고유).</li>
+  <li><strong>그룹별 고유 인트로</strong> — "피부 타입별", "성분·고민별" 등 각 섹션에 2–3문장 고유 설명(허브 자체의 콘텐츠 깊이).</li>
+  <li><strong>정렬·필터</strong> — 인기순/신규순/카테고리 필터로 탐색성↑ + 체류↑.</li>
+  <li><strong>Breadcrumb·내부링크 허브화</strong> — 허브가 모든 /best 페이지로 링크되는 구조 → 색인 발견성·권위 분배 최적화.</li>
+  <li><strong>허브 자체 SEO 타겟</strong> — "뷰티 추천 가이드 모음", "화장품 최저가 비교" 등 미들 키워드를 허브가 흡수.</li>
+</ul>
+
+<!-- ============ ROADMAP ============ -->
+<h2 id="roadmap"><span class="n">7</span>실행 로드맵</h2>
+<div class="step"><div class="dot">1</div><div class="body"><strong>1단계 — 정리 (런치 전 필수)</strong> · P0 카니발 통합/차별화, 비활성 정리, canonical 정비. → 색인할 페이지를 "이길 수 있는 것"만 남김.</div></div>
+<div class="step"><div class="dot">2</div><div class="body"><strong>2단계 — 콘텐츠 깊이</strong> · P1 전부(고유 도입부·추천이유 노출·주제별 FAQ·업데이트일·고유 메타·TOP3 블록). → 양산형 탈출.</div></div>
+<div class="step"><div class="dot">3</div><div class="body"><strong>3단계 — 키워드 확장 + 발견성</strong> · <b>판매처×최저가 아키타입(2.5)</b>: "올리브영 {카테고리} 최저가 비교" 페이지(올영 18개 우선) + seller 필터 구현. P2 롱테일/트렌드(PDRN·시카) 페이지, P4 내부링크·스키마, 캐러셀·허브 품질(P3). 그 후 <code>SITE_INDEXABLE=true</code> + GSC/네이버 등록 + sitemap 제출.</div></div>
+<div class="step"><div class="dot">4</div><div class="body"><strong>4단계 — 네이버·외부 권위(지속)</strong> · P5 네이버 웹마스터도구, 데이터랩 기반 키워드 갱신, 블로그/인플루언서 교차 노출로 C-Rank 주제 권위·백링크 축적. 클릭 데이터로 캐러셀 선순환.</div></div>
+
+<!-- ============ KPI ============ -->
+<h2 id="kpi"><span class="n">8</span>성과 측정 지표 (KPI)</h2>
+<table>
+  <tr><th>지표</th><th>도구</th><th>의미</th></tr>
+  <tr><td>색인 페이지 수 / 전체 발행 수</td><td>Search Console</td><td>얇은 페이지 필터링 여부(높을수록 양호)</td></tr>
+  <tr><td>롱테일 키워드 노출·순위</td><td>GSC · 네이버 서치어드바이저</td><td>"이길 수 있는 키워드" 진입 여부</td></tr>
+  <tr><td>페이지별 평균 노출순위·CTR</td><td>GSC</td><td>제목·메타·콘텐츠 개선 효과</td></tr>
+  <tr><td>유기 유입 → /go 클릭(전환)</td><td>affiliate_clicks</td><td>검색 유입의 실제 전환</td></tr>
+  <tr><td>체류시간·이탈률</td><td>분석툴</td><td>콘텐츠 깊이·관련성</td></tr>
+  <tr><td>AI Overview 인용 여부</td><td>수동·GSC</td><td>구조화·FAQ 스키마 효과</td></tr>
+</table>
+
+<!-- ============ SOURCES ============ -->
+<h2 id="sources">출처</h2>
+<p class="src">
+키워드·트렌드·알고리즘 리서치(2026-06 조회):
+<a href="https://business.hwahae.co.kr/insight/trendreport-2026-summary/">화해 2026 뷰티 트렌드(F.I.N.D)</a> ·
+<a href="https://www.theegg.com/seo/korea/naver-data-lab-how-to-gain-insights-on-korean-search-trends/">Naver DataLab 활용 가이드(TheEgg)</a> ·
+<a href="https://www.ascentkorea.com/naver_seo_strategies_2/">네이버 SEO·검색엔진시스템(어센트코리아)</a> ·
+<a href="https://goldenrabbit.co.kr/articles/c141E6fVK6fNlad3rI9E">네이버 C-Rank & D.I.A. 해설</a> ·
+<a href="https://www.next-t.co.kr/seo/keyword-research/">검색 의도 분류·키워드 리서치(넥스트티)</a> ·
+<a href="https://searchengineland.com/guide/programmatic-seo">Programmatic SEO 가이드(Search Engine Land)</a> ·
+<a href="https://seomatic.ai/blog/programmatic-seo-mistakes">Programmatic SEO 실패 원인(SEOmatic)</a> ·
+<a href="https://hashmeta.com/insights/ecommerce-seo-2025">E-commerce SEO 2025(Hashmeta)</a> ·
+<a href="https://www.searchenginejournal.com/google-drops-faq-rich-results-from-search/574429/">구글 FAQ 리치결과 폐지(Search Engine Journal)</a> ·
+<a href="https://www.thehoth.com/blog/google-faq-rich-results-deprecated/">FAQ 스키마 유지 이유(The HOTH)</a> ·
+<a href="https://www.ascentkorea.com/naver-smartstore-optimization-naverseo/">네이버쇼핑 적합도·인기도·신뢰도(어센트코리아)</a> ·
+<a href="https://blackkiwi.net/">블랙키위(키워드 검색량 툴)</a> ·
+<a href="https://datalab.naver.com/">네이버 데이터랩</a> ·
+<a href="https://trends.google.co.kr/trends/">구글 트렌드</a> ·
+<a href="https://kr.listeningmind.com/case-study/insight/oliveyoung-data-insight/">올리브영 검색데이터 인사이트(ListeningMind, 월 675만 검색)</a> ·
+<a href="https://www.enuri.com/">에누리 가격비교</a> ·
+<a href="https://play.google.com/store/apps/details?id=com.alpaca.beautysale">뷰티세일(화장품 통합 가격비교 앱)</a> ·
+SERP 정찰: 구글 "올리브영 토너 최저가" / "올리브영 세럼 최저가 비교" 직접 조회(2026-06)
+</p>
+<p class="footnote">※ 카탈로그 수치(제품 93개, 페이지 40개, 카니발 18쌍·완전동일 2쌍, 트렌드 키워드별 보유 제품 수)는 viewtypick 프로덕션 데이터에서 직접 측정한 실측값입니다. ※ surffing.net은 조회 차단(403)으로 직접 데이터 인용 대신 활용법을 제시했습니다. ※ 각 도구의 실제 검색량·순위는 로그인·동적 조회가 필요하므로, 본 보고서의 조회 워크플로에 따라 운영자가 채워 넣어 키워드 우선순위를 확정하시기 바랍니다.</p>
+
+</div>
+</body>
+</html>
