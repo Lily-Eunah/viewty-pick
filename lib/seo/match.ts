@@ -10,6 +10,7 @@ export interface SeoFilters {
   skinType?: string | null; // Korean skin-type name, e.g. '건성'
   badge?: string | null; // 'directorpi' | 'hwahae' (curation source)
   keywords?: string | null; // CSV of synonyms; product matches if ANY token appears
+  seller?: string | null; // e.g. 'oliveyoung' — only products listed on this seller
 }
 
 // A page only earns a slot in the sitemap/index when it can show at least this
@@ -51,6 +52,7 @@ export function matchSeoProducts(products: UIProduct[], f: SeoFilters): UIProduc
     if (f.skinType && !p.skinTypes.includes(f.skinType)) return false;
     if (!matchesBadge(p, f.badge)) return false;
     if (!matchesKeywords(p, f.keywords)) return false;
+    if (f.seller && !p.stores.some((s) => s.sellerSlug === f.seller)) return false;
     return true;
   });
 }

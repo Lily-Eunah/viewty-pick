@@ -12,7 +12,9 @@
 //   - Then the tab is cleared and rewritten, and read back for verification.
 
 import { google } from 'googleapis';
-import { getProducts } from '../../lib/queries';
+import { isSupabaseConfigured, supabase } from '../../lib/supabase/client';
+import { buildAllUIProducts, RawData, snapshotsToPublicPrices } from '../../lib/queries';
+import { loadMockDB } from '../../lib/supabase/mockDb';
 import { matchSeoProducts, MIN_SEO_PRODUCTS } from '../../lib/seo/match';
 import { SEO_PAGE_SPECS } from '../../lib/seo/specs';
 
@@ -22,6 +24,43 @@ const TITLE_COL = 2; // 0-based index of `title` in HEADER
 function auth(scopes: string[]) {
   const creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON!);
   return new google.auth.GoogleAuth({ credentials: creds, scopes });
+}
+
+// Fetch raw product data without Next.js unstable_cache (safe for script context).
+async function fetchRaw(): Promise<RawData> {
+  if (isSupabaseConfigured()) {
+    const [pRes, lRes, cRes, pbRes, bRes, sRes, lpRes] = await Promise.all([
+      supabase.from('products').select('*').eq('is_active', true),
+      supabase.from('listings').select('*').eq('is_active', true),
+      supabase.from('categories').select('*'),
+      supabase.from('product_badges').select('*'),
+      supabase.from('badges').select('*'),
+      supabase.from('sellers').select('id, slug, name, is_price_comparison_enabled'),
+      supabase.from('listing_prices_public').select('*'),
+    ]);
+    if (!pRes.error && pRes.data) {
+      return {
+        dbProducts: pRes.data,
+        dbListings: lRes.data || [],
+        dbCategories: cRes.data || [],
+        dbProductBadges: pbRes.data || [],
+        dbBadges: bRes.data || [],
+        dbListingPrices: lpRes.data || [],
+        dbSellers: sRes.data || [],
+      };
+    }
+  }
+  const db = loadMockDB();
+  const dbListings = db.listings.filter((l) => l.is_active);
+  return {
+    dbProducts: db.products.filter((p) => p.is_active),
+    dbListings,
+    dbCategories: db.categories,
+    dbProductBadges: db.product_badges,
+    dbBadges: db.badges,
+    dbListingPrices: snapshotsToPublicPrices(db.price_snapshots, dbListings),
+    dbSellers: db.sellers,
+  };
 }
 
 async function main() {
@@ -43,9 +82,10 @@ async function main() {
   }
 
   // 2. Resolve is_active from live product counts (the same gate the route enforces).
-  const products = await getProducts({ sortBy: 'recommend' });
+  const raw = await fetchRaw();
+  const products = buildAllUIProducts(raw);
   const specRows = SEO_PAGE_SPECS.map((s) => {
-    const n = matchSeoProducts(products, { category: s.category, skinType: s.skin_type, badge: s.badge_type, keywords: s.keywords }).length;
+    const n = matchSeoProducts(products, { category: s.category, skinType: s.skin_type, badge: s.badge_type, keywords: s.keywords, seller: s.seller }).length;
     const active = n >= MIN_SEO_PRODUCTS;
     return {
       n,
@@ -68,8 +108,8 @@ async function main() {
   console.log('Inactive (<4):', specRows.filter((r) => !r.active).map((r) => `${r.cells[0]}(${r.n})`).join(', ') || 'none');
 
   if (!apply) {
-    console.log('\n[DRY-RUN] pass --apply to write. First 6 structured rows:');
-    for (const r of specRows.slice(0, 6)) console.log(`  ${r.cells[0].padEnd(26)} active=${r.active} n=${r.n}`);
+    console.log('\n[DRY-RUN] pass --apply to write. First 8 structured rows:');
+    for (const r of specRows.slice(0, 8)) console.log(`  ${r.cells[0].padEnd(30)} active=${r.active} n=${r.n}`);
     return;
   }
 
