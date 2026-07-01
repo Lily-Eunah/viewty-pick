@@ -451,7 +451,7 @@ export async function runSheetImport(): Promise<ImportStats> {
 
       // 5. Retailer allowlist
       for (const row of rawAllowlist) {
-        if (Object.values(row).every((v) => !v)) continue; // skip blank rows
+        if (!row.seller?.trim()) continue; // skip blank/header-only rows
         const p = v.simpleAllowlistRowSchema.safeParse(row);
         if (!p.success) { stats.errorCount++; stats.errors.push(`Allowlist: seller="${row.seller ?? ''}" brand="${row.brand ?? ''}" — ${p.error.issues.map((i) => i.message).join('; ')}`); continue; }
         const sellerId = dbSellers?.find((s) => s.slug === p.data.seller)?.id;
@@ -464,7 +464,7 @@ export async function runSheetImport(): Promise<ImportStats> {
 
       // 6. Manual overrides
       for (const row of rawOverrides) {
-        if (Object.values(row).every((v) => !v)) continue; // skip blank rows
+        if (!row.seller?.trim()) continue; // skip blank/header-only rows
         const p = v.simpleOverrideRowSchema.safeParse(row);
         if (!p.success) { stats.errorCount++; stats.errors.push(`Override: name="${row.product_name ?? ''}" seller="${row.seller ?? ''}" type="${row.override_type ?? ''}" — ${p.error.issues.map((i) => i.message).join('; ')}`); continue; }
         const productKey = v.resolveProductKey(p.data, nameToKey);
@@ -484,7 +484,7 @@ export async function runSheetImport(): Promise<ImportStats> {
 
       // 7. SEO pages
       for (const row of rawSeoPages) {
-        if (Object.values(row).every((v) => !v)) continue; // skip blank rows
+        if (!row.slug?.trim()) continue; // blank rows + backlog/brainstorm rows (slug-less by design)
         const p = v.seoPageRowSchema.safeParse(row);
         if (!p.success) { stats.errorCount++; stats.errors.push(`SEO page: slug="${row.slug ?? ''}" — ${p.error.issues.map((i) => i.message).join('; ')}`); continue; }
         await supabaseServer.from('seo_pages').upsert({
