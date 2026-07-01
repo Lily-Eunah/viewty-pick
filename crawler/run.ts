@@ -927,14 +927,29 @@ export async function crawlPipeline(): Promise<void> {
     }
   }
 
-  // Step 8: Trigger Page Revalidation (ISR on-demand)
-  console.log('[Pipeline] Triggering revalidation of web routes...');
-  try {
-    // In a real execution environment:
-    // const revalSecret = process.env.REVALIDATE_SECRET;
-    // await fetch('https://viewtypick.com/api/revalidate', { method: 'POST', body: JSON.stringify({ secret: revalSecret }) });
-  } catch (e) {
-    console.error('[Pipeline] Route revalidation failed', e);
+  // Step 8: Trigger Page Revalidation (ISR on-demand). Prices just changed, so refresh
+  // the cached product list + every page derived from it immediately (POST
+  // /api/revalidate → revalidateTag('products','max')). This keeps card prices in sync
+  // with the always-live detail page right after each daily sync, instead of letting
+  // cards lag up to the time-based revalidate window.
+  // Guard: real DB run + real secret only — CI (crawler:test, secret='placeholder') and
+  // mock runs skip, so no stray outbound call hits prod.
+  const revalSecret = process.env.REVALIDATE_SECRET;
+  if (useSupabase && revalSecret && revalSecret !== 'placeholder') {
+    const revalidateUrl = process.env.REVALIDATE_URL || 'https://viewtypick.com/api/revalidate';
+    console.log('[Pipeline] Triggering revalidation of web routes...');
+    try {
+      const res = await fetch(revalidateUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ secret: revalSecret }),
+      });
+      console.log(`[Pipeline] Revalidation ${res.ok ? 'ok' : 'failed'} (HTTP ${res.status})`);
+    } catch (e) {
+      console.error('[Pipeline] Route revalidation failed', e);
+    }
+  } else {
+    console.log('[Pipeline] Skipping revalidation (mock run or no real REVALIDATE_SECRET).');
   }
 
   // Step 8.5: Upsert held (warning) prices into the inspection OX tab (preserving
