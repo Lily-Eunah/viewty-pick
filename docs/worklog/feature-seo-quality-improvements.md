@@ -35,12 +35,15 @@
   - 가이드 카드에 **최저가 미리보기** (예: "최저 12,900원~") 추가
   - 전체 가이드 수 표시 ("총 N개 가이드 · 매일 가격 갱신")
 
-### Import 에러 진단 수정 (fix)
+### Import 에러 진단 및 수정 (fix)
 - `crawler/sheets/import.ts`:
   - Step 5/6/7(allowlist/overrides/seo_pages) 유효성 실패 시 구체적 에러 메시지를 `stats.errors`에 push
-  - 빈 행(all values empty) skip으로 불필요한 에러 카운트 방지
   - import 완료 후 첫 30개 에러 상세 console 출력 추가
   - `Fetched:` 로그에 allowlist/overrides/seo_pages 행 수 추가
+  - **116 에러 근본 원인 발견 및 수정**: seo_pages 시트 하단의 115개 브레인스톰 백로그 행(제목만 있고 slug 없음)이 slug 필수 검증에서 걸리던 문제
+    - 이전 skip 조건 `Object.values(row).every((v) => !v)` → title 컬럼에 값이 있어 skip 안 됨
+    - 수정: `if (!row.slug?.trim()) continue;` — slug 없는 행은 설계상 import 제외
+    - allowlist/overrides도 동일하게 필드별 skip(`!row.seller?.trim()`)으로 정리
 
 ### 올리브영 × 카테고리 페이지 (SEO report 2.5)
 - `SeoPageSpec`에 `seller?: string` 필드 추가 (post-filter용)
@@ -71,11 +74,12 @@
 - `npx tsc --noEmit` — 에러 없음
 
 ## 남은 이슈 / TODO
-- [ ] **sheets:import 116 에러 원인 재확인** — 에러 로깅 추가 후 재실행하면 상세 출력됨
-- [ ] 새 스펙(PDRN·진정 4개 + 올리브영 5개) sheets:import로 DB 활성화 필요
-  - write-seo-pages 실행 → 시트에 추가 → sheets:import → DB row 생성
-  - DB row 없는 slug는 `/best/[slug]` 404
+- [x] **sheets:import 116 에러 원인 수정** — slug 없는 백로그 행 skip(`!row.slug?.trim()`)으로 해결
+- [x] 새 스펙(PDRN·진정 4개 + 올리브영 5개) 시트에 기록 완료 — sheets:import 실행하면 DB 활성화
+- [ ] sheets:import 재실행하여 Errors: 0 확인 (d25c0ca 수정 검증)
 - [ ] `device-best` vs `dry-device` (Jaccard 0.86) — 콘텐츠로 차별화됐으나 확인 필요
+- [ ] `pdrn-serum` 제품 수 부족 (n=1, inactive) — 제품 추가 또는 스펙 보류
+- [ ] `mineral-sunscreen`, `toneup-sunscreen` 각 3개 (threshold 1개 부족) — 모니터링
 - [ ] `SITE_INDEXABLE=true` + GSC·네이버 서치어드바이저 등록 (operator)
 - [ ] cf:deploy (operator)
 - [ ] P3 캐러셀 이미지 교체 (별도 작업)
