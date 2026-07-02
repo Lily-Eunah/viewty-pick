@@ -200,3 +200,35 @@ export function guideIconName(page: { slug: string; category?: string | null; pa
   if (page.category && CATEGORY_ICON[page.category]) return CATEGORY_ICON[page.category];
   return 'bottle';
 }
+
+// ── color emoji (Twemoji, CC-BY 4.0) for the featured 에디터 픽 cards ──────
+// Bundled under /public/emoji/{codepoint}.svg — punchy, platform-consistent.
+const EMOJI_CATEGORY: Record<string, string> = {
+  sunscreen: '2600', suncare: '2600', sunstick: '2600', suncushion: '2600',
+  toner: '1f4a7', lotion: '1f9f4',
+  serum: '1f9ea', skincare: '1f9ea', allinone: '1f9ea',
+  cream: '1fad9',
+  cushion: '1f484', 'base-makeup': '1f484', foundation: '1f484',
+  'sheet-mask': '1f486', maskpack: '1f486', pad: '1f486',
+  cleansing: '1f9f4', 'cleansing-oil': '1f9f4', 'cleansing-care': '1f9f4', 'cleansing-water': '1f9f4',
+  bodywash: '1f9f4', 'body-lotion': '1f9f4', bodycare: '1f9f4', shower: '1f9f4',
+  device: '2728',
+};
+
+const EMOJI_KEYWORD: Array<[RegExp, string]> = [
+  [/pdrn/, '1f9ec'],
+  [/blackhead/, '1f50d'],
+  [/acne/, '1fa79'],
+  [/soothing/, '1f33f'],
+  [/hydra/, '1f4a7'],
+  [/men/, '1fa92'],
+];
+
+/** Color-emoji SVG path for a featured card. */
+export function emojiSrc(page: { slug: string; category?: string | null; page_type?: string | null }): string {
+  if ((page.page_type || '') === 'keyword') {
+    for (const [re, cp] of EMOJI_KEYWORD) if (re.test(page.slug)) return `/emoji/${cp}.svg`;
+  }
+  if (page.category && EMOJI_CATEGORY[page.category]) return `/emoji/${EMOJI_CATEGORY[page.category]}.svg`;
+  return '/emoji/2728.svg';
+}
