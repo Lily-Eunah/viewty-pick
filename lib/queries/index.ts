@@ -579,15 +579,40 @@ export async function getPickPageData(badgeSlug: string, categorySlug: string) {
 // SEO landing pages (/best/[slug]) — driven by the seo_pages table (sheet-sourced)
 // ---------------------------------------------------------------------------
 
+/**
+ * All active SEO pages, R2-cached like getAllUIProducts so /best renders from the
+ * incremental cache at Worker runtime instead of a live Supabase call per request.
+ *
+ * Why this must be cached + fs-free: at Cloudflare Worker runtime the public Supabase
+ * env is not always bound (it's inlined/available at build time). An uncached live
+ * query would then miss and fall back to loadMockDB(), which does fs.readFileSync —
+ * unavailable in the Worker → the whole /best route 500s. Populating this cache at
+ * build/revalidate time (when Supabase IS configured) and never touching fs keeps the
+ * route resilient and consistent with the product catalog.
+ */
+const fetchActiveSeoPages = unstable_cache(
+  async (): Promise<SeoPage[]> => {
+    if (isSupabaseConfigured()) {
+      const { data, error } = await supabase.from('seo_pages').select('*').eq('is_active', true);
+      if (!error && data) return data as SeoPage[];
+      // Configured but the query failed — return empty rather than falling into the
+      // fs-backed mock (throws in the Worker). Empty degrades gracefully; never 500.
+      return [];
+    }
+    // Local dev without Supabase: the file mock is only reachable where fs exists.
+    try {
+      const db = loadMockDB();
+      return (db.seo_pages ?? []).filter((s) => s.is_active);
+    } catch {
+      return [];
+    }
+  },
+  ['active-seo-pages'],
+  { tags: [PRODUCTS_TAG], revalidate: PRODUCTS_REVALIDATE_SECONDS },
+);
+
 /** All active SEO pages (anon-readable view per migration 0002 RLS). */
-export const getActiveSeoPages = cache(async (): Promise<SeoPage[]> => {
-  if (isSupabaseConfigured()) {
-    const { data, error } = await supabase.from('seo_pages').select('*').eq('is_active', true);
-    if (!error && data) return data as SeoPage[];
-  }
-  const db = loadMockDB();
-  return (db.seo_pages ?? []).filter((s) => s.is_active);
-});
+export const getActiveSeoPages = cache((): Promise<SeoPage[]> => fetchActiveSeoPages());
 
 /**
  * Resolve one SEO page + the products it lists. Reuses getProducts (display gate +
