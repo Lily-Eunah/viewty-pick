@@ -58,26 +58,36 @@ const catRank = (c?: string | null) => {
   return i < 0 ? 999 : i;
 };
 
-// 고민·성분 tiles (남성은 별도 밴드로 분리)
-const CONCERN_DEF: Array<{ key: string; short: string; label: string; emoji: string; test: (s: string) => boolean }> = [
+// A drill group is sourced from EITHER a skin_type page filter OR a keyword-slug
+// filter. 여드름·블랙헤드(피부 고민)는 피부 타입 섹션에, 진정·수분·PDRN(성분)은
+// 고민·성분 섹션에. 남성은 별도 밴드로 분리.
+type GroupDef = { key: string; short: string; label: string; emoji: string; skinType?: string; test?: (s: string) => boolean };
+
+// ③ 피부 타입별 — 피부 타입 5종 + 여드름·블랙헤드 피부 고민
+const SKIN_SECTION_DEF: GroupDef[] = [
+  { key: '지성', short: '지성', label: '지성 추천', emoji: '1fae7', skinType: '지성' },
+  { key: '건성', short: '건성', label: '건성 추천', emoji: '1f335', skinType: '건성' },
+  { key: '민감성', short: '민감성', label: '민감성 추천', emoji: '1f338', skinType: '민감성' },
+  { key: '복합성', short: '복합성', label: '복합성 추천', emoji: '1f317', skinType: '복합성' },
+  { key: '수부지', short: '수부지', label: '수부지 추천', emoji: '1f4a6', skinType: '수부지' },
   { key: 'acne', short: '여드름', label: '여드름·트러블', emoji: '1fa79', test: (s) => /acne/.test(s) },
   { key: 'blackhead', short: '블랙헤드', label: '블랙헤드·모공', emoji: '1f50d', test: (s) => /blackhead/.test(s) },
+];
+
+// ② 고민·성분별 — 성분/케어 중심
+const CONCERN_SECTION_DEF: GroupDef[] = [
   { key: 'soothing', short: '진정', label: '진정·시카', emoji: '1f33f', test: (s) => /soothing/.test(s) },
   { key: 'hydra', short: '수분', label: '수분·보습', emoji: '1f4a7', test: (s) => /hydra/.test(s) },
   { key: 'pdrn', short: 'PDRN', label: 'PDRN·재생', emoji: '1f9ec', test: (s) => /pdrn/.test(s) },
 ];
 
-const SKIN_DEF: Array<{ key: string; short: string; label: string; emoji: string }> = [
-  { key: '건성', short: '건성', label: '건성 추천', emoji: '1f335' },
-  { key: '민감성', short: '민감성', label: '민감성 추천', emoji: '1f338' },
-  { key: '지성', short: '지성', label: '지성 추천', emoji: '1fae7' },
-  { key: '수부지', short: '수부지', label: '수부지 추천', emoji: '1f4a6' },
-  { key: '복합성', short: '복합성', label: '복합성 추천', emoji: '1f317' },
-];
-
 function drillItem(e: LiveEntry): { slug: string; label: string; n: number } {
-  return { slug: e.page.slug, label: CATEGORY_KO[e.page.category || ''] || cardLabel(e.page), n: e.n };
+  // Category-less pages are the keyword-only "전체" hub (검색 기준, 카테고리 무관).
+  const label = e.page.category ? (CATEGORY_KO[e.page.category] || cardLabel(e.page)) : '전체';
+  return { slug: e.page.slug, label, n: e.n };
 }
+// '전체' 허브(카테고리 없음)를 맨 앞으로, 그다음 카테고리 순.
+const drillRank = (x: LiveEntry) => (x.page.category ? catRank(x.page.category) : -1);
 
 function SectionHead({ bar, title, sub }: { bar: string; title: string; sub?: string }) {
   return (
@@ -121,28 +131,29 @@ export default async function BestIndexPage() {
   const heroSecondary = featured.slice(1, 4);
   const badgeFor = (e: LiveEntry) => (typeOf(e) === 'curation' ? '전문가 큐레이션' : '인기 BEST');
 
-  // ② 고민·성분별 (남성 제외) — 이모지 타일 + 펼침
-  const keyword = rest.filter((x) => typeOf(x) === 'keyword');
-  const concernGroups: DrillGroup[] = CONCERN_DEF.map((def) => ({
-    key: def.key,
-    label: def.label,
-    short: def.short,
-    emoji: `/emoji/${def.emoji}.svg`,
-    items: keyword.filter((k) => def.test(k.page.slug)).sort((a, b) => catRank(a.page.category) - catRank(b.page.category)).map(drillItem),
-  })).filter((g) => g.items.length > 0);
+  // 이모지 타일 그룹 빌더 — skinType 필터 또는 keyword-slug 필터에서 아이템 수집
+  const buildGroups = (defs: GroupDef[]): DrillGroup[] =>
+    defs
+      .map((def) => {
+        const pool = def.skinType
+          ? rest.filter((x) => typeOf(x) === 'skin' && x.page.skin_type === def.skinType)
+          : rest.filter((x) => typeOf(x) === 'keyword' && def.test!(x.page.slug));
+        return {
+          key: def.key,
+          label: def.label,
+          short: def.short,
+          emoji: `/emoji/${def.emoji}.svg`,
+          items: pool.sort((a, b) => drillRank(a) - drillRank(b)).map(drillItem),
+        };
+      })
+      .filter((g) => g.items.length > 0);
 
-  // ③ 피부 타입별 — 이모지 타일 + 펼침
-  const skinEntries = rest.filter((x) => typeOf(x) === 'skin');
-  const skinGroups: DrillGroup[] = SKIN_DEF.map((def) => ({
-    key: def.key,
-    label: def.label,
-    short: def.short,
-    emoji: `/emoji/${def.emoji}.svg`,
-    items: skinEntries.filter((s) => s.page.skin_type === def.key).sort((a, b) => catRank(a.page.category) - catRank(b.page.category)).map(drillItem),
-  })).filter((g) => g.items.length > 0);
+  // ② 고민·성분별 (성분 중심), ③ 피부 타입별 (피부타입 + 여드름·블랙헤드)
+  const concernGroups = buildGroups(CONCERN_SECTION_DEF);
+  const skinGroups = buildGroups(SKIN_SECTION_DEF);
 
   // ④ 남성 밴드 (올리브영처럼 별도 분리)
-  const men = keyword.filter((k) => /men/.test(k.page.slug)).sort((a, b) => catRank(a.page.category) - catRank(b.page.category));
+  const men = rest.filter((x) => typeOf(x) === 'keyword' && /men/.test(x.page.slug)).sort((a, b) => catRank(a.page.category) - catRank(b.page.category));
 
   // ⑥ 카테고리 chip (에디터 픽에 이미 노출된 건 제외)
   const category = categoryAll.filter((c) => !featuredSlugs.has(c.page.slug));
@@ -222,19 +233,19 @@ export default async function BestIndexPage() {
         </section>
       )}
 
-      {/* ② 고민·성분별 (이모지 타일) */}
-      {concernGroups.length > 0 && (
-        <section className="px-4 pt-5">
-          <SectionHead bar="#CA9BAA" title="고민 · 성분별" sub="탭하면 제품 유형까지" />
-          <DrillSection groups={concernGroups} accent="concern" />
-        </section>
-      )}
-
-      {/* ③ 피부 타입별 (이모지 타일) */}
+      {/* ② 피부 타입별 (이모지 타일) */}
       {skinGroups.length > 0 && (
         <section className="px-4 pt-5">
           <SectionHead bar="#A4B4BE" title="피부 타입별 추천" sub="탭하면 제품 유형까지" />
           <DrillSection groups={skinGroups} accent="skin" />
+        </section>
+      )}
+
+      {/* ③ 고민·성분별 (이모지 타일) */}
+      {concernGroups.length > 0 && (
+        <section className="px-4 pt-5">
+          <SectionHead bar="#CA9BAA" title="고민 · 성분별" sub="탭하면 제품 유형까지" />
+          <DrillSection groups={concernGroups} accent="concern" />
         </section>
       )}
 
