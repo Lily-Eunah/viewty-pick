@@ -8,8 +8,9 @@ import { matchSeoProducts, MIN_SEO_PRODUCTS } from '../../lib/seo/match';
 import { isSiteIndexable, SITE_URL } from '../../lib/seo/indexable';
 import { SEO_PAGE_SPECS } from '../../lib/seo/specs';
 import type { SeoPage } from '../../lib/types';
-import { GuideIcon, guideIconName, emojiSrc } from '../../components/seo/GuideIcon';
+import { GuideIcon, guideIconName } from '../../components/seo/GuideIcon';
 import DrillSection, { DrillGroup } from '../../components/seo/DrillSection';
+import EditorPickCarousel, { EditorCard } from '../../components/seo/EditorPickCarousel';
 
 export const revalidate = 3600;
 
@@ -24,7 +25,17 @@ export function generateMetadata(): Metadata {
 }
 
 // ── helpers ───────────────────────────────────────────────────────────
-type LiveEntry = { page: SeoPage; seller?: string; n: number; lowestPrice: number | null; image: string | null };
+type TopProduct = { brand: string; name: string; image: string | null; price: number | null; regularPrice: number | null; discountPct: number | null; storeName: string | null; storeSlug: string | null };
+type LiveEntry = { page: SeoPage; seller?: string; n: number; lowestPrice: number | null; image: string | null; top: TopProduct | null };
+
+// 7월 여름 시즌 에디터 픽 — slug는 활성 가이드에 매핑되고, 비활성이면 자동 스킵.
+// 월별로 이 배열만 바꾸면 시의성이 갱신된다(자동화는 TBD).
+const SEASON_PICKS: Array<{ slug: string; label: string; emoji: string; tint: string; pillBg: string; pillColor: string; hook: string }> = [
+  { slug: 'toneup-sunscreen', label: '여름 필수', emoji: '2600', tint: '#F6ECDD', pillBg: '#410016', pillColor: '#FFFFFF', hook: "UV지수 최악의 계절\n안 녹는 톤업 선크림" },
+  { slug: 'oily-skin-sunscreen', label: '장마철 산뜻', emoji: '1f4a7', tint: '#E6EEF2', pillBg: '#DBE7F0', pillColor: '#1E5A8A', hook: '번들거림 걱정 끝\n지성·수부지 선크림' },
+  { slug: 'pdrn', label: '요즘 뜨는 성분', emoji: '1f9ec', tint: '#EDE7F2', pillBg: '#E7DEF2', pillColor: '#5A3C86', hook: '시술 없이 재생 케어\nPDRN 성분 모음' },
+  { slug: 'directorpi-sunscreen', label: '전문가 큐레이션', emoji: '1f3c5', tint: '#F3EAE1', pillBg: '#F3E4E9', pillColor: '#8A1238', hook: '성분 전문가가 직접 검증\n디렉터파이 PICK' },
+];
 
 // Slugs 301-redirected in next.config (P0 dup consolidation) — never link to a
 // redirect hop from the hub.
@@ -113,7 +124,25 @@ export default async function BestIndexPage() {
         priced.find((prod) => prod.image && prod.image.startsWith('http'))?.image ??
         matched.find((prod) => prod.image && prod.image.startsWith('http'))?.image ??
         null;
-      return { page: p, seller: spec?.seller, n: matched.length, lowestPrice, image };
+      // 최저가 상품(딜 카드용) 스포트라이트 — 브랜드·정가·할인·최저 판매처.
+      const t = priced[0];
+      const bestStore = t
+        ? (t.stores.find((s) => s.isBest && s.hasPrice !== false) ??
+          [...t.stores].filter((s) => s.hasPrice !== false && s.price > 0).sort((a, b) => a.price - b.price)[0])
+        : undefined;
+      const top: TopProduct | null = t
+        ? {
+            brand: t.brand,
+            name: t.name,
+            image: t.image && t.image.startsWith('http') ? t.image : null,
+            price: t.lowestPrice ?? null,
+            regularPrice: t.regularPrice ?? null,
+            discountPct: t.discountVsRegular ?? null,
+            storeName: bestStore?.name ?? null,
+            storeSlug: bestStore?.sellerSlug ?? null,
+          }
+        : null;
+      return { page: p, seller: spec?.seller, n: matched.length, lowestPrice, image, top };
     })
     .filter((x) => x.n >= MIN_SEO_PRODUCTS && !REDIRECTED.has(x.page.slug));
 
@@ -121,15 +150,30 @@ export default async function BestIndexPage() {
   const rest = live.filter((x) => x.seller !== 'oliveyoung');
   const typeOf = (x: LiveEntry) => x.page.page_type || 'category';
 
-  // ① 에디터 픽 = 큐레이션 + 인기 카테고리 가이드(제품 많은 순) 혼합, 실제 제품 사진
-  const curationPicks = rest.filter((x) => typeOf(x) === 'curation').sort((a, b) => b.n - a.n);
   const categoryAll = rest.filter((x) => typeOf(x) === 'category');
-  const categoryPicks = [...categoryAll].sort((a, b) => b.n - a.n);
-  const featured = [...curationPicks, ...categoryPicks].slice(0, 4);
-  const featuredSlugs = new Set(featured.map((f) => f.page.slug));
-  const heroPrimary = featured[0];
-  const heroSecondary = featured.slice(1, 4);
-  const badgeFor = (e: LiveEntry) => (typeOf(e) === 'curation' ? '전문가 큐레이션' : '인기 BEST');
+
+  // ① 에디터 픽 — 시즌 딜 카드 캐러셀. 시즌 slug ∩ 활성 가이드, 없으면 제품 많은 순으로 보충.
+  const bySlug = new Map(live.map((e) => [e.page.slug, e]));
+  const seasonEntries = SEASON_PICKS.map((pk) => ({ pk, e: bySlug.get(pk.slug) })).filter((x): x is { pk: (typeof SEASON_PICKS)[number]; e: LiveEntry } => !!x.e);
+  const editorCards: EditorCard[] = seasonEntries.map(({ pk, e }) => ({
+    slug: e.page.slug,
+    label: pk.label,
+    emoji: `/emoji/${pk.emoji}.svg`,
+    tint: pk.tint,
+    pillBg: pk.pillBg,
+    pillColor: pk.pillColor,
+    hook: pk.hook,
+    n: e.n,
+    brand: e.top?.brand ?? null,
+    name: e.top?.name ?? null,
+    image: e.top?.image ?? e.image ?? null,
+    price: e.top?.price ?? e.lowestPrice ?? null,
+    regularPrice: e.top?.regularPrice ?? null,
+    discountPct: e.top?.discountPct ?? null,
+    storeName: e.top?.storeName ?? null,
+    storeSlug: e.top?.storeSlug ?? null,
+  }));
+  const featuredSlugs = new Set(editorCards.map((c) => c.slug));
 
   // 이모지 타일 그룹 빌더 — skinType 필터 또는 keyword-slug 필터에서 아이템 수집
   const buildGroups = (defs: GroupDef[]): DrillGroup[] =>
@@ -173,63 +217,14 @@ export default async function BestIndexPage() {
         </p>
       </section>
 
-      {/* ① 에디터 픽 — 실제 제품 사진 */}
-      {heroPrimary && (
-        <section className="px-4 pt-4">
-          <p className="text-[10px] tracking-[0.12em] font-black text-accent mb-2.5">에디터 픽 · 이 시즌 추천</p>
-          <Link
-            href={`/best/${heroPrimary.page.slug}`}
-            className="flex items-center gap-3.5 bg-primary rounded-[20px] p-4 shadow-sm active:scale-[0.99] transition-transform"
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={heroPrimary.image ?? emojiSrc(heroPrimary.page)}
-              alt=""
-              width={60}
-              height={60}
-              className={heroPrimary.image ? 'w-[60px] h-[60px] shrink-0 rounded-2xl object-cover bg-white' : 'w-14 h-14 shrink-0'}
-            />
-            <div className="flex-1 min-w-0">
-              <span className="inline-flex items-center gap-1 bg-white/20 rounded-md px-2 py-0.5 text-[9px] font-bold text-white mb-1.5">{badgeFor(heroPrimary)}</span>
-              <h3 className="text-[15px] font-black text-white leading-snug mb-2 line-clamp-2">{cardLabel(heroPrimary.page)}</h3>
-              <div className="flex items-center justify-between">
-                {heroPrimary.lowestPrice ? (
-                  <span className="text-[11px] text-white/90">최저 <strong className="text-[13px] font-black">{heroPrimary.lowestPrice.toLocaleString('ko-KR')}원</strong>~</span>
-                ) : <span />}
-                <span className="bg-white/20 rounded-full px-3 py-1 text-[10px] font-bold text-white">{heroPrimary.n}개 →</span>
-              </div>
-            </div>
-          </Link>
-
-          {heroSecondary.length > 0 && (
-            <ul className="mt-2 flex flex-col gap-2">
-              {heroSecondary.map((s) => (
-                <li key={s.page.slug}>
-                  <Link
-                    href={`/best/${s.page.slug}`}
-                    className="flex items-center gap-3 bg-surface border border-line rounded-[18px] px-3.5 py-3 shadow-sm active:scale-[0.99] transition-transform"
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={s.image ?? emojiSrc(s.page)}
-                      alt=""
-                      width={40}
-                      height={40}
-                      className={s.image ? 'w-10 h-10 shrink-0 rounded-xl object-cover bg-white border border-line' : 'w-9 h-9 shrink-0'}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[10px] text-accent font-bold mb-0.5">{badgeFor(s)}</p>
-                      <p className="text-[13px] font-black text-title leading-tight truncate">{cardLabel(s.page)}</p>
-                    </div>
-                    <div className="text-right shrink-0">
-                      {s.lowestPrice && <p className="text-[11px] text-title font-black">{s.lowestPrice.toLocaleString('ko-KR')}원~</p>}
-                      <p className="text-[10px] text-sub font-semibold">{s.n}개</p>
-                    </div>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
+      {/* ① 에디터 픽 — 시즌 딜 카드 캐러셀 */}
+      {editorCards.length > 0 && (
+        <section className="pt-4">
+          <div className="px-4 flex items-center justify-between mb-2.5">
+            <span className="text-[14px] font-black text-title tracking-tight">에디터 픽</span>
+            <span className="text-[10px] font-black text-accent">7월 여름 · 매일 최저가 갱신</span>
+          </div>
+          <EditorPickCarousel cards={editorCards} />
         </section>
       )}
 
