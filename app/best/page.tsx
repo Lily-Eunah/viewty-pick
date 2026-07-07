@@ -112,7 +112,16 @@ function SectionHead({ bar, title, sub }: { bar: string; title: string; sub?: st
 
 // ── page ──────────────────────────────────────────────────────────────
 export default async function BestIndexPage() {
-  const [pages, products] = await Promise.all([getActiveSeoPages(), getProducts({ sortBy: 'recommend' })]);
+  // Data-layer rejection (post-crawl transient) must NOT escape the render: OpenNext
+  // caches the resulting 500 as the route response, wedging /best until the next
+  // revalidate/deploy. Render a degraded (empty) hub instead — ISR (3600s) self-heals.
+  let pages: Awaited<ReturnType<typeof getActiveSeoPages>> = [];
+  let products: Awaited<ReturnType<typeof getProducts>> = [];
+  try {
+    [pages, products] = await Promise.all([getActiveSeoPages(), getProducts({ sortBy: 'recommend' })]);
+  } catch (e) {
+    console.error('[best] data unavailable, rendering degraded hub', e);
+  }
 
   const live: LiveEntry[] = pages
     .map((p) => {
