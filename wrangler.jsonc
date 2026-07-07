@@ -27,6 +27,18 @@
 			"binding": "NEXT_TAG_CACHE_KV",
 			"id": "bb41e27b83bb4a4ba59df1359c8d7f04"
 		}
+	],
+	// REQUIRED for ISR time-based revalidation: the OpenNext queue (memory-queue)
+	// re-renders an expired page by fetching the Worker THROUGH this self-reference
+	// binding. Without it, queue.send() throws ("No service binding for cache
+	// revalidation worker") on every stale serve — /best (revalidate=3600) turned
+	// into a persistent 500 exactly one hour after each deploy/purge, while 86400s
+	// pages never hit organic expiry (daily crawl purge resets them first).
+	"services": [
+		{
+			"binding": "WORKER_SELF_REFERENCE",
+			"service": "viewtypick"
+		}
 	]
 	// Secrets are NOT stored here. The operator sets them in the Cloudflare
 	// dashboard (or via `wrangler secret put`):
