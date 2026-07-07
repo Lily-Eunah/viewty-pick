@@ -11,15 +11,19 @@ import {
   MaskpackImageIcon,
   BodycareImageIcon,
   BaseMakeupImageIcon,
+  HaircareImageIcon,
+  FeminineHygieneImageIcon,
 } from '../../components/home/BeautyIcons';
 
 const categories = [
   { id: "suncare", label: "선케어", icon: SuncareImageIcon, path: "/c/suncare", desc: ["선크림", "선스틱", "선쿠션"] },
-  { id: "skincare", label: "스킨케어", icon: SkincareImageIcon, path: "/c/skincare", desc: ["스킨·토너", "로션", "에센스·세럼", "올인원", "크림"] },
-  { id: "cleansing-care", label: "클렌징", icon: CleansingCareImageIcon, path: "/c/cleansing-care", desc: ["클렌징폼·젤", "오일·밤", "워터·밀크"] },
+  { id: "skincare", label: "스킨케어", icon: SkincareImageIcon, path: "/c/skincare", desc: ["스킨·토너", "로션", "에센스·세럼", "올인원", "크림", "디바이스"] },
+  { id: "cleansing-care", label: "클렌징", icon: CleansingCareImageIcon, path: "/c/cleansing-care", desc: ["클렌징폼·젤", "오일·밤", "워터·밀크", "립&아이 리무버"] },
   { id: "maskpack", label: "마스크팩", icon: MaskpackImageIcon, path: "/c/maskpack", desc: ["시트팩", "패드"] },
-  { id: "bodycare", label: "바디케어", icon: BodycareImageIcon, path: "/c/bodycare", desc: ["샤워·입욕", "바디로션·크림", "쉐이빙폼·젤·크림"] },
-  { id: "base-makeup", label: "베이스 메이크업", icon: BaseMakeupImageIcon, path: "/c/base-makeup", desc: ["쿠션"] },
+  { id: "bodycare", label: "바디케어", icon: BodycareImageIcon, path: "/c/bodycare", desc: ["샤워·입욕", "바디로션·크림", "쉐이빙폼·젤·크림", "태닝·애프터선"] },
+  { id: "base-makeup", label: "베이스 메이크업", icon: BaseMakeupImageIcon, path: "/c/base-makeup", desc: ["쿠션", "파운데이션", "BB·CC", "컨실러"] },
+  { id: "haircare", label: "헤어케어", icon: HaircareImageIcon, path: "/c/haircare", desc: ["샴푸/스케일러", "두피에센스"] },
+  { id: "Feminine Hygiene", label: "위생용품", icon: FeminineHygieneImageIcon, path: "/c/Feminine%20Hygiene", desc: ["Y존케어"] },
 ];
 
 export default function CategoriesExplorerPage() {

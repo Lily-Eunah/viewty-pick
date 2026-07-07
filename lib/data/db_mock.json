@@ -10881,8 +10881,8 @@
       ],
       "consent_service": true,
       "consent_marketing": true,
-      "created_at": "2026-06-26T06:23:03.481Z",
-      "updated_at": "2026-06-26T06:23:03.526Z"
+      "created_at": "2026-07-07T02:32:57.297Z",
+      "updated_at": "2026-07-07T02:32:57.478Z"
     },
     {
       "id": 2,
@@ -10891,8 +10891,8 @@
       "wishlist_slugs": null,
       "consent_service": true,
       "consent_marketing": true,
-      "created_at": "2026-06-26T06:23:03.584Z",
-      "updated_at": "2026-06-26T06:23:03.584Z"
+      "created_at": "2026-07-07T02:32:57.850Z",
+      "updated_at": "2026-07-07T02:32:57.850Z"
     }
   ]
 }
