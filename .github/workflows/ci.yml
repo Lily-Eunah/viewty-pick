@@ -19,9 +19,13 @@ jobs:
       VIEWTYPICK_MOCK_MODE: "true"
       NODE_OPTIONS: --max-old-space-size=4096
 
-      # Safe placeholder values so build/test succeed without real secrets
-      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder
+      # Safe placeholder values so build/test succeed without real secrets.
+      # MUST be the canonical placeholders that isSupabaseConfigured() recognizes —
+      # any other fake URL makes the app believe Supabase is configured, so queries
+      # fetch a dead host and (since the fs-fallback removal in PR #99) the build
+      # fails instead of silently using the file mock.
+      NEXT_PUBLIC_SUPABASE_URL: https://placeholder-project.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
       SUPABASE_SERVICE_ROLE_KEY: placeholder
       GOOGLE_SERVICE_ACCOUNT_JSON: "{}"
       GOOGLE_SHEETS_SPREADSHEET_ID: placeholder
