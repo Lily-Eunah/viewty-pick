@@ -1,0 +1,6 @@
+Emoji graphics in this folder are from Twemoji.
+Copyright 2019 Twitter, Inc and other contributors.
+Source: https://github.com/jdecked/twemoji
+Graphics licensed under CC-BY 4.0: https://creativecommons.org/licenses/by/4.0/
+
+Used as the 에디터 픽 (featured guide) illustrations on /best.
