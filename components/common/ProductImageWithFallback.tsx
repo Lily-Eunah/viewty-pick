@@ -12,7 +12,7 @@ interface ProductImageWithFallbackProps {
 
 function getMajorCategory(category?: string | null): string | null {
   if (!category) return null;
-  const majors = ['suncare', 'skincare', 'cleansing-care', 'maskpack', 'bodycare', 'base-makeup'];
+  const majors = ['suncare', 'skincare', 'cleansing-care', 'maskpack', 'bodycare', 'base-makeup', 'haircare', 'Feminine Hygiene'];
   if (majors.includes(category)) return category;
 
   const mapping: Record<string, string> = {
@@ -26,10 +26,12 @@ function getMajorCategory(category?: string | null): string | null {
     'serum': 'skincare',
     'allinone': 'skincare',
     'cream': 'skincare',
+    'device': 'skincare',
     // Cleansing
     'cleansing': 'cleansing-care',
     'cleansing-oil': 'cleansing-care',
     'cleansing-water': 'cleansing-care',
+    'lip&eye makeup remover': 'cleansing-care',
     // Maskpack
     'sheet-mask': 'maskpack',
     'pad': 'maskpack',
@@ -39,8 +41,17 @@ function getMajorCategory(category?: string | null): string | null {
     'shaving': 'bodycare',
     'shaving-cream': 'bodycare',
     'shaving-foam': 'bodycare',
+    'tanning/after-sun': 'bodycare',
     // Base Makeup
     'cushion': 'base-makeup',
+    'foundation': 'base-makeup',
+    'BB/CC': 'base-makeup',
+    'Concealer': 'base-makeup',
+    // Haircare
+    'shampoo/scaler': 'haircare',
+    'scalp tonic': 'haircare',
+    // Feminine Hygiene
+    'Intimate Care': 'Feminine Hygiene',
   };
 
   return mapping[category] || null;
@@ -76,7 +87,7 @@ export default function ProductImageWithFallback({
       <div className={`relative overflow-hidden bg-[#FFFDF9] flex items-center justify-center p-3.5 ${className}`}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={`/images/categories/${majorCategory}.png`}
+          src={`/images/categories/${majorCategory.toLowerCase().replace(/\s+/g, '-')}.png`}
           alt={alt}
           className="w-full h-full object-contain opacity-75"
         />

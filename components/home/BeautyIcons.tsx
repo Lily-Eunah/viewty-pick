@@ -177,3 +177,29 @@ export function BaseMakeupImageIcon({ className, ...props }: React.ComponentProp
   );
 }
 
+export function HaircareImageIcon({ className, ...props }: React.ComponentPropsWithoutRef<'img'>) {
+  return (
+    <img
+      src="/images/categories/haircare.png"
+      alt="헤어케어"
+      width={48}
+      height={48}
+      className={className}
+      {...props}
+    />
+  );
+}
+
+export function FeminineHygieneImageIcon({ className, ...props }: React.ComponentPropsWithoutRef<'img'>) {
+  return (
+    <img
+      src="/images/categories/feminine-hygiene.png"
+      alt="위생용품"
+      width={48}
+      height={48}
+      className={className}
+      {...props}
+    />
+  );
+}
+
