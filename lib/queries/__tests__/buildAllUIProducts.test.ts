@@ -112,5 +112,52 @@ it('p3: link-only (no price row) → hasAnyPrice false but a seller row is shown
   assert(p3.stores[0].hasPrice === false, 'the store row should be link-only');
 });
 
+// ---- §PR-1 canonical-unit display (매/개) -------------------------------
+// Builds a single coupang-priced store for one product so we can assert the
+// per-store display fields (§3.3 defensive) in isolation.
+function oneStore(
+  prodOver: Partial<Product>,
+  priceOver: Partial<PublicListingPrice>
+) {
+  const built = buildAllUIProducts({
+    dbProducts: [product({ id: 1, slug: 'x', ...prodOver })],
+    dbListings: [listing({ id: 1, product_id: 1, seller_id: 2 })], // coupang (display)
+    dbCategories: categories,
+    dbProductBadges: [],
+    dbBadges: [],
+    dbListingPrices: [price({
+      listing_id: 1, product_id: 1, seller_id: 2,
+      base_unit_price: 21000, effective_unit_price: 21000, sale_price: 21000,
+      ...priceOver,
+    })],
+    dbSellers: sellers,
+  });
+  return built[0].stores[0];
+}
+
+console.log('--- §PR-1 canonical-unit display ---');
+
+it('매 product: DB sheet count shown with 매 label + 매당 unit price', () => {
+  const s = oneStore({ volume_unit: '매', volume_ml: 70 }, { total_ml: 70, unit_price: 300 });
+  assert(s.volumeMl === 70, `volumeMl ${s.volumeMl} !== 70`);
+  assert(s.volumeUnit === '매', `volumeUnit ${s.volumeUnit} !== 매`);
+  assert(s.unitPrice === 300, `unitPrice ${s.unitPrice} !== 300`);
+});
+
+it('매 product: absurd leaked size (>1000) is hidden, not mislabeled', () => {
+  const s = oneStore({ volume_unit: '매', volume_ml: 70 }, { total_ml: 1500, unit_price: 14 });
+  assert(s.volumeMl == null, `volumeMl should be hidden, got ${s.volumeMl}`);
+  assert(s.unitPrice == null, `unitPrice should be hidden, got ${s.unitPrice}`);
+});
+
+it('개 device: per-unit line hidden BUT 정가 할인율 preserved (review #1)', () => {
+  const s = oneStore(
+    { volume_unit: '개', volume_ml: 1, regular_price: 500000 },
+    { total_ml: 1, unit_price: 400000, base_unit_price: 400000, effective_unit_price: 400000, sale_price: 400000 }
+  );
+  assert(s.unitPrice == null, `device unitPrice should be hidden, got ${s.unitPrice}`);
+  assert(s.discountVsRegular === 20, `discountVsRegular ${s.discountVsRegular} !== 20`);
+});
+
 console.log(failed ? '\nResult: FAILED' : '\nResult: ALL PASSED');
 if (failed) process.exit(1);

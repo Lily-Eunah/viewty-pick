@@ -389,6 +389,53 @@ describe('parsedPackage override logic', () => {
   });
 });
 
+describe('canonical-unit stopgap (§PR-1): 매/개 products never take a per-retailer ml volume', () => {
+  it('매 product: parsed ml amount is discarded → volume_ml stays DB sheet count (매당 = eff / count)', () => {
+    const sheetProduct: Product = { ...BASE_PRODUCT, volume_ml: 70, volume_unit: '매' };
+    const result = normalizePrice(sheetProduct, offer({
+      salePrice: 21000,
+      promoType: 'none',
+      // a leaked ml amount (185) that must NOT become the size
+      parsedPackage: {
+        detected: true, unitType: 'sheet', unitAmount: 185, unitCount: 1, totalAmount: 185,
+        promoType: 'none', confidence: 'high', evidence: '185ml', method: 'llm',
+        heterogeneous: false, route: 'needs-llm',
+      },
+    }));
+    expect(result.total_ml).toBe(70);       // DB sheet count, NOT the leaked 185
+    expect(result.unit_price).toBe(300);     // 21000 / 70 = 매당
+    expect(result.unit_price_reliable).toBe(true);
+    expect(result.volume_mismatch).toBe(false); // no spurious mismatch flag
+  });
+
+  it('매 product: parsedVolumeRaw (adapter ml) is also ignored', () => {
+    const sheetProduct: Product = { ...BASE_PRODUCT, volume_ml: 70, volume_unit: '매' };
+    const result = normalizePrice(sheetProduct, offer({
+      salePrice: 14000, promoType: 'none', parsedVolumeRaw: 27, // 27ml from title → ignored
+    }));
+    expect(result.total_ml).toBe(70);
+    expect(result.unit_price).toBe(200); // 14000 / 70
+  });
+
+  it('개 device: bundled-gel ml (parsedVolumeRaw) discarded → volume stays 1대', () => {
+    const deviceProduct: Product = { ...BASE_PRODUCT, volume_ml: 1, volume_unit: '개' };
+    const result = normalizePrice(deviceProduct, offer({
+      salePrice: 419500, promoType: 'none', parsedVolumeRaw: 200, // 부스터젤 200ml → ignored
+    }));
+    expect(result.total_ml).toBe(1);            // not 200
+    expect(result.unit_price).toBe(419500);     // eff / 1 (device: 개당 == price)
+  });
+
+  it('ml product: per-retailer volume still applies (no regression)', () => {
+    const mlProduct: Product = { ...BASE_PRODUCT, volume_ml: 50, volume_unit: 'ml' };
+    const result = normalizePrice(mlProduct, offer({
+      salePrice: 20000, promoType: 'none', parsedVolumeRaw: 100,
+    }));
+    expect(result.total_ml).toBe(100);   // ml/g still takes the listing volume
+    expect(result.unit_price).toBe(200); // 20000 / 100
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Summary
 // ---------------------------------------------------------------------------
