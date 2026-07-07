@@ -174,6 +174,49 @@ try {
 6. **부분 픽스 후 "당일 정상"에 속지 말 것** — 배포가 캐시를 재구축하므로 트리거(다음 크롤)까지는 무조건 정상으로 보인다.
    픽스 검증은 반드시 **트리거와 같은 시퀀스**로.
 
+## 8. 에필로그: 픽스를 배포하자 CI가 깨졌다 — 하중을 받치고 있던 버그
+
+PR #99를 머지하자마자 **CI(Mock/Offline)가 빨간불**이 됐다. 로그:
+
+```
+NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co   ← CI의 가짜 URL
+[queries] seo_pages query failed: TypeError: fetch failed
+```
+
+### 무슨 일이 있었나 — 두 버그의 상쇄
+
+- **버그 A (숨은 원인)**: CI의 placeholder env(`https://example.supabase.co` / `placeholder`)가
+  `isSupabaseConfigured()`의 placeholder 판별(canonical 문자열 비교)에 안 걸림 →
+  mock 빌드가 자신을 **"실제 DB 연결됨"으로 착각** → 61페이지 프리렌더 내내 죽은 호스트로 fetch
+- **버그 B (받침대)**: fetch 실패 → fs mock 폴백이 조용히 흡수 → **CI는 몇 주간 green**
+  — "정상 동작"이 아니라 *버그 A를 버그 B가 상쇄*하던 상태
+- **PR #99가 버그 B를 제거** (Worker 크래시 방지라는 정당한 이유로) →
+  받침대가 사라지자 버그 A가 그제서야 빌드 실패로 표면화
+
+Hyrum's Law의 전형: *"시스템의 모든 관찰 가능한 동작은 결국 누군가가 의존하게 된다"* —
+여기선 그 "누군가"가 자기 자신의 CI였다.
+
+### 수정 (PR #100)
+
+- **ci.yml**: 판별 로직이 인식하는 canonical placeholder로 교체 → mock 빌드가 의도된 mock-DB 경로 사용
+- **`isSupabaseConfigured()` 강화**: `placeholder`·`example.supabase.co` 계열은 전부 unconfigured 판정
+  (denylist 특정 문자열 비교 → 패턴 기반으로)
+
+### 덤으로 드러난 것
+
+고치자 CI 빌드가 **4분 → 1분대**. 그동안 매 빌드가 죽은 호스트로의 fetch 타임아웃을
+기다리며 3분을 태우고 있었다 — green이라서 아무도 들여다보지 않은 낭비.
+
+### 에필로그의 교훈
+
+7. **CI green ≠ 정상** — 폴백이 실패를 삼키는 구조에서는 green이 거짓말을 한다.
+   "우연히 통과"와 "의도대로 통과"를 구분하려면 mock 경로가 실제로 타지는지 확인해야 한다.
+8. **mock/placeholder 판별은 denylist가 아니라 explicit flag로** — "이 문자열이면 mock"은 언젠가 새는
+   구멍이 생긴다. `MOCK_MODE=true` 같은 명시적 스위치가 정답 (이번엔 패턴 매칭으로 보강).
+9. **빌드 시간의 이상은 신호다** — mock 빌드가 4분씩 걸린 것 자체가 죽은 fetch의 증거였다.
+10. **정당한 픽스가 깨뜨린 것은 원복이 아니라 추적 대상** — #99를 되돌리는 게 아니라,
+    #99가 드러낸 숨은 결함(A)을 고치는 것이 맞다.
+
 ## 부록: 사건 일지
 
 | 일시 (UTC) | 사건 |
@@ -185,4 +228,6 @@ try {
 | 07-07 00:1x | 재발 확인. tail 무음("Ok"), blast radius 매핑, 로컬 workerd 재현 실패 |
 | 07-07 00:3x | ETag 단서 → 결정 실험(수동 revalidate) → **500→200, 캐시 박제 확정** |
 | 07-07 00:5x | PR #99 (3중 방어) → 머지 → 배포 c39931fd → 라이브 revalidate 사이클 통과 |
+| 07-07 01:0x | **에필로그**: #99가 CI를 깨뜨림 — mock env가 판별을 통과해 죽은 호스트 fetch, fs 폴백 제거로 표면화 |
+| 07-07 01:4x | PR #100 (canonical placeholder + 판별 강화) → CI green, 빌드 4분→1분 |
 | 07-08 새벽~ | (관찰) 크롤 후 warmup 스텝이 Actions 로그에 상태 기록 — 최종 시험대 |
