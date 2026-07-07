@@ -25,16 +25,17 @@ export function generateMetadata(): Metadata {
 }
 
 // ── helpers ───────────────────────────────────────────────────────────
-type TopProduct = { brand: string; name: string; image: string | null; price: number | null; regularPrice: number | null; discountPct: number | null; storeName: string | null; storeSlug: string | null };
-type LiveEntry = { page: SeoPage; seller?: string; n: number; lowestPrice: number | null; image: string | null; top: TopProduct | null };
+type TopProduct = { id: string; brand: string; name: string; image: string | null; price: number | null; regularPrice: number | null; discountPct: number | null; storeName: string | null; storeSlug: string | null };
+type LiveEntry = { page: SeoPage; seller?: string; n: number; lowestPrice: number | null; image: string | null; topCandidates: TopProduct[] };
 
 // 7월 여름 시즌 에디터 픽 — slug는 활성 가이드에 매핑되고, 비활성이면 자동 스킵.
+// 카테고리가 겹치지 않게(선크림 1장만) 여름의 다른 각도로 구성 → 카드 이미지도 자연히 다양.
 // 월별로 이 배열만 바꾸면 시의성이 갱신된다(자동화는 TBD).
 const SEASON_PICKS: Array<{ slug: string; label: string; emoji: string; tint: string; pillBg: string; pillColor: string; hook: string }> = [
-  { slug: 'toneup-sunscreen', label: '여름 필수', emoji: '2600', tint: '#F6ECDD', pillBg: '#410016', pillColor: '#FFFFFF', hook: "UV지수 최악의 계절\n안 녹는 톤업 선크림" },
-  { slug: 'oily-skin-sunscreen', label: '장마철 산뜻', emoji: '1f4a7', tint: '#E6EEF2', pillBg: '#DBE7F0', pillColor: '#1E5A8A', hook: '번들거림 걱정 끝\n지성·수부지 선크림' },
+  { slug: 'toneup-sunscreen', label: '여름 필수', emoji: '2600', tint: '#F6ECDD', pillBg: '#410016', pillColor: '#FFFFFF', hook: 'UV지수 최악의 계절\n안 녹는 톤업 선크림' },
+  { slug: 'soothing', label: '자외선 후 진정', emoji: '1f33f', tint: '#E6EFE4', pillBg: '#DCEBD7', pillColor: '#3B6B3A', hook: '태닝·자극 받은 피부\n진정·시카 케어' },
+  { slug: 'hydra', label: '수분 충전', emoji: '1f4a7', tint: '#E6EEF2', pillBg: '#DBE7F0', pillColor: '#1E5A8A', hook: '에어컨·장마 속당김\n수분·보습 모음' },
   { slug: 'pdrn', label: '요즘 뜨는 성분', emoji: '1f9ec', tint: '#EDE7F2', pillBg: '#E7DEF2', pillColor: '#5A3C86', hook: '시술 없이 재생 케어\nPDRN 성분 모음' },
-  { slug: 'directorpi-sunscreen', label: '전문가 큐레이션', emoji: '1f3c5', tint: '#F3EAE1', pillBg: '#F3E4E9', pillColor: '#8A1238', hook: '성분 전문가가 직접 검증\n디렉터파이 PICK' },
 ];
 
 // Slugs 301-redirected in next.config (P0 dup consolidation) — never link to a
@@ -133,25 +134,24 @@ export default async function BestIndexPage() {
         priced.find((prod) => prod.image && prod.image.startsWith('http'))?.image ??
         matched.find((prod) => prod.image && prod.image.startsWith('http'))?.image ??
         null;
-      // 최저가 상품(딜 카드용) 스포트라이트 — 브랜드·정가·할인·최저 판매처.
-      const t = priced[0];
-      const bestStore = t
-        ? (t.stores.find((s) => s.isBest && s.hasPrice !== false) ??
-          [...t.stores].filter((s) => s.hasPrice !== false && s.price > 0).sort((a, b) => a.price - b.price)[0])
-        : undefined;
-      const top: TopProduct | null = t
-        ? {
-            brand: t.brand,
-            name: t.name,
-            image: t.image && t.image.startsWith('http') ? t.image : null,
-            price: t.lowestPrice ?? null,
-            regularPrice: t.regularPrice ?? null,
-            discountPct: t.discountVsRegular ?? null,
-            storeName: bestStore?.name ?? null,
-            storeSlug: bestStore?.sellerSlug ?? null,
-          }
-        : null;
-      return { page: p, seller: spec?.seller, n: matched.length, lowestPrice, image, top };
+      // 딜 카드 스포트라이트 후보 — 최저가 순 상위 5개(카드 dedupe용).
+      const topCandidates: TopProduct[] = priced.slice(0, 5).map((t) => {
+        const bestStore =
+          t.stores.find((s) => s.isBest && s.hasPrice !== false) ??
+          [...t.stores].filter((s) => s.hasPrice !== false && s.price > 0).sort((a, b) => a.price - b.price)[0];
+        return {
+          id: t.id,
+          brand: t.brand,
+          name: t.name,
+          image: t.image && t.image.startsWith('http') ? t.image : null,
+          price: t.lowestPrice ?? null,
+          regularPrice: t.regularPrice ?? null,
+          discountPct: t.discountVsRegular ?? null,
+          storeName: bestStore?.name ?? null,
+          storeSlug: bestStore?.sellerSlug ?? null,
+        };
+      });
+      return { page: p, seller: spec?.seller, n: matched.length, lowestPrice, image, topCandidates };
     })
     .filter((x) => x.n >= MIN_SEO_PRODUCTS && !REDIRECTED.has(x.page.slug));
 
@@ -161,27 +161,46 @@ export default async function BestIndexPage() {
 
   const categoryAll = rest.filter((x) => typeOf(x) === 'category');
 
-  // ① 에디터 픽 — 시즌 딜 카드 캐러셀. 시즌 slug ∩ 활성 가이드, 없으면 제품 많은 순으로 보충.
+  // ① 에디터 픽 — 시즌 딜 카드 캐러셀. 시즌 slug ∩ 활성 가이드(비활성 자동 스킵).
+  // 가이드끼리 제품 풀이 겹치면(예: 톤업 ⊂ 디렉터파이) 같은 최저가 상품으로 수렴해
+  // 카드가 중복돼 보인다. 이미 쓴 상품·브랜드를 추적해 다음 후보로 넘겨 이미지 다양성 확보.
   const bySlug = new Map(live.map((e) => [e.page.slug, e]));
-  const seasonEntries = SEASON_PICKS.map((pk) => ({ pk, e: bySlug.get(pk.slug) })).filter((x): x is { pk: (typeof SEASON_PICKS)[number]; e: LiveEntry } => !!x.e);
-  const editorCards: EditorCard[] = seasonEntries.map(({ pk, e }) => ({
-    slug: e.page.slug,
-    label: pk.label,
-    emoji: `/emoji/${pk.emoji}.svg`,
-    tint: pk.tint,
-    pillBg: pk.pillBg,
-    pillColor: pk.pillColor,
-    hook: pk.hook,
-    n: e.n,
-    brand: e.top?.brand ?? null,
-    name: e.top?.name ?? null,
-    image: e.top?.image ?? e.image ?? null,
-    price: e.top?.price ?? e.lowestPrice ?? null,
-    regularPrice: e.top?.regularPrice ?? null,
-    discountPct: e.top?.discountPct ?? null,
-    storeName: e.top?.storeName ?? null,
-    storeSlug: e.top?.storeSlug ?? null,
-  }));
+  const usedProductIds = new Set<string>();
+  const usedBrands = new Set<string>();
+  const editorCards: EditorCard[] = [];
+  for (const pk of SEASON_PICKS) {
+    const e = bySlug.get(pk.slug);
+    if (!e) continue;
+    const cands = e.topCandidates;
+    // 이미 쓴 상품/브랜드가 아닌 후보 우선 → 상품만 다른 것 → 없으면 원래 최저가.
+    const chosen =
+      cands.find((c) => !usedProductIds.has(c.id) && (!c.brand || !usedBrands.has(c.brand))) ??
+      cands.find((c) => !usedProductIds.has(c.id)) ??
+      cands[0] ??
+      null;
+    if (chosen) {
+      usedProductIds.add(chosen.id);
+      if (chosen.brand) usedBrands.add(chosen.brand);
+    }
+    editorCards.push({
+      slug: e.page.slug,
+      label: pk.label,
+      emoji: `/emoji/${pk.emoji}.svg`,
+      tint: pk.tint,
+      pillBg: pk.pillBg,
+      pillColor: pk.pillColor,
+      hook: pk.hook,
+      n: e.n,
+      brand: chosen?.brand ?? null,
+      name: chosen?.name ?? null,
+      image: chosen?.image ?? e.image ?? null,
+      price: chosen?.price ?? e.lowestPrice ?? null,
+      regularPrice: chosen?.regularPrice ?? null,
+      discountPct: chosen?.discountPct ?? null,
+      storeName: chosen?.storeName ?? null,
+      storeSlug: chosen?.storeSlug ?? null,
+    });
+  }
   const featuredSlugs = new Set(editorCards.map((c) => c.slug));
 
   // 이모지 타일 그룹 빌더 — skinType 필터 또는 keyword-slug 필터에서 아이템 수집
