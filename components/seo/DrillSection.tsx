@@ -39,7 +39,7 @@ export default function DrillSection({ groups, accent }: { groups: DrillGroup[];
                 type="button"
                 onClick={() => setSel(on ? null : g.key)}
                 aria-expanded={on}
-                className={`w-full aspect-square flex flex-col items-center justify-center gap-1 rounded-2xl border transition-all active:scale-[0.97] ${on ? t.on : 'bg-surface border-line'}`}
+                className={`w-full aspect-square flex flex-col items-center justify-center gap-2 rounded-2xl border transition-all active:scale-[0.97] ${on ? t.on : 'bg-surface border-line'}`}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={g.emoji} alt="" width={30} height={30} className="w-[30px] h-[30px]" />
