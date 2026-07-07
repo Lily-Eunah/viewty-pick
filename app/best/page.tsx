@@ -127,15 +127,18 @@ export default async function BestIndexPage() {
   const live: LiveEntry[] = pages
     .map((p) => {
       const spec = SEO_PAGE_SPECS.find((s) => s.slug === p.slug);
+      // matchSeoProducts는 입력 순서(=getProducts({sortBy:'recommend'}) 순위)를 그대로 보존한다.
+      // 그 가이드 페이지 자체가 보여주는 "1등"과 에디터 픽 스포트라이트가 같은 제품을 가리키도록
+      // recommend 순서를 그대로 쓴다(최저가 순 재정렬 금지) — lowestPrice 배지 값만 별도 계산.
       const matched = matchSeoProducts(products, { category: p.category, skinType: p.skin_type, badge: p.badge_type, keywords: p.keywords, seller: spec?.seller });
-      const priced = matched.filter((prod) => prod.hasAnyPrice !== false && prod.lowestPrice > 0).sort((a, b) => a.lowestPrice - b.lowestPrice);
-      const lowestPrice = priced[0]?.lowestPrice ?? null;
+      const pricedByRecommend = matched.filter((prod) => prod.hasAnyPrice !== false && prod.lowestPrice > 0);
+      const lowestPrice = pricedByRecommend.length > 0 ? Math.min(...pricedByRecommend.map((prod) => prod.lowestPrice)) : null;
       const image =
-        priced.find((prod) => prod.image && prod.image.startsWith('http'))?.image ??
+        pricedByRecommend.find((prod) => prod.image && prod.image.startsWith('http'))?.image ??
         matched.find((prod) => prod.image && prod.image.startsWith('http'))?.image ??
         null;
-      // 딜 카드 스포트라이트 후보 — 최저가 순 상위 5개(카드 dedupe용).
-      const topCandidates: TopProduct[] = priced.slice(0, 5).map((t) => {
+      // 딜 카드 스포트라이트 후보 — recommend 순 상위 5개(카드 dedupe용).
+      const topCandidates: TopProduct[] = pricedByRecommend.slice(0, 5).map((t) => {
         const bestStore =
           t.stores.find((s) => s.isBest && s.hasPrice !== false) ??
           [...t.stores].filter((s) => s.hasPrice !== false && s.price > 0).sort((a, b) => a.price - b.price)[0];
