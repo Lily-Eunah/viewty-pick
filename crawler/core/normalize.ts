@@ -180,12 +180,19 @@ export function normalizePrice(product: Product, offer: PriceOffer): NormalizedP
   // differs from the DB is NO LONGER a mismatch-gate — `volume_mismatch_detail`
   // is kept ONLY as an informational audit string (NOT used to null the price or
   // hold the listing). The parsing-error risk (wrong ml → wrong ml당) is accepted.
-  let volume_ml = product.volume_ml || 50;
+  // §PR-1 canonical-unit stopgap: a per-retailer volume parsed from the title is an
+  // ML/G magnitude — meaningful ONLY for ml/g products. For 매(sheet)/개(device)
+  // products the title's ml is essence content / bundled gel, NOT the product size,
+  // so we keep the DB canonical size (매수 / 1대 — confirmed clean, §7-b) and never
+  // let an ml amount leak in to be mislabeled "185매" / "200개". (Full model: PR-2.)
+  const canonicalUnit = (product.volume_unit || 'ml').trim();
+  const unitIsMlOrG = canonicalUnit === 'ml' || canonicalUnit === 'g' || canonicalUnit === '';
+  let volume_ml = product.volume_ml || (unitIsMlOrG ? 50 : 1);
   let volume_mismatch_detail: string | null = null;
 
   // Check 1: Stage-2: prefer the run.ts-injected parsePackage result (gate+LLM with guards) over anything else
   const ext = offer.parsedPackage;
-  if (ext && ext.detected && ext.confidence === 'high') {
+  if (unitIsMlOrG && ext && ext.detected && ext.confidence === 'high') {
     if (ext.unitAmount !== null) {
       volume_ml = ext.unitAmount;
       if (product.volume_ml && ext.unitAmount !== product.volume_ml) {
@@ -195,13 +202,13 @@ export function normalizePrice(product: Product, offer: PriceOffer): NormalizedP
       // 기기 제품 등 volume=null로 교정된 경우
       volume_ml = product.volume_ml || 1;
     }
-  } else if (offer.parsedVolumeRaw !== undefined && offer.parsedVolumeRaw !== null) {
+  } else if (unitIsMlOrG && offer.parsedVolumeRaw !== undefined && offer.parsedVolumeRaw !== null) {
     // Check 2: explicit parsedVolumeRaw from adapter (if parsedPackage is absent or low-confidence)
     volume_ml = offer.parsedVolumeRaw;
     if (product.volume_ml && offer.parsedVolumeRaw !== product.volume_ml) {
       volume_mismatch_detail = `판매처 용량 ${offer.parsedVolumeRaw}ml (DB ${product.volume_ml}ml와 다름) — 판매처 용량으로 ml당 계산`;
     }
-  } else if (offer.sourceText && (promo_type === 'bundle' || promo_type === 'none')) {
+  } else if (unitIsMlOrG && offer.sourceText && (promo_type === 'bundle' || promo_type === 'none')) {
     // Check 3: fallback to regex parse
     const regexExt = extractPackageFromTitle(offer.sourceText);
     if (regexExt.detected && regexExt.confidence === 'high' && regexExt.unitAmount !== null) {
@@ -219,8 +226,11 @@ export function normalizePrice(product: Product, offer: PriceOffer): NormalizedP
   // §1b: an explicitly-unverified DB volume (LLM-seeded default) stays unreliable
   // for ml normalization ONLY when the volume was NOT read from the listing — a
   // parsed listing volume overrides the unverified DB default.
+  // §PR-1: a per-retailer listing volume only counts for ml/g products — for 매/개
+  // the Checks discarded any parsed ml, so it must NOT flip unit_price to "reliable".
   const volume_from_listing =
-    (offer.parsedVolumeRaw !== undefined && offer.parsedVolumeRaw !== null) || volume_mismatch_detail !== null;
+    unitIsMlOrG &&
+    ((offer.parsedVolumeRaw !== undefined && offer.parsedVolumeRaw !== null) || volume_mismatch_detail !== null);
   const volume_unverified = product.volume_verified === false && !volume_from_listing;
   // A non-anchored fallback match (offer.inspectionWarning set) has UNVERIFIED SKU
   // identity, so its ml normalization is not trustworthy — disable the ml-based
