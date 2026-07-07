@@ -188,8 +188,28 @@ function mapToUIProduct(
     // Infer pack quantity from base vs per-unit (multipack: base = eff × N).
     const quantity = eff > 0 && price > eff ? Math.max(1, Math.round(price / eff)) : 1;
     // Per-retailer per-unit volume = total_ml / pack qty (this seller's own size).
-    const volumeMl = lp.total_ml != null && quantity > 0 ? Math.round(lp.total_ml / quantity) : null;
-    const unitPrice = lp.unit_price !== null ? Number(lp.unit_price) : null;
+    let volumeMl = lp.total_ml != null && quantity > 0 ? Math.round(lp.total_ml / quantity) : null;
+    let unitPrice = lp.unit_price !== null ? Number(lp.unit_price) : null;
+    // 정가 대비 할인율은 표시 라인이 아니라 계산값이므로 display-null과 분리한다: 기기(개)의
+    // 단가 라인을 숨기더라도 (eff÷1 = 유효한 개당) 할인율은 계속 계산돼야 한다. 단, 아래
+    // 비정상-magnitude(누수 ml) 분기에서는 값 자체가 무의미하므로 할인용 값도 함께 버린다.
+    let unitPriceForDiscount = unitPrice;
+    // §3.3 defensive: only pair the size number with its unit label when the number
+    // is plausible FOR that unit. A device(개) shows no per-unit line (개당 == price).
+    // Guards against an ml magnitude that slipped past normalize rendering as
+    // "185매" / "200개" / a bogus "매당" — a wrong number is worse than none.
+    if (volumeUnit === '개') {
+      unitPrice = null; // 기기: 개당 == 가격, 표시 라인 숨김 (할인율은 unitPriceForDiscount로 유지)
+      if (volumeMl != null && volumeMl !== 1) volumeMl = null;
+    } else if (volumeUnit === '매' || volumeUnit === '장') {
+      // 상한 1000: 고매수 화장솜/패드(정상)는 살리고 누수 ml(대개 <300이라 Fix A로 이미 차단됨)
+      // 을 넘어선 극단값만 숨긴다.
+      if (volumeMl == null || volumeMl < 1 || volumeMl > 1000) { volumeMl = null; unitPrice = null; unitPriceForDiscount = null; }
+    } else if (volumeMl != null && (volumeMl < 1 || volumeMl > 2000)) {
+      volumeMl = null;
+      unitPrice = null;
+      unitPriceForDiscount = null;
+    }
     return {
       ...baseStore,
       price,
@@ -203,7 +223,8 @@ function mapToUIProduct(
       quantity: quantity > 1 ? quantity : undefined,
       composition: compositionLabel(lp.promo_type, lp.promo_text, quantity),
       // 정가 대비 할인률 (ml당-normalized). null when 정가/용량/ml당 missing.
-      discountVsRegular: discountVsRegular(regularPrice, prod.volume_ml, unitPrice),
+      // display-null과 분리된 값 사용(기기 할인율 보존, §3.3 리뷰 반영).
+      discountVsRegular: discountVsRegular(regularPrice, prod.volume_ml, unitPriceForDiscount),
     };
   });
 
