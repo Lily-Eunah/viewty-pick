@@ -59,9 +59,21 @@ function applySellerFilter(products: UIProduct[], seller?: string | null): UIPro
   return products.filter((p) => p.stores.some((s) => s.sellerSlug === seller));
 }
 
+// Data-layer rejection (post-crawl transient) must NOT escape the render: OpenNext
+// caches the resulting 500 as the route response, wedging the page until the next
+// revalidate/deploy. Degrade to the not-found path instead — ISR (3600s) self-heals.
+async function safeGetSeoPageData(slug: string): Promise<{ page: Awaited<ReturnType<typeof getSeoPageData>>['page']; products: UIProduct[] }> {
+  try {
+    return await getSeoPageData(slug);
+  } catch (e) {
+    console.error(`[best/${slug}] data unavailable, degrading`, e);
+    return { page: null, products: [] };
+  }
+}
+
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
-  const { page, products: rawProducts } = await getSeoPageData(slug);
+  const { page, products: rawProducts } = await safeGetSeoPageData(slug);
   const spec = SEO_PAGE_SPECS.find((s) => s.slug === slug);
   const products = applySellerFilter(rawProducts, spec?.seller);
   if (!page || products.length < MIN_SEO_PRODUCTS) {
@@ -89,8 +101,11 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 export default async function BestPage({ params }: PageProps) {
   const { slug } = await params;
   const [{ page, products: rawProducts }, allPages] = await Promise.all([
-    getSeoPageData(slug),
-    getActiveSeoPages(),
+    safeGetSeoPageData(slug),
+    getActiveSeoPages().catch((e) => {
+      console.error(`[best/${slug}] related-guides data unavailable, degrading`, e);
+      return [];
+    }),
   ]);
 
   const spec = SEO_PAGE_SPECS.find((s) => s.slug === slug);

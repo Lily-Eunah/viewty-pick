@@ -40,7 +40,16 @@ const GROUP_META: Record<string, { label: string; intro: string }> = {
 };
 
 export default async function BestIndexPage() {
-  const [pages, products] = await Promise.all([getActiveSeoPages(), getProducts({ sortBy: 'recommend' })]);
+  // Data-layer rejection (post-crawl transient) must NOT escape the render: OpenNext
+  // caches the resulting 500 as the route response, wedging /best until the next
+  // revalidate/deploy. Render a degraded (empty) hub instead — ISR (3600s) self-heals.
+  let pages: Awaited<ReturnType<typeof getActiveSeoPages>> = [];
+  let products: Awaited<ReturnType<typeof getProducts>> = [];
+  try {
+    [pages, products] = await Promise.all([getActiveSeoPages(), getProducts({ sortBy: 'recommend' })]);
+  } catch (e) {
+    console.error('[best] data unavailable, rendering degraded hub', e);
+  }
 
   // Only list pages that actually back >= MIN_SEO_PRODUCTS products (matches the
   // per-page thin-content guard, so the hub never links to a 404).

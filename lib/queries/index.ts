@@ -356,19 +356,44 @@ export interface RawData {
   dbSellers: DbSeller[];
 }
 
+/**
+ * Retry a transiently-failing async op (post-crawl Supabase load spikes). The
+ * nightly failure mode: the daily crawler finishes its writes, fires the on-demand
+ * revalidate, and the very next /best render's queries hit Supabase while it is
+ * still busy — one error and (before this fix) the code fell into loadMockDB()'s
+ * fs.readFileSync, which throws on the Worker; OpenNext then CACHES that 500 as the
+ * route response, so the page stays broken until the next revalidate/deploy.
+ */
+async function withRetry<T>(fn: () => Promise<T>, attempts = 3, baseDelayMs = 400): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastErr = e;
+      if (i < attempts - 1) await new Promise((r) => setTimeout(r, baseDelayMs * (i + 1)));
+    }
+  }
+  throw lastErr;
+}
+
 const fetchAllData = cache(async (): Promise<RawData> => {
   if (isSupabaseConfigured()) {
-    const [pRes, lRes, cRes, pbRes, bRes, sRes, lpRes] = await Promise.all([
-      supabase.from('products').select('*').eq('is_active', true),
-      supabase.from('listings').select('*').eq('is_active', true),
-      supabase.from('categories').select('*'),
-      supabase.from('product_badges').select('*'),
-      supabase.from('badges').select('*'),
-      supabase.from('sellers').select('id, slug, name, is_price_comparison_enabled'),
-      supabase.from('listing_prices_public').select('*'),
-    ]);
-
-    if (!pRes.error && pRes.data) {
+    // Retried; a failed query REJECTS (never falls through to the fs-backed mock —
+    // fs throws on the Worker and the resulting 500 would be cached as the route).
+    // A clean rejection also keeps unstable_cache from persisting a bad (empty)
+    // value for the whole PRODUCTS_REVALIDATE_SECONDS window.
+    return withRetry(async () => {
+      const [pRes, lRes, cRes, pbRes, bRes, sRes, lpRes] = await Promise.all([
+        supabase.from('products').select('*').eq('is_active', true),
+        supabase.from('listings').select('*').eq('is_active', true),
+        supabase.from('categories').select('*'),
+        supabase.from('product_badges').select('*'),
+        supabase.from('badges').select('*'),
+        supabase.from('sellers').select('id, slug, name, is_price_comparison_enabled'),
+        supabase.from('listing_prices_public').select('*'),
+      ]);
+      if (pRes.error || !pRes.data) throw new Error(`[queries] fetchAllData products query failed: ${pRes.error?.message ?? 'no data'}`);
       return {
         dbProducts: pRes.data,
         dbListings: lRes.data || [],
@@ -378,9 +403,10 @@ const fetchAllData = cache(async (): Promise<RawData> => {
         dbListingPrices: lpRes.data || [],
         dbSellers: sRes.data || [],
       };
-    }
+    });
   }
 
+  // Local dev without Supabase only — fs is available there.
   const db = loadMockDB();
   const dbListings = db.listings.filter((l) => l.is_active);
   return {
@@ -401,6 +427,7 @@ export async function getCategories(): Promise<Category[]> {
   if (isSupabaseConfigured()) {
     const { data, error } = await supabase.from('categories').select('*').order('sort_order', { ascending: true });
     if (!error && data) return data;
+    return []; // configured-but-failed: degrade, never fall into the fs mock (Worker-fatal)
   }
   const db = loadMockDB();
   return [...db.categories].sort((a, b) => a.sort_order - b.sort_order);
@@ -412,7 +439,7 @@ export async function getCategories(): Promise<Category[]> {
 export async function getCategoryBySlug(slug: string): Promise<Category | null> {
   if (isSupabaseConfigured()) {
     const { data } = await supabase.from('categories').select('*').eq('slug', slug).single();
-    if (data) return data;
+    return data ?? null; // missing OR failed: notFound beats the fs mock (Worker-fatal)
   }
   const db = loadMockDB();
   return db.categories.find((c) => c.slug === slug) || null;
@@ -593,11 +620,14 @@ export async function getPickPageData(badgeSlug: string, categorySlug: string) {
 const fetchActiveSeoPages = unstable_cache(
   async (): Promise<SeoPage[]> => {
     if (isSupabaseConfigured()) {
-      const { data, error } = await supabase.from('seo_pages').select('*').eq('is_active', true);
-      if (!error && data) return data as SeoPage[];
-      // Configured but the query failed — return empty rather than falling into the
-      // fs-backed mock (throws in the Worker). Empty degrades gracefully; never 500.
-      return [];
+      // Retried; final failure REJECTS so unstable_cache doesn't persist an empty
+      // list for the whole revalidate window (the page-level guard turns the
+      // rejection into a degraded 200 that self-heals on the next ISR pass).
+      return withRetry(async () => {
+        const { data, error } = await supabase.from('seo_pages').select('*').eq('is_active', true);
+        if (error || !data) throw new Error(`[queries] seo_pages query failed: ${error?.message ?? 'no data'}`);
+        return data as SeoPage[];
+      });
     }
     // Local dev without Supabase: the file mock is only reachable where fs exists.
     try {
