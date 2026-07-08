@@ -269,6 +269,15 @@ export async function runSheetImport(): Promise<ImportStats> {
     rawSeoPages   = mockSheets.mockSeoPagesSheet;
   }
 
+  // ── PR-5 전환기: 시트 헤더 rename(volume_ml→unit_size, volume_unit→size_unit) 호환 ──
+  // 헤더가 옛 이름이든 새 이름이든 스키마가 읽는 volume_ml/volume_unit 키로 정규화한다.
+  // (시트 헤더 변경은 마이그레이션 적용 "후" 단계이므로, 그때까지는 옛 헤더가 그대로 읽힌다.)
+  rawProducts = rawProducts.map((r) => ({
+    ...r,
+    volume_ml: r.volume_ml ?? r.unit_size,
+    volume_unit: r.volume_unit ?? r.size_unit,
+  }));
+
   // ── Fail-fast: reject duplicate product_key / link_key / url before writing ─
   // A dirty sheet (same product seeded under two key schemes, or one url reused
   // across link_keys) is the root cause of DB duplicates. Refuse to import it so
@@ -376,8 +385,10 @@ export async function runSheetImport(): Promise<ImportStats> {
           name:        p.data.name,
           brand:       p.data.brand || null,
           category_id: categoryId,
-          volume_ml:   p.data.volume_ml,
-          volume_unit: p.data.volume_unit,
+          // PR-5: 새 컬럼명으로 WRITE. import는 마이그레이션 적용 "후"에만 실행해야 한다
+          // (컬럼명 관용 불가 — 운영 순서: 코드배포 → 마이그레이션 → 시트헤더 → sheets:import).
+          unit_size:   p.data.volume_ml,
+          size_unit:   p.data.volume_unit,
           regular_price: p.data.regular_price,
           hwahae_url:  p.data.hwahae_url  || null,
           image_url:   img.image,
