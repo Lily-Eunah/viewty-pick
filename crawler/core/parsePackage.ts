@@ -169,6 +169,95 @@ export function canAutoApplyVerify(r: ParsePackageResult): boolean {
   return r.method === 'llm' && r.confidence === 'high' && !r.needsInspection && !r.heterogeneous;
 }
 
+/**
+ * 정준 단위 수량(PR-2, docs §1·§3.2). 어떤 파싱 경로의 결과든 "제품의 정준 단위
+ * (product.volume_unit) 좌표계"로 환산하는 단일 관문. normalize는 이 결과만 소비하므로
+ * ml 숫자에 매/개 라벨이 붙는 사고가 구조적으로 불가능해진다.
+ *
+ *  - ml/g: unitSize=용량(ml). 우선순위 = 주입된 ext(high) > 어댑터 parsedVolumeRaw >
+ *          제목 regex > DB. (ext가 high면 authoritative — unitAmount=null이어도 DB로만 폴백,
+ *          parsedVolumeRaw로 새지 않음.)
+ *  - 매/장: unitSize=매수 = DB 정준값(§7-b clean). 제목의 ml은 함량이므로 폐기.
+ *  - 개(기기): unitSize=1, unitPriceApplies=false(개당=가격, 단가 라인 없음).
+ *  - packCount: 팩 묶음 수(1~20). 시트는 PR-2에서 1로 고정(멀티팩 시트는 PR-3에서 refine).
+ *
+ * clamp 분리(§3.2): packCount 1~20 / unitSize ml 1~2000 (매수는 DB 신뢰).
+ */
+export interface CanonicalQuantity {
+  unit: string;               // = ctx.volumeUnit || 'ml' (제품 정준 단위)
+  unitSize: number | null;    // 판매 1단위 크기 (ml량 / 매수 / 1대)
+  packCount: number;          // 팩 묶음 수 (1~20)
+  unitPriceApplies: boolean;  // false = 기기(개): 개당==가격이라 단가 라인 없음
+  sizeFromListing: boolean;   // ml/g에서 size가 판매처 파싱값(→ mismatch·reliability 신호)
+  bundle: boolean;            // packCount>1 또는 bundle promo → 번들 라벨
+  evidence: string | null;
+  trace: string;              // 판정 근거 1줄(§3.5 디버깅)
+}
+
+const inMlRange = (n: number | null | undefined): n is number => n != null && n >= 1 && n <= 2000;
+const inCountRange = (n: number | null | undefined): n is number => n != null && n >= 1 && n <= 20;
+
+export function toCanonicalQuantity(
+  ext: ParsePackageResult | undefined,
+  ctx: ParseContext,
+  sourceText?: string | null,
+  parsedVolumeRaw?: number | null
+): CanonicalQuantity {
+  const unit = (ctx.volumeUnit || 'ml').trim() || 'ml';
+  const isSheet = unit === '매' || unit === '장' || unit === 'sheet';
+  const isDevice = unit === '개';
+  const db = ctx.volumeMl;
+
+  const extHigh = !!(ext && ext.detected && ext.confidence === 'high');
+  // 개수 판정용 authoritative parse: 주입된 ext(high) 우선.
+  // (ParsePackageResult ⊇ PackageExtractionResult 이므로 둘 다 담을 수 있는 상위 타입으로.)
+  let countParse: PackageExtractionResult | undefined = extHigh ? ext : undefined;
+  let countSrc = extHigh ? ext!.method : '';
+  // 제목 regex 재파싱은 **주입된 ext가 아예 없을 때만**(ext === undefined) 한다. ext가 있으나
+  // 저신뢰면 게이트/LLM이 그 제목을 의도적으로 불신한 것(세트·증정·본품 등 needs-llm)이므로,
+  // 무가드 regex로 되살려 번들 수량(÷N)을 만들면 안 된다. (리뷰 #1)
+  if (ext === undefined && !countParse && sourceText) {
+    const rx = extractPackageFromTitle(sourceText);
+    if (rx.detected && rx.confidence === 'high') {
+      countParse = rx;
+      countSrc = 'regex(title)';
+    }
+  }
+
+  // packCount — 시트는 1 고정(PR-2). ml/g·기기는 파싱된 팩 수.
+  let packCount = 1;
+  if (countParse && !isSheet && inCountRange(countParse.unitCount)) packCount = countParse.unitCount;
+  const evidence = countParse?.evidence ?? null;
+  const bundle = countParse?.promoType === 'bundle' || packCount > 1;
+
+  let unitSize: number | null;
+  let sizeFromListing = false;
+  let sizeSrc = 'db';
+  if (isDevice) {
+    unitSize = 1;
+    sizeSrc = 'device';
+  } else if (isSheet) {
+    unitSize = db != null && db >= 1 ? db : 1; // DB 매수(정준). 제목 ml은 함량 → 폐기.
+    sizeSrc = 'db(매)';
+  } else if (extHigh) {
+    // ext(high)가 authoritative: unitAmount 있으면 그것, 없으면(기기교정·용량없음) DB로만 폴백.
+    // unitAmount=null은 "용량 없음" 신호이므로 DB 없을 때 기본 1(옛 `volume_ml || 1` 보존).
+    if (inMlRange(ext!.unitAmount)) { unitSize = ext!.unitAmount; sizeFromListing = true; sizeSrc = ext!.method; }
+    else { unitSize = db != null && db >= 1 ? db : 1; }
+  } else if (inMlRange(parsedVolumeRaw)) {
+    unitSize = parsedVolumeRaw; sizeFromListing = true; sizeSrc = 'adapter';
+  } else if (countParse && inMlRange(countParse.unitAmount)) {
+    unitSize = countParse.unitAmount; sizeFromListing = true; sizeSrc = countSrc;
+  } else {
+    unitSize = db != null && db >= 1 ? db : 50;
+  }
+
+  const t = [`unit=${unit}`, `size=${unitSize}${isSheet ? '매' : isDevice ? '개' : ''}(${sizeSrc})`, `pack=${packCount}`];
+  if (evidence) t.push(`ev="${evidence.slice(0, 30)}"`);
+
+  return { unit, unitSize, packCount, unitPriceApplies: !isDevice, sizeFromListing, bundle, evidence, trace: t.join(' ') };
+}
+
 /** needs-llm 폴백: 기존 regex 최선 결과 + 저신뢰·검수 플래그. sync를 절대 실패시키지 않는다. */
 function regexFallback(title: string): ParsePackageResult {
   return {

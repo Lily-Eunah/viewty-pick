@@ -1,6 +1,6 @@
 import { PriceOffer } from '../adapters/index';
 import { Listing, Product, ManualOverride, PromoType, ParseConfidence } from '../../lib/types';
-import { extractPackageFromTitle } from './packageExtractor';
+import { toCanonicalQuantity } from './parsePackage';
 
 export interface NormalizedPrice {
   regular_price: number | null;
@@ -23,6 +23,8 @@ export interface NormalizedPrice {
   volume_mismatch: boolean;
   volume_mismatch_detail: string | null;
   shipping_note: string | null;
+  // §3.5 관측성: 정준 단위 판정 근거 1줄(디버깅 로그용, DB 미저장).
+  parse_trace: string;
 }
 
 export function applyManualOverrides(
@@ -91,6 +93,16 @@ export function normalizePrice(product: Product, offer: PriceOffer): NormalizedP
   let total_quantity = 1;
   let parse_confidence: ParseConfidence = 'high';
 
+  // 정준 단위 수량 — 어떤 파싱 경로든 제품 정준 단위(volume_unit) 좌표계로 환산(PR-2, docs §1·§3.2).
+  // normalize는 이 결과만 소비한다: 옛 normalize 내 무가드 regex 재파싱(Check-3)과 이원화된
+  // 개수 도출을 제거하고 toCanonicalQuantity로 일원화. LLM on/off 무관하게 동일 가드를 통과한다.
+  const canonical = toCanonicalQuantity(
+    offer.parsedPackage,
+    { volumeMl: product.volume_ml, volumeUnit: product.volume_unit ?? null, productName: product.name, brand: product.brand },
+    offer.sourceText,
+    offer.parsedVolumeRaw
+  );
+
   // --- Promo math ---
 
   if (promo_type === 'buy_x_get_y' && promo_text) {
@@ -135,31 +147,21 @@ export function normalizePrice(product: Product, offer: PriceOffer): NormalizedP
     } else {
       parse_confidence = 'low';
     }
-  } else if (promo_type === 'none' && !promo_text && offer.sourceText) {
-    // Derive bundle quantity from product title. Stage-2: prefer run.ts-injected
-    // parsePackage result (gate+LLM) over re-parsing; falls back to regex when absent.
-    const ext = offer.parsedPackage ?? extractPackageFromTitle(offer.sourceText);
-    if (ext.detected && ext.confidence === 'high') {
-      const uCount = ext.unitCount || 1;
-      const uAmount = ext.unitAmount;
+  } else if (promo_type === 'none' && !promo_text) {
+    // Bundle quantity from the title = canonical packCount (§3.2, clamp 1~20 inside).
+    if (canonical.packCount > 1) {
+      total_quantity = canonical.packCount;
+      paid_quantity = canonical.packCount;
+      free_quantity = 0;
+      min_quantity = canonical.packCount;
 
-      const isCountValid = uCount >= 1 && uCount <= 20;
-      const isAmountValid = uAmount === null || (uAmount >= 1 && uAmount <= 1000);
-
-      if (isCountValid && isAmountValid) {
-        total_quantity = uCount;
-        paid_quantity = uCount;
-        free_quantity = 0;
-        min_quantity = uCount;
-
-        if (sale_price !== null) {
-          base_unit_price = sale_price;
-          effective_unit_price = Math.round(sale_price / uCount);
-        }
-
-        promo_type = ext.promoType === 'bundle' ? 'bundle' : 'none';
-        promo_text = ext.evidence;
+      if (sale_price !== null) {
+        base_unit_price = sale_price;
+        effective_unit_price = Math.round(sale_price / canonical.packCount);
       }
+
+      promo_type = canonical.bundle ? 'bundle' : 'none';
+      promo_text = canonical.evidence;
     }
   }
 
@@ -170,73 +172,29 @@ export function normalizePrice(product: Product, offer: PriceOffer): NormalizedP
     effective_unit_price = sale_price;
   }
 
-  // --- Per-retailer volume (operator decision: size differs per seller) ---
-  // A retailer may sell the same product (identity-confirmed upstream) in a
-  // different size (네이버 100ml / 올리브영 80ml / 쿠팡 120ml). We therefore price
-  // ml당 from THIS listing's own volume:
-  //   - volume READ from the offer (parsedVolumeRaw or title) → use it.
-  //   - volume NOT read → assume the DB volume (product.volume_ml).
-  // Either way unit_price is computed and unit_price_reliable=true. A volume that
-  // differs from the DB is NO LONGER a mismatch-gate — `volume_mismatch_detail`
-  // is kept ONLY as an informational audit string (NOT used to null the price or
-  // hold the listing). The parsing-error risk (wrong ml → wrong ml당) is accepted.
-  // §PR-1 canonical-unit stopgap: a per-retailer volume parsed from the title is an
-  // ML/G magnitude — meaningful ONLY for ml/g products. For 매(sheet)/개(device)
-  // products the title's ml is essence content / bundled gel, NOT the product size,
-  // so we keep the DB canonical size (매수 / 1대 — confirmed clean, §7-b) and never
-  // let an ml amount leak in to be mislabeled "185매" / "200개". (Full model: PR-2.)
-  const canonicalUnit = (product.volume_unit || 'ml').trim();
-  const unitIsMlOrG = canonicalUnit === 'ml' || canonicalUnit === 'g' || canonicalUnit === '';
-  let volume_ml = product.volume_ml || (unitIsMlOrG ? 50 : 1);
-  let volume_mismatch_detail: string | null = null;
-
-  // Check 1: Stage-2: prefer the run.ts-injected parsePackage result (gate+LLM with guards) over anything else
-  const ext = offer.parsedPackage;
-  if (unitIsMlOrG && ext && ext.detected && ext.confidence === 'high') {
-    if (ext.unitAmount !== null) {
-      volume_ml = ext.unitAmount;
-      if (product.volume_ml && ext.unitAmount !== product.volume_ml) {
-        volume_mismatch_detail = `판매처 용량 ${ext.unitAmount}ml (DB ${product.volume_ml}ml와 다름) — 판매처 용량으로 ml당 계산`;
-      }
-    } else {
-      // 기기 제품 등 volume=null로 교정된 경우
-      volume_ml = product.volume_ml || 1;
-    }
-  } else if (unitIsMlOrG && offer.parsedVolumeRaw !== undefined && offer.parsedVolumeRaw !== null) {
-    // Check 2: explicit parsedVolumeRaw from adapter (if parsedPackage is absent or low-confidence)
-    volume_ml = offer.parsedVolumeRaw;
-    if (product.volume_ml && offer.parsedVolumeRaw !== product.volume_ml) {
-      volume_mismatch_detail = `판매처 용량 ${offer.parsedVolumeRaw}ml (DB ${product.volume_ml}ml와 다름) — 판매처 용량으로 ml당 계산`;
-    }
-  } else if (unitIsMlOrG && offer.sourceText && (promo_type === 'bundle' || promo_type === 'none')) {
-    // Check 3: fallback to regex parse
-    const regexExt = extractPackageFromTitle(offer.sourceText);
-    if (regexExt.detected && regexExt.confidence === 'high' && regexExt.unitAmount !== null) {
-      volume_ml = regexExt.unitAmount;
-      if (product.volume_ml && regexExt.unitAmount !== product.volume_ml) {
-        volume_mismatch_detail = `판매처 용량 ${regexExt.unitAmount}ml (DB ${product.volume_ml}ml와 다름) — 판매처 용량으로 ml당 계산`;
-      }
-    }
-  }
+  // --- Per-retailer size via 정준 단위 (canonical, PR-2 docs §1·§3.2) ---
+  // 판매처가 같은 제품을 다른 크기로 팔 수 있어(네이버 100ml / 올영 80ml) 그 판매처 용량으로
+  // 단가를 낸다. 단, 크기의 단위는 제품 정준 단위(volume_unit)를 따른다: ml/g는 판매처 용량,
+  // 매(시트)는 DB 매수(제목 ml은 함량이라 폐기), 개(기기)는 1대. DB와 다른 판매처 용량은
+  // 게이트가 아니라 정보성(volume_mismatch_detail)일 뿐이다.
+  const volume_ml = canonical.unitSize ?? (product.volume_ml || 1);
+  const volume_mismatch_detail: string | null =
+    canonical.sizeFromListing && product.volume_ml && canonical.unitSize !== product.volume_ml
+      ? `판매처 용량 ${canonical.unitSize}${canonical.unit} (DB ${product.volume_ml}${canonical.unit}와 다름) — 판매처 용량으로 단가 계산`
+      : null;
 
   const total_ml = volume_ml * total_quantity;
 
-  // ml당 단가 (effective unit price ÷ this listing's volume). Per-retailer volume:
-  // computed and reliable regardless of whether the volume was parsed or assumed.
-  // §1b: an explicitly-unverified DB volume (LLM-seeded default) stays unreliable
-  // for ml normalization ONLY when the volume was NOT read from the listing — a
-  // parsed listing volume overrides the unverified DB default.
-  // §PR-1: a per-retailer listing volume only counts for ml/g products — for 매/개
-  // the Checks discarded any parsed ml, so it must NOT flip unit_price to "reliable".
+  // 단위당 단가 = 개당가 ÷ unitSize. 매 제품이면 매당, ml이면 ml당. 기기(개)는 개당==가격이라
+  // unitPriceApplies=false → null (단가 라인 없음). §1b: 판매처에서 용량을 읽지 못한 미검증
+  // DB 용량(LLM 시드 기본값)은 단위 정규화에 비신뢰. inspectionWarning(비앵커 폴백)도 비신뢰.
+  // 신뢰 판정은 옛 의미를 그대로 보존(리뷰 #2): adapter parsedVolumeRaw가 있거나 판매처 용량이
+  // DB와 다를 때만 "판매처에서 읽음"으로 본다(제목 용량이 DB와 동일하면 미검증 DB는 여전히 비신뢰).
   const volume_from_listing =
-    unitIsMlOrG &&
-    ((offer.parsedVolumeRaw !== undefined && offer.parsedVolumeRaw !== null) || volume_mismatch_detail !== null);
+    canonical.sizeFromListing && (offer.parsedVolumeRaw != null || volume_mismatch_detail !== null);
   const volume_unverified = product.volume_verified === false && !volume_from_listing;
-  // A non-anchored fallback match (offer.inspectionWarning set) has UNVERIFIED SKU
-  // identity, so its ml normalization is not trustworthy — disable the ml-based
-  // unit_price (price itself stays visible/comparable, like §1b).
   const match_unverified = !!offer.inspectionWarning;
-  const unit_price_reliable = !volume_unverified && !match_unverified;
+  const unit_price_reliable = canonical.unitPriceApplies && !volume_unverified && !match_unverified;
   const unit_price =
     unit_price_reliable && effective_unit_price !== null
       ? Number((effective_unit_price / volume_ml).toFixed(4))
@@ -261,5 +219,6 @@ export function normalizePrice(product: Product, offer: PriceOffer): NormalizedP
     volume_mismatch: volume_mismatch_detail !== null, // informational, never gates
     volume_mismatch_detail,
     shipping_note: offer.shippingNote ?? null,
+    parse_trace: canonical.trace,
   };
 }

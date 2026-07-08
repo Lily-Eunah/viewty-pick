@@ -446,13 +446,17 @@ export async function crawlPipeline(): Promise<void> {
       // into the offer so normalize uses it instead of re-parsing sourceText. Only
       // high-confidence parses change normalize's numbers (its confidence gate);
       // low-confidence/하lucination-guarded results are ignored there (conservative).
-      if (llmTitleParseOn && offer.sourceText) {
+      // PR-2 §3.1: LLM on/off 무관하게 항상 parsePackage를 주입한다. off면 게이트+regexFallback만
+      // 돌아(LLM 미호출, 비용 0) normalize가 정준 단위 가드를 반드시 통과하도록 한다(옛 normalize
+      // 내 무가드 regex 경로 제거). needsInspection 라우팅은 LLM on일 때만(off는 regexFallback이
+      // 전부 저신뢰라 과검수가 되므로 제외).
+      if (offer.sourceText) {
         try {
           offer.parsedPackage = await parsePackage(
             rawOfferTitle(offer.sourceText),
             { volumeMl: product.volume_ml ?? null, volumeUnit: product.volume_unit ?? null, productName: product.name, brand: product.brand ?? null },
-            llmExtractTitle,
-            parseCache
+            llmTitleParseOn ? llmExtractTitle : undefined,
+            llmTitleParseOn ? parseCache : undefined
           );
         } catch (e) {
           console.warn(`[Pipeline] parsePackage failed for ${product.name}: ${(e as Error).message}`);
@@ -462,13 +466,23 @@ export async function crawlPipeline(): Promise<void> {
         // 검토해 넣은 SKU)는 LLM이 불확실해도 검수로 보내지 않고 그대로 노출한다.
         // inspectionWarning을 세팅하면 healthcheck가 status='warning'(숨김)로 잡고, 아래 priced
         // warning 블록이 예측과 함께 inspection 탭에 push한다. 운영자 O로 확정.
-        if (offer.parsedPackage?.needsInspection && !offer.inspectionWarning && !offer.anchored) {
+        if (llmTitleParseOn && offer.parsedPackage?.needsInspection && !offer.inspectionWarning && !offer.anchored) {
           offer.inspectionWarning = `LLM 파싱 저신뢰/세트 의심 — 예측 확인 후 O${offer.parsedPackage.evidence ? ` (${offer.parsedPackage.evidence})` : ''}`.slice(0, 200);
         }
       }
 
       // 4.3 Normalize raw prices
       const norm = normalizePrice(product, offer);
+
+      // §3.5 판정 트레이스 — 제목당 1줄 구조화 로그(GitHub Actions 크롤 로그에 영구 보존, grep 추적).
+      if (offer.sourceText) {
+        console.log(
+          `[TitleParse] product=${product.product_key} seller=${seller.slug} ` +
+          `src=${offer.parsedPackage ? offer.parsedPackage.method : 'none'} ${norm.parse_trace}` +
+          `${offer.parsedPackage?.needsInspection ? ' needsInspection' : ''} ` +
+          `title="${rawOfferTitle(offer.sourceText).slice(0, 60)}"`
+        );
+      }
 
       // 4.4 Historic snapshots comparison
       const prevSnap = previousSnapshots.find((s) => s.listing_id === listing.id) || null;
