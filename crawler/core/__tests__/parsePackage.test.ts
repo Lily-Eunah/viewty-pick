@@ -4,7 +4,7 @@
  *
  * Run: tsx crawler/core/__tests__/parsePackage.test.ts
  */
-import { analyzeGate, parsePackage, canAutoApplyVerify } from '../parsePackage';
+import { analyzeGate, parsePackage, canAutoApplyVerify, toCanonicalQuantity } from '../parsePackage';
 import type { ParsePackageResult } from '../parsePackage';
 import type { ParseContext } from '../parsePackage';
 import type { LlmTitleResult } from '../titleParseGuards';
@@ -181,6 +181,39 @@ for (const c of gateCases) {
   check('verify: heterogeneous → no auto', canAutoApplyVerify(mk({ heterogeneous: true })) === false);
   check('verify: needsInspection → no auto', canAutoApplyVerify(mk({ needsInspection: true })) === false);
   check('verify: regex method → no auto', canAutoApplyVerify(mk({ method: 'regex' })) === false);
+
+  // ── toCanonicalQuantity (PR-2 정준 단위 관문) ──────────────────────────────
+  const cq = (ext: ParsePackageResult | undefined, ctx: Partial<ParseContext>, src?: string | null, pvr?: number | null) =>
+    toCanonicalQuantity(ext, CTX(ctx), src, pvr);
+
+  const c1 = cq(mk({ unitAmount: 150, unitCount: 1 }), { volumeMl: 50, volumeUnit: 'ml' });
+  check('canonical ml: parsed size 150, pack 1, from-listing', c1.unitSize === 150 && c1.packCount === 1 && c1.sizeFromListing && c1.unitPriceApplies);
+
+  const c2 = cq(undefined, { volumeMl: 50, volumeUnit: 'ml' }, null, 100);
+  check('canonical ml: adapter parsedVolumeRaw 100', c2.unitSize === 100 && c2.sizeFromListing);
+
+  const c3 = cq(undefined, { volumeMl: 50, volumeUnit: 'ml' });
+  check('canonical ml: DB fallback 50, not from listing', c3.unitSize === 50 && !c3.sizeFromListing);
+
+  const c4 = cq(mk({ unitAmount: 50, unitCount: 2, promoType: 'bundle' }), { volumeMl: 50, volumeUnit: 'ml' });
+  check('canonical ml: pack 2 bundle', c4.packCount === 2 && c4.bundle === true);
+
+  const c5 = cq(mk({ unitAmount: 185, unitCount: 1, unitType: 'sheet' }), { volumeMl: 70, volumeUnit: '매' });
+  check('canonical 매: DB count 70, discards ml 185', c5.unitSize === 70 && c5.unit === '매' && !c5.sizeFromListing && c5.unitPriceApplies);
+
+  const c6 = cq(undefined, { volumeMl: 70, volumeUnit: '매' }, null, 27);
+  check('canonical 매: adapter ml 27 ignored → 70', c6.unitSize === 70 && !c6.sizeFromListing);
+
+  const c7 = cq(undefined, { volumeMl: 1, volumeUnit: '개' }, null, 200);
+  check('canonical 개: size 1, no per-unit price', c7.unitSize === 1 && c7.unitPriceApplies === false);
+
+  const c8 = cq(undefined, { volumeMl: 50, volumeUnit: 'ml' }, '토너 100ml 2개');
+  check('canonical ml: sourceText regex → size 100 pack 2', c8.unitSize === 100 && c8.packCount === 2);
+
+  // 리뷰 #1: 저신뢰 ext가 주입되면(게이트/LLM이 불신) 제목을 무가드 regex로 재파싱하지 않는다.
+  const lowExt = mk({ confidence: 'low', unitAmount: null, unitCount: null, promoType: 'set', route: 'needs-llm' });
+  const c9 = cq(lowExt, { volumeMl: 50, volumeUnit: 'ml' }, '토너 100ml + 세럼 30ml 2개');
+  check('canonical: distrusted low ext → NOT re-parsed → pack 1, DB size', c9.packCount === 1 && c9.unitSize === 50 && !c9.sizeFromListing);
 
   console.log(log.join('\n'));
   console.log(failed ? '\n✗ FAILED' : '\n✓ ALL PASSED');
