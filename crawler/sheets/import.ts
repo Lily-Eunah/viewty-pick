@@ -289,6 +289,19 @@ export async function runSheetImport(): Promise<ImportStats> {
     return stats;
   }
 
+  // ── §3.4 unit/value integrity — NON-BLOCKING warning ──────────────────────
+  // volume_unit must be the true unit of the volume_ml number: 매/개 rows should not
+  // carry an ml/규격 magnitude (root cause of "185매"/"200개"). This is a HEURISTIC
+  // (range-based) so it can false-positive on legit 대용량/고매수 SKUs; a single
+  // violation must NOT freeze the daily sheet→DB sync. We report and continue — the
+  // display defensive (PR-1) is the layer that actually hides an absurd magnitude.
+  const unitViolations = v.detectUnitValueViolations(rawProducts);
+  if (unitViolations.length > 0) {
+    const report = v.formatUnitValueViolations(unitViolations);
+    console.warn('[Sheet Import] WARN — unit/value mismatch in products (§3.4), continuing:\n' + report);
+    stats.errors.push('Unit-value validation warnings:\n' + report);
+  }
+
   // ── Freeze auto-generated product_keys back to the sheet (Google path only) ──
   // Run once the sheet is known clean: persist generated keys into blank cells so a
   // later product rename keeps the same product id. Best-effort (never aborts).

@@ -391,6 +391,52 @@ export function detectSheetDuplicates(
   return { duplicateProductKeys, duplicateProductNames, duplicateSlugs, duplicateLinkKeys, duplicateUrls };
 }
 
+// ─── unit/value integrity (§3.4) ──────────────────────────────────────────────
+export interface UnitValueViolation {
+  product_key: string;
+  name: string;
+  volume_unit: string;
+  volume_ml: number;
+  reason: string;
+}
+
+/**
+ * §3.4 단위-값 정합 검증: volume_unit이 곧 volume_ml 숫자의 실제 단위여야 한다는 불변식을
+ * import 시점에 확인한다. 매/개 제품에 ml·규격 숫자가 들어가면 화면에서 "185매/200개"로 오표기되는
+ * 사고의 원천이라 위반 행을 보고한다(§7-b 실측 기준 현재 0건 — 예방 장치, 비차단 경고).
+ *   - '매': 1~1000 정수(매수; 대용량 화장솜/패드 허용)
+ *   - '개': 1~100 정수(대개 1~수개; 100입 팩 허용)
+ *   - 'ml'/'g': 1~3000(2L+ 리필/바디워시 허용)
+ * volume_ml=0(미입력)은 검증 제외(기존 폴백 유지). 범위만으론 in-range 누수(예: 매에 185ml)는
+ * 정상 185매와 구분 불가 — 그건 파싱 경로(PR-1/2)와 표시 방어선이 담당하고, 여기선 명백한
+ * 단위-값 불일치(개에 3000ml 등)만 잡는다.
+ */
+export function detectUnitValueViolations(rawProducts: Record<string, string>[]): UnitValueViolation[] {
+  const out: UnitValueViolation[] = [];
+  for (const row of rawProducts) {
+    const p = simpleProductRowSchema.safeParse(row);
+    if (!p.success) continue;
+    const unit = p.data.volume_unit; // 이미 ml/g/매/개로 정규화됨
+    const v = p.data.volume_ml;
+    if (v === 0) continue;
+    const key = p.data.product_key?.trim() || makeProductKey(p.data.brand, p.data.name);
+    let reason = '';
+    if (unit === '매') {
+      if (!Number.isInteger(v) || v < 1 || v > 1000) reason = `volume_unit='매'인데 volume_ml=${v} (매수는 1~1000 정수여야 함 — ml 규격값이 들어간 것 아닌지 확인)`;
+    } else if (unit === '개') {
+      if (!Number.isInteger(v) || v < 1 || v > 100) reason = `volume_unit='개'인데 volume_ml=${v} (개수는 1~100 정수여야 함 — ml/규격값이 들어간 것 아닌지 확인)`;
+    } else {
+      if (v < 1 || v > 3000) reason = `volume_unit='${unit}'인데 volume_ml=${v} (용량은 1~3000 범위여야 함)`;
+    }
+    if (reason) out.push({ product_key: key, name: p.data.name.trim(), volume_unit: unit, volume_ml: v, reason });
+  }
+  return out;
+}
+
+export function formatUnitValueViolations(vs: UnitValueViolation[]): string {
+  return vs.map((v) => `  [${v.product_key}] ${v.name}: ${v.reason}`).join('\n');
+}
+
 export function hasDuplicates(r: SheetDuplicateReport): boolean {
   return r.duplicateProductKeys.length > 0
     || r.duplicateProductNames.length > 0
