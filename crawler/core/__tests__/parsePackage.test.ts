@@ -48,6 +48,26 @@ const gateCases: GateCase[] = [
   { title: '제니피끄 세럼 2종 세트', route: 'needs-llm' }, // 세트/종
   { title: '[퍼프 3매 추가 증정] 에스쁘아 쿠션 15.8g', route: 'needs-llm' }, // 대괄호 + 증정
   { title: '토너 100ml 세럼 30ml', route: 'needs-llm' }, // 다중 용량
+  // PR-3: 무신호 괄호 스트립 → 마케팅 태그는 제거되고 단품 확정
+  { title: '[10% 추가적립] 아로셀 멜라 선세럼 40ml', route: 'trivial-single', count: 1, amount: 40, unitType: 'ml' },
+  { title: '[흔적미백]메디큐브 PDRN 토너 250ml', route: 'trivial-single', count: 1, amount: 250, unitType: 'ml' },
+  { title: '조선미녀 톤업 선크림 50ml (퍼플/그린)', route: 'trivial-single', count: 1, amount: 50, unitType: 'ml' },
+  // 신호 있는 괄호는 유지 → needs-llm
+  { title: '바이오던스 크림 50ml 기획 (+10ml)', route: 'needs-llm' },
+  // 리뷰 #1: 괄호 안 한글-단위 개수는 신호로 인식되어 유지 → needs-llm (개수 손실 방지)
+  { title: '구달 청귤 비타C 잡티세럼 30ml (2개입)', route: 'needs-llm' },
+  { title: '메디힐 마스크 (60매)', ctx: { volumeUnit: '매' }, route: 'needs-llm' },
+  // PR-3: 매-표준패턴 (매수 + 개, 카운트 2토큰이어도 결정적)
+  { title: '비플레인 시카테롤 패드 185ml, 80매입, 1개', ctx: { volumeUnit: '매', volumeMl: 80 }, route: 'sheet', count: 80, unitType: 'sheet' },
+  { title: '리얼베리어 크림 마스크 27ml, 10개입, 1개', ctx: { volumeUnit: '매', volumeMl: 10 }, route: 'sheet', count: 10, unitType: 'sheet' },
+  // PR-3: ×N개는 배수와 동일 신호 → clean-multipack
+  { title: '메디큐브 토너 250ml X 2개', route: 'clean-multipack', count: 2, amount: 250, unitType: 'ml' },
+  // PR-3: 역순 카운트+용량
+  { title: '아도르 애사비 샴푸 지성용, 1개, 530ml', route: 'clean-multipack', count: 1, amount: 530, unitType: 'ml' },
+  // PR-3: L/리터 → ml
+  { title: '메디큐브 레드 아크네 바디워시 1L, 1개', route: 'clean-multipack', count: 1, amount: 1000, unitType: 'ml' },
+  // PR-3: 리필-제품명(증상 D) → 단품 (리필은 제품명 일부)
+  { title: '아이소이 비건 제로 쿠션 리필 (리필) 13g', ctx: { productName: '비건 제로 쿠션 리필', volumeUnit: 'g', volumeMl: 13 }, route: 'trivial-single', count: 1, amount: 13, unitType: 'g' },
 ];
 
 for (const c of gateCases) {
@@ -98,9 +118,8 @@ for (const c of gateCases) {
     composition: 'homogeneous_bundle', main_unit_volume: 100, main_unit: 'ml', main_count: 5,
     gifts: [], per_unit_computable: true, confidence: 'high', evidence: '없는근거',
   });
-  // 제목엔 카운트/배수/세트 신호 전무 → 게이트는 trivial-single이라 LLM조차 안 탐.
-  // needs-llm으로 보내려 일부러 괄호 포함 제목 사용(게이트 needs-llm) + 카운트 신호는 없음.
-  const r6 = await parsePackage('토너 (단독) 에디션', CTX(), stubHallucinate);
+  // needs-llm으로 보내되(세트 키워드) 카운트/배수 신호는 전무 → 가드가 환각 개수(5)를 기각.
+  const r6 = await parsePackage('토너 세트 에디션', CTX(), stubHallucinate);
   check('parsePackage guard rejects hallucinated count → fallback(regex)', r6.method === 'regex' && r6.needsInspection === true);
 
   // ── medium confidence → 검수(자동 노출 X) ──

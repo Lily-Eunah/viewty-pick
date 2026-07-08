@@ -67,13 +67,28 @@ interface GateResult {
   reason: string; // needs-llm 사유(로그/디버깅)
 }
 
-/** gift를 떼고 SPF/PA/연도/긴숫자를 제거한, 게이트 판정용 정제 제목. */
+// 괄호 세그먼트 안에 "구성 신호"가 하나라도 있으면 유지, 전무하면 마케팅 태그로 보고 제거(§2.1).
+// 신호 = 숫자+단위(ml/g/매/장/개/입/팩/병/L/리터) · 배수(×/x N) · 결합(+) · 세트/증정/리필/본품/종 등.
+// false-positive(마케팅 태그 유지)는 LLM행이라 안전, false-negative(실 신호 제거)만 위험 → 신호는 넉넉히.
+// ⚠️ 한글 단위 뒤에는 ASCII \b가 절대 매칭되지 않으므로(한글=\W) 경계 없이 탐지한다(리뷰 #1).
+// 넉넉한 탐지는 곧 "괄호 유지→LLM"이라 안전. 복합단위(매입·개입)는 먼저 나열해 우선 매칭.
+const BRACKET_SIGNAL_RE =
+  /\d+\s*(?:ml|g|매입|개입|매|장|개|입|팩|병|리터|l)|[+×]|[xX]\s*\d|세트|기획|패키지|콜렉션|컬렉션|기프트|증정|사은품|샘플|리필|본품|종|더블|택|묶음|구성|포함/i;
+
+function stripNoSignalBrackets(s: string): string {
+  return s
+    .replace(/\[([^\]]*)\]/g, (m, inner: string) => (BRACKET_SIGNAL_RE.test(inner) ? m : ' '))
+    .replace(/\(([^)]*)\)/g, (m, inner: string) => (BRACKET_SIGNAL_RE.test(inner) ? m : ' '));
+}
+
+/** gift를 떼고 무신호 괄호·SPF/PA/연도/긴숫자를 제거한, 게이트 판정용 정제 제목. */
 function cleanForGate(title: string): string {
-  return stripPromoGifts(title || '')
+  return stripNoSignalBrackets(stripPromoGifts(title || ''))
     .replace(/SPF\s*\d+\+*/gi, ' ')
     .replace(/PA\s*\++/gi, ' ')
     .replace(/\b20\d{2}년?/g, ' ')
     .replace(/\b\d{6,}\b/g, ' ')
+    .replace(/(\d+(?:\.\d+)?)\s*[lL](?![a-z가-힣])/g, (_m, n: string) => `${parseFloat(n) * 1000}ml`) // L/리터 → ml
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -87,8 +102,14 @@ function needsLlm(reason: string): GateResult {
  * "인접" = 콤마·공백을 건너뛴 직전 의미 토큰. 카운트 귀속(allowlist) = 직전이 용량/form noun/본품.
  */
 export function analyzeGate(title: string, ctx: ParseContext): GateResult {
-  const t = cleanForGate(title);
+  let t = cleanForGate(title);
   if (!t) return { route: 'trivial-single', unitType: 'unknown', unitAmount: null, unitCount: 1, evidence: '', reason: '' };
+
+  // 리필-제품명(증상 D): 큐레이션 제품명 자체가 리필 제품이고 제목의 '리필'이 제품 지칭부
+  // (본품/+ 페어링 없음)면, '리필'은 제품명 일부(1+1 아님) → 제거 후 아래에서 단품으로 처리.
+  if (/리필/.test(ctx.productName || '') && /리필/.test(t) && !/본품|\+/.test(t)) {
+    t = t.replace(/\(?\s*리필\s*\)?/g, ' ').replace(/\s+/g, ' ').trim();
+  }
 
   // 탈락 신호: 결합(+) / 세트·증정 키워드 / 잔여 괄호·대괄호.
   if (/\+/.test(t)) return needsLlm('plus combiner');
@@ -100,14 +121,37 @@ export function analyzeGate(title: string, ctx: ParseContext): GateResult {
   const vol0 = vols[0] ? { amt: parseFloat(vols[0][1]), unit: vols[0][2].toLowerCase() as 'ml' | 'g' } : null;
   if (vol0 && (vol0.amt < 1 || vol0.amt > 1000)) return needsLlm('volume out of range');
 
-  // 배수: 용량 × N (용량 인접 필수).
-  const mult = t.match(/(\d+(?:\.\d+)?)\s*(ml|g)\s*[,\s]*[xX*×]\s*(\d+)\b/);
-  const countMatches = [...t.matchAll(/(\d+)\s*(개|입|팩|병|매|장)/g)];
+  // 배수: 용량 × N (용량 인접 필수). 뒤에 오는 "개"까지 흡수(×N과 N개는 같은 신호, §2.1).
+  const mult = t.match(/(\d+(?:\.\d+)?)\s*(ml|g)\s*[,\s]*[xX*×]\s*(\d+)\s*개?/);
+  // 카운트 토큰은 배수 매치 구간을 제외하고 센다(그래야 "250ml X 2개"의 "2개"가 중복 카운트 안 됨).
+  const countSearch = mult ? t.slice(0, mult.index!) + ' '.repeat(mult[0].length) + t.slice(mult.index! + mult[0].length) : t;
+  const countMatches = [...countSearch.matchAll(/(\d+)\s*(개|입|팩|병|매|장)/g)];
   if (mult) {
     if (countMatches.length > 0) return needsLlm('multiplier + count token (ambiguous)');
     const m = parseInt(mult[3], 10);
     if (m < 1 || m > 20) return needsLlm('multiplier out of range');
     return { route: 'clean-multipack', unitType: mult[2].toLowerCase() as 'ml' | 'g', unitAmount: parseFloat(mult[1]), unitCount: m, evidence: mult[0], reason: '' };
+  }
+
+  // 매-표준패턴(§2.1): 시트 제품의 `[Xml,] N매|장|매입|개입 [, M개]` — 카운트 토큰이 2개(매수+팩)
+  // 여도 결정적이라 LLM 없이 sheet 확정. 매/장/매입 접미는 명백한 시트라 form/name으로 인정하되,
+  // 모호한 '개입'(=ml 제품의 N개일 수도)은 DB 단위가 명시적 '매'일 때만 매수로 본다.
+  const explicitSheetUnit = (ctx.volumeUnit || '') === '매';
+  const formOrNameSheet =
+    SHEET_FORMS.some((f) => t.includes(f)) ||
+    SHEET_FORMS.some((f) => (ctx.productName || '').replace(/\s+/g, '').includes(f));
+  if (explicitSheetUnit || formOrNameSheet) {
+    const sheetTokens = [...t.matchAll(/(\d+)\s*(?:매입|매|장)(?![가-힣])/g)];
+    const gaeipTokens = explicitSheetUnit ? [...t.matchAll(/(\d+)\s*개입(?![가-힣])/g)] : [];
+    const allSheet = [...sheetTokens, ...gaeipTokens];
+    const packTokens = [...t.matchAll(/(\d+)\s*개(?!입)/g)];
+    if (allSheet.length === 1 && packTokens.length <= 1 && countMatches.length - allSheet.length - packTokens.length <= 0) {
+      const sheetN = parseInt(allSheet[0][1], 10);
+      if (sheetN >= 1 && sheetN <= 300) {
+        // 기존 sheet route와 동일 인코딩(unitCount=매수, unitAmount=ml함량은 폐기 대상이라 null).
+        return { route: 'sheet', unitType: 'sheet', unitAmount: null, unitCount: sheetN, evidence: allSheet[0][0], reason: '' };
+      }
+    }
   }
 
   if (countMatches.length >= 2) return needsLlm('multiple count tokens');
@@ -136,6 +180,11 @@ export function analyzeGate(title: string, ctx: ParseContext): GateResult {
     if (volAdjacent || formAdjacent) {
       const unitType: PackageExtractionResult['unitType'] = vol0 ? vol0.unit : 'count';
       return { route: 'clean-multipack', unitType, unitAmount: vol0 ? vol0.amt : null, unitCount: M, evidence: cm[0], reason: '' };
+    }
+    // 역순 카운트+용량(§2.1): 단일 용량 토큰이 (순서와 무관하게) 존재하면 결정적 단품/멀티팩.
+    // 예: "…샴푸 …, 1개, 530ml" — 카운트가 용량 앞에 와도 단일 용량 1개면 모호하지 않다.
+    if (vol0) {
+      return { route: 'clean-multipack', unitType: vol0.unit, unitAmount: vol0.amt, unitCount: M, evidence: cm[0], reason: '' };
     }
     return needsLlm('count not attached to product (no volume/form noun before)');
   }
