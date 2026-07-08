@@ -48,6 +48,7 @@ function norm(overrides: Partial<NormalizedPrice> = {}): NormalizedPrice {
     volume_mismatch: false,
     volume_mismatch_detail: null,
     shipping_note: null,
+    parse_trace: '',
     ...overrides,
   };
 }

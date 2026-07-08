@@ -417,13 +417,15 @@ describe('canonical-unit stopgap (§PR-1): 매/개 products never take a per-ret
     expect(result.unit_price).toBe(200); // 14000 / 70
   });
 
-  it('개 device: bundled-gel ml (parsedVolumeRaw) discarded → volume stays 1대', () => {
+  it('개 device: bundled-gel ml (parsedVolumeRaw) discarded → volume stays 1대, no per-unit price', () => {
     const deviceProduct: Product = { ...BASE_PRODUCT, volume_ml: 1, volume_unit: '개' };
     const result = normalizePrice(deviceProduct, offer({
       salePrice: 419500, promoType: 'none', parsedVolumeRaw: 200, // 부스터젤 200ml → ignored
     }));
     expect(result.total_ml).toBe(1);            // not 200
-    expect(result.unit_price).toBe(419500);     // eff / 1 (device: 개당 == price)
+    // PR-2: a device shows no per-unit line (개당 == price) → unit_price null
+    expect(result.unit_price).toBeNull();
+    expect(result.unit_price_reliable).toBe(false);
   });
 
   it('ml product: per-retailer volume still applies (no regression)', () => {
