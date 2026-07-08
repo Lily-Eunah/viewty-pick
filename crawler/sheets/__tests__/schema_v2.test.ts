@@ -18,6 +18,7 @@ import {
   makeProductKey,
   detectSheetDuplicates,
   hasDuplicates,
+  detectUnitValueViolations,
   simpleProductRowSchema,
 } from '../validate';
 
@@ -227,6 +228,51 @@ it('blank slugs never collide (fall back to unique keys)', () => {
   ];
   const r = detectSheetDuplicates(products, []);
   assert(r.duplicateSlugs.length === 0, `blank slugs flagged wrongly: ${JSON.stringify(r.duplicateSlugs)}`);
+});
+
+// ---------------------------------------------------------------------------
+console.log('\n--- unit/value integrity (§3.4) ---');
+
+it('clean rows (매수/기기1대/ml) → no violations', () => {
+  const rows: Row[] = [
+    { name: '패드', brand: 'B', category: 'sunscreen', volume_ml: '70', volume_unit: '매' },
+    { name: '기기', brand: 'B', category: 'sunscreen', volume_ml: '1', volume_unit: '개' },
+    { name: '토너', brand: 'B', category: 'sunscreen', volume_ml: '250', volume_unit: 'ml' },
+    { name: '용량미입력', brand: 'B', category: 'sunscreen', volume_ml: '0', volume_unit: '매' }, // 0 → 검증 제외
+  ];
+  const vs = detectUnitValueViolations(rows);
+  assert(vs.length === 0, `unexpected violations: ${JSON.stringify(vs)}`);
+});
+
+it('매 product with an out-of-range ml magnitude (1500) → violation', () => {
+  // 숫자 범위만으론 185(=정상 185매 가능)를 걸러낼 수 없다(설계가 수용한 한계). 1000 초과·비정수만 잡음.
+  const rows: Row[] = [{ name: '패드', brand: 'B', category: 'sunscreen', volume_ml: '1500', volume_unit: '매' }];
+  const vs = detectUnitValueViolations(rows);
+  assert(vs.length === 1 && vs[0].volume_unit === '매' && vs[0].volume_ml === 1500, `expected 매/1500 violation: ${JSON.stringify(vs)}`);
+});
+
+it('매 product with a legit high count (500매 화장솜) → no violation (generous cap)', () => {
+  const rows: Row[] = [{ name: '화장솜', brand: 'B', category: 'sunscreen', volume_ml: '500', volume_unit: '매' }];
+  const vs = detectUnitValueViolations(rows);
+  assert(vs.length === 0, `500매 should be allowed: ${JSON.stringify(vs)}`);
+});
+
+it('매 product with a non-integer magnitude (12.5) → violation', () => {
+  const rows: Row[] = [{ name: '패드', brand: 'B', category: 'sunscreen', volume_ml: '12.5', volume_unit: '매' }];
+  const vs = detectUnitValueViolations(rows);
+  assert(vs.length === 1, `expected 매 non-integer violation: ${JSON.stringify(vs)}`);
+});
+
+it('개 device with an ml magnitude (200) → violation', () => {
+  const rows: Row[] = [{ name: '기기', brand: 'B', category: 'sunscreen', volume_ml: '200', volume_unit: '개' }];
+  const vs = detectUnitValueViolations(rows);
+  assert(vs.length === 1 && vs[0].volume_unit === '개', `expected 개/200 violation: ${JSON.stringify(vs)}`);
+});
+
+it('ml product out of range (>2000) → violation', () => {
+  const rows: Row[] = [{ name: '대용량', brand: 'B', category: 'sunscreen', volume_ml: '5000', volume_unit: 'ml' }];
+  const vs = detectUnitValueViolations(rows);
+  assert(vs.length === 1, `expected ml range violation: ${JSON.stringify(vs)}`);
 });
 
 console.log(failed ? '\nResult: FAILED' : '\nResult: ALL PASSED');
