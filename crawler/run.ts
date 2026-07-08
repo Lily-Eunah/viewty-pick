@@ -16,6 +16,7 @@ import { recalculateViewtyScores } from './core/score';
 import { sendDailySummary, sendCriticalAlarm } from './core/notify';
 import { writeBackNaverSubstitutions, NaverLinkSubstitution } from './sheets/linkWriteback';
 import { isSupabaseServerConfigured, supabaseServer } from '../lib/supabase/server';
+import { productRowsCompat } from '../lib/supabase/columnCompat';
 import { loadMockDB, saveMockDB } from '../lib/supabase/mockDb';
 import { Listing, Product, PriceSnapshot, CurrentPrice, ManualOverride, RetailerAllowlist, Badge, ProductBadge, ScoreConfig } from '../lib/types';
 
@@ -154,7 +155,7 @@ export async function crawlPipeline(): Promise<void> {
         throw new Error('Supabase metadata fetch failed');
       }
 
-      products = pRes.data || [];
+      products = productRowsCompat(pRes.data || []); // PR-5 전환기: unit_size/size_unit도 읽음
       listings = lRes.data || [];
       manualOverrides = oRes.data || [];
       allowlist = alRes.data || [];

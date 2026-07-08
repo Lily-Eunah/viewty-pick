@@ -21,6 +21,7 @@ import {
   detectUnitValueViolations,
   simpleProductRowSchema,
 } from '../validate';
+import { productRowCompat } from '../../../lib/supabase/columnCompat';
 
 let failed = false;
 function it(name: string, fn: () => void) {
@@ -273,6 +274,20 @@ it('ml product out of range (>2000) → violation', () => {
   const rows: Row[] = [{ name: '대용량', brand: 'B', category: 'sunscreen', volume_ml: '5000', volume_unit: 'ml' }];
   const vs = detectUnitValueViolations(rows);
   assert(vs.length === 1, `expected ml range violation: ${JSON.stringify(vs)}`);
+});
+
+// ---------------------------------------------------------------------------
+console.log('\n--- PR-5 column compat (unit_size ?? volume_ml) ---');
+
+it('new column names (unit_size/size_unit) are read into volume_ml/volume_unit', () => {
+  const r = productRowCompat({ id: 1, unit_size: 70, size_unit: '매' } as Record<string, unknown>);
+  assert((r as { volume_ml?: number }).volume_ml === 70, `volume_ml ${(r as { volume_ml?: number }).volume_ml} !== 70`);
+  assert((r as { volume_unit?: string }).volume_unit === '매', `volume_unit wrong`);
+});
+
+it('old column names still win when present (pre-migration)', () => {
+  const r = productRowCompat({ id: 1, volume_ml: 50, volume_unit: 'ml', unit_size: 999 } as Record<string, unknown>);
+  assert((r as { volume_ml?: number }).volume_ml === 50, `should keep old volume_ml, got ${(r as { volume_ml?: number }).volume_ml}`);
 });
 
 console.log(failed ? '\nResult: FAILED' : '\nResult: ALL PASSED');

@@ -20,6 +20,7 @@
 import { Listing, Product, RetailerAllowlist } from '../../lib/types';
 import { PriceOffer, RetailerAdapter } from './index';
 import { isSupabaseServerConfigured, supabaseServer } from '../../lib/supabase/server';
+import { productRowCompat } from '../../lib/supabase/columnCompat';
 import { loadMockDB } from '../../lib/supabase/mockDb';
 import { extractPackageFromTitle, stripPromoGifts, isBareNJong } from '../core/packageExtractor';
 import { goodsNoFromOyOfferLink } from '../core/oliveyoungAnchor';
@@ -1128,7 +1129,7 @@ export class NaverAdapter implements RetailerAdapter {
     let naverSellerId = 4;
     if (isSupabaseServerConfigured()) {
       const { data: pData } = await supabaseServer.from('products').select('*').eq('id', listing.product_id).single();
-      if (pData) product = pData;
+      if (pData) product = productRowCompat(pData); // PR-5 전환기 호환
       const { data: alData } = await supabaseServer.from('retailer_allowlist').select('*').eq('is_active', true);
       if (alData) allowlist = alData;
       const { data: sData } = await supabaseServer.from('sellers').select('id').eq('slug', 'naver').single();

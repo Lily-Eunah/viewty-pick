@@ -2,6 +2,7 @@ import * as crypto from 'crypto';
 import { Listing, Product, PromoType } from '../../lib/types';
 import { PriceOffer, RetailerAdapter } from './index';
 import { isSupabaseServerConfigured, supabaseServer } from '../../lib/supabase/server';
+import { productRowCompat } from '../../lib/supabase/columnCompat';
 import { loadMockDB } from '../../lib/supabase/mockDb';
 import { productIdentityScore, hasFormConflict, distinctiveTokens, stripHtml } from './naver';
 import { stripPromoGifts } from '../core/packageExtractor';
@@ -661,7 +662,7 @@ export class CoupangAdapter implements RetailerAdapter {
   private async _loadProduct(productId: number): Promise<Product | null> {
     if (isSupabaseServerConfigured()) {
       const { data } = await supabaseServer.from('products').select('*').eq('id', productId).single();
-      return (data as Product) ?? null;
+      return data ? (productRowCompat(data) as Product) : null; // PR-5 전환기 호환
     }
     const db = loadMockDB();
     return db.products.find((p) => p.id === productId) ?? null;

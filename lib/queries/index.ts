@@ -1,6 +1,7 @@
 import { cache } from 'react';
 import { unstable_cache } from 'next/cache';
 import { isSupabaseConfigured, supabase } from '../supabase/client';
+import { productRowCompat, productRowsCompat } from '../supabase/columnCompat';
 import { loadMockDB } from '../supabase/mockDb';
 import { Category, UIProduct, UIStorePrice, Product, Listing, PriceSnapshot, PublicListingPrice, ProductBadge, Badge, SeoPage } from '../types';
 import { matchSeoProducts, SeoFilters } from '../seo/match';
@@ -419,7 +420,7 @@ const fetchAllData = cache(async (): Promise<RawData> => {
       ]);
       if (pRes.error || !pRes.data) throw new Error(`[queries] fetchAllData products query failed: ${pRes.error?.message ?? 'no data'}`);
       return {
-        dbProducts: pRes.data,
+        dbProducts: productRowsCompat(pRes.data), // PR-5 전환기: unit_size/size_unit도 읽음
         dbListings: lRes.data || [],
         dbCategories: cRes.data || [],
         dbProductBadges: pbRes.data || [],
@@ -722,15 +723,16 @@ export const getProductDetailPageData = cache(async (slug: string): Promise<{ pr
       : { data: [] };
 
     const product = mapToUIProduct(
-      prodRow as Product, (listRes.data ?? []) as Listing[],
+      productRowCompat(prodRow) as Product, (listRes.data ?? []) as Listing[], // PR-5 전환기 호환
       (catRes.data ?? []) as Category[], (pbRes.data ?? []) as ProductBadge[],
       (badgeRes.data ?? []) as Badge[], (lpData ?? []) as PublicListingPrice[],
       (selRes.data ?? []) as DbSeller[],
     );
 
-    const { data: relRows } = await supabase
+    const { data: relRowsRaw } = await supabase
       .from('products').select('*')
       .eq('category_id', prodRow.category_id).eq('is_active', true).neq('id', prodRow.id).limit(6);
+    const relRows = productRowsCompat(relRowsRaw); // PR-5 전환기 호환
 
     let related: UIProduct[] = [];
     if (relRows && relRows.length > 0) {

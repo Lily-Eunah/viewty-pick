@@ -17,6 +17,7 @@
 import { Listing, Product } from '../../lib/types';
 import { PriceOffer, RetailerAdapter } from './index';
 import { isSupabaseServerConfigured, supabaseServer } from '../../lib/supabase/server';
+import { productRowCompat } from '../../lib/supabase/columnCompat';
 import { loadMockDB } from '../../lib/supabase/mockDb';
 import { matchOliveYoungOffer, stripHtml, containsBareNJong } from './naver';
 import { resolveCuratedOyGoodsNo } from '../core/oliveyoungAnchor';
@@ -96,7 +97,7 @@ export class OliveYoungAdapter implements RetailerAdapter {
     let product: Product | null = null;
     if (isSupabaseServerConfigured()) {
       const { data: pData } = await supabaseServer.from('products').select('*').eq('id', listing.product_id).single();
-      if (pData) product = pData;
+      if (pData) product = productRowCompat(pData); // PR-5 전환기 호환
     } else {
       const db = loadMockDB();
       product = db.products.find((p) => p.id === listing.product_id) || null;
