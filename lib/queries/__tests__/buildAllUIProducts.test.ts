@@ -150,10 +150,12 @@ it('매 product: absurd leaked size (>1000) is hidden, not mislabeled', () => {
   assert(s.unitPrice == null, `unitPrice should be hidden, got ${s.unitPrice}`);
 });
 
-it('개 device: per-unit line hidden BUT 정가 할인율 preserved (review #1)', () => {
+it('개 device: per-unit line hidden BUT 정가 할인율 recovered from 개당 price', () => {
+  // PR-2: normalize emits unit_price=null for devices; the view must still show the
+  // discount, derived from the 개당(effective) price (review #3).
   const s = oneStore(
     { volume_unit: '개', volume_ml: 1, regular_price: 500000 },
-    { total_ml: 1, unit_price: 400000, base_unit_price: 400000, effective_unit_price: 400000, sale_price: 400000 }
+    { total_ml: 1, unit_price: null, base_unit_price: 400000, effective_unit_price: 400000, sale_price: 400000 }
   );
   assert(s.unitPrice == null, `device unitPrice should be hidden, got ${s.unitPrice}`);
   assert(s.discountVsRegular === 20, `discountVsRegular ${s.discountVsRegular} !== 20`);

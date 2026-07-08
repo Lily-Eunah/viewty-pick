@@ -199,7 +199,10 @@ function mapToUIProduct(
     // Guards against an ml magnitude that slipped past normalize rendering as
     // "185매" / "200개" / a bogus "매당" — a wrong number is worse than none.
     if (volumeUnit === '개') {
-      unitPrice = null; // 기기: 개당 == 가격, 표시 라인 숨김 (할인율은 unitPriceForDiscount로 유지)
+      // 기기: 개당 == 가격, 표시 라인 숨김. 정가 할인율은 개당가(eff) 기준으로 계산한다 —
+      // PR-2에서 normalize가 기기 unit_price를 null로 내보내므로 여기서 eff로 복원(리뷰 #3).
+      unitPrice = null;
+      unitPriceForDiscount = eff > 0 ? eff : null;
       if (volumeMl != null && volumeMl !== 1) volumeMl = null;
     } else if (volumeUnit === '매' || volumeUnit === '장') {
       // 상한 1000: 고매수 화장솜/패드(정상)는 살리고 누수 ml(대개 <300이라 Fix A로 이미 차단됨)
