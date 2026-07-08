@@ -25,14 +25,17 @@ export interface LlmTitleResult {
 const norm = (s: string) => (s || '').toLowerCase().replace(/\s+/g, '');
 
 /** main_count>1 의 근거가 제목에 실제로 있는지(환각 차단). */
-function countHasEvidence(title: string): boolean {
+function countHasEvidence(title: string, productName?: string | null): boolean {
   const t = title || '';
+  // 제품명 자체가 리필 제품이면 제목의 '리필' 단독은 다수 개수(1+1) 근거로 인정하지 않는다(증상 D).
+  const refillIsProductName = /리필/.test(productName || '');
   return (
     /\+/.test(t) ||
     /\d+\s*(개|입|팩|병|매|장)/.test(t) ||
     /[xX*×]\s*\d+/.test(t) ||
     /\d+\s*종/.test(t) ||
-    /리필|본품|더블/.test(t)
+    /본품|더블/.test(t) ||
+    (/리필/.test(t) && !refillIsProductName)
   );
 }
 
@@ -87,7 +90,7 @@ export function applyTitleParseGuards(
   }
 
   // --- 근거 교차검증: 다수 개수 주장엔 제목 신호가 있어야 한다 ---
-  if (count > 1 && !countHasEvidence(title)) return null;
+  if (count > 1 && !countHasEvidence(title, ctx.productName)) return null;
 
   // --- evidence substring 약검증(있으면 일부라도 제목에 존재해야) ---
   if (llm.evidence && llm.evidence.length >= 2) {
