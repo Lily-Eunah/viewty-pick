@@ -474,6 +474,22 @@ export async function crawlPipeline(): Promise<void> {
       // 4.3 Normalize raw prices
       const norm = normalizePrice(product, offer);
 
+      // §3.6 identity 가드: 판매처 용량이 DB 대비 10× 불일치 → 다른 제품/변형 의심. 앵커(운영자
+      // 확정 SKU)는 오매칭이 아니라 DB 용량 오류를 뜻하므로 노출 유지 + Discord 경고, 그 외는
+      // 가격을 숨기고 inspection 라우팅(예측 확인 후 O).
+      if (norm.identity_suspect && !offer.inspectionWarning) {
+        if (offer.anchored) {
+          if (notifyEnabled) {
+            await sendCriticalAlarm(
+              `용량 10× 불일치(앵커): ${product.name}`,
+              `DB 용량 ${product.volume_ml}${product.volume_unit ?? 'ml'} 대비 판매처 파싱 용량이 10× 이상 차이. DB 용량 오류 가능 — 확인 요망. (${seller.slug})`
+            );
+          }
+        } else {
+          offer.inspectionWarning = '용량 10× 불일치 — 다른 제품/변형 의심 (예측 확인 후 O)';
+        }
+      }
+
       // §3.5 판정 트레이스 — 제목당 1줄 구조화 로그(GitHub Actions 크롤 로그에 영구 보존, grep 추적).
       if (offer.sourceText) {
         console.log(

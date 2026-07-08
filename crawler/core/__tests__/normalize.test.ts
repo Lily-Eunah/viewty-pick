@@ -436,6 +436,19 @@ describe('canonical-unit stopgap (§PR-1): 매/개 products never take a per-ret
     expect(result.total_ml).toBe(100);   // ml/g still takes the listing volume
     expect(result.unit_price).toBe(200); // 20000 / 100
   });
+
+  it('identity guard (§3.6): parsed listing volume ≥10× DB → identity_suspect', () => {
+    const p40: Product = { ...BASE_PRODUCT, volume_ml: 40, volume_unit: 'ml' };
+    // 40ml 세럼에 400ml 클렌징워터가 매칭된 정황(10×) → 다른 제품 의심
+    const result = normalizePrice(p40, offer({ salePrice: 12000, promoType: 'none', parsedVolumeRaw: 400 }));
+    expect(result.identity_suspect).toBe(true);
+  });
+
+  it('identity guard (§3.6): normal size variation (2×) → not suspect', () => {
+    const p50: Product = { ...BASE_PRODUCT, volume_ml: 50, volume_unit: 'ml' };
+    const result = normalizePrice(p50, offer({ salePrice: 20000, promoType: 'none', parsedVolumeRaw: 100 }));
+    expect(result.identity_suspect).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------

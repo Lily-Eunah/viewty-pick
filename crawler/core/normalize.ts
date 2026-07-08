@@ -25,6 +25,8 @@ export interface NormalizedPrice {
   shipping_note: string | null;
   // §3.5 관측성: 정준 단위 판정 근거 1줄(디버깅 로그용, DB 미저장).
   parse_trace: string;
+  // §3.6 identity 가드: 판매처 파싱 용량이 DB 대비 10배↑/1/10↓ → "다른 제품/변형" 의심.
+  identity_suspect: boolean;
 }
 
 export function applyManualOverrides(
@@ -185,6 +187,15 @@ export function normalizePrice(product: Product, offer: PriceOffer): NormalizedP
 
   const total_ml = volume_ml * total_quantity;
 
+  // §3.6 identity 가드: 판매처에서 실제로 읽은 용량(ml/g)이 DB 대표 용량 대비 10배↑/1/10↓면
+  // 같은 사이즈 변형(2~3×)이 아니라 "다른 제품"이 매칭된 정황 → run.ts가 inspection으로 라우팅.
+  // 매/개(DB 사용, sizeFromListing=false)는 대상 아님. mismatch(정보성)와 별개의 강한 신호.
+  const identity_ratio =
+    canonical.sizeFromListing && product.volume_ml && product.volume_ml > 0 && canonical.unitSize && canonical.unitSize > 0
+      ? canonical.unitSize / product.volume_ml
+      : 1;
+  const identity_suspect = identity_ratio >= 10 || identity_ratio <= 0.1;
+
   // 단위당 단가 = 개당가 ÷ unitSize. 매 제품이면 매당, ml이면 ml당. 기기(개)는 개당==가격이라
   // unitPriceApplies=false → null (단가 라인 없음). §1b: 판매처에서 용량을 읽지 못한 미검증
   // DB 용량(LLM 시드 기본값)은 단위 정규화에 비신뢰. inspectionWarning(비앵커 폴백)도 비신뢰.
@@ -220,5 +231,6 @@ export function normalizePrice(product: Product, offer: PriceOffer): NormalizedP
     volume_mismatch_detail,
     shipping_note: offer.shippingNote ?? null,
     parse_trace: canonical.trace,
+    identity_suspect,
   };
 }
