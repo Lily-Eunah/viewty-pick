@@ -22,8 +22,11 @@ export function generateStaticParams() {
   return SEO_PAGE_SPECS.map((s) => ({ slug: s.slug }));
 }
 
-// Revalidate hourly so freshly-imported pages/prices appear without a redeploy.
-export const revalidate = 3600;
+// Daily, like every other catalog page — freshly-imported pages/prices arrive via the
+// crawler's revalidateTag('products') (and the nightly rebuild), not via short ISR.
+// Hourly expiry made all ~40 slugs go stale in sync every hour, bursting >10ms-CPU
+// SSR renders that the Workers free plan kills (exceededCpu → 1102/503).
+export const revalidate = 86400;
 
 // Common FAQs shared across all pages (applies to any /best/[slug] page).
 const COMMON_FAQS = [
