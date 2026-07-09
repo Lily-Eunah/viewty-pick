@@ -23,7 +23,7 @@ const categories = [
   { id: "bodycare", label: "바디케어", icon: BodycareImageIcon, path: "/c/bodycare", desc: ["샤워·입욕", "바디로션·크림", "쉐이빙폼·젤·크림", "태닝·애프터선"] },
   { id: "base-makeup", label: "베이스 메이크업", icon: BaseMakeupImageIcon, path: "/c/base-makeup", desc: ["쿠션", "파운데이션", "BB·CC", "컨실러"] },
   { id: "haircare", label: "헤어케어", icon: HaircareImageIcon, path: "/c/haircare", desc: ["샴푸/스케일러", "두피에센스"] },
-  { id: "Feminine Hygiene", label: "위생용품", icon: FeminineHygieneImageIcon, path: "/c/Feminine%20Hygiene", desc: ["Y존케어"] },
+  { id: "feminine-hygiene", label: "위생용품", icon: FeminineHygieneImageIcon, path: "/c/feminine-hygiene", desc: ["Y존케어"] },
 ];
 
 export default function CategoriesExplorerPage() {
