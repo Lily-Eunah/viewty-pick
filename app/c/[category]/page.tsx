@@ -1,7 +1,16 @@
 import AppShell from '../../../components/layout/AppShell';
 import Header from '../../../components/layout/Header';
 import CategoryProductList from '../../../components/product/CategoryProductList';
-import { getCategoryPageData } from '../../../lib/queries';
+import { getCategoryPageData, getAllCategorySlugs } from '../../../lib/queries';
+
+// Prerender every category page at BUILD time. Without generateStaticParams a
+// dynamic-segment App Router route ignores `revalidate` and SSRs on EVERY request —
+// which intermittently exceeded the Workers free-plan 10ms CPU budget (error 1102).
+// dynamicParams (default) still renders brand-new categories on demand.
+export async function generateStaticParams() {
+  const slugs = await getAllCategorySlugs();
+  return slugs.map((category) => ({ category }));
+}
 
 // ISR: serve from cache, regenerate at most daily (+ on-demand via revalidateTag
 // ('products') from the crawler). Product data is computed once globally.
