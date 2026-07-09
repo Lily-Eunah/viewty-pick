@@ -12,7 +12,11 @@ import { GuideIcon, guideIconName } from '../../components/seo/GuideIcon';
 import DrillSection, { DrillGroup } from '../../components/seo/DrillSection';
 import EditorPickCarousel, { EditorCard } from '../../components/seo/EditorPickCarousel';
 
-export const revalidate = 3600;
+// Daily, like every other catalog page: prices change once a day (dawn crawl fires
+// revalidateTag('products') on top). The previous hourly window made ~40 /best pages
+// expire in sync every hour — a burst of >10ms-CPU SSR renders on the Workers free
+// plan (exceededCpu → 1102/503) for no freshness gain.
+export const revalidate = 86400;
 
 export function generateMetadata(): Metadata {
   const indexable = isSiteIndexable();
