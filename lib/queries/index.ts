@@ -701,64 +701,107 @@ export async function getSkinPageData(skinTypeSlug: string, categorySlug: string
   return { category, products, skinName };
 }
 
+/**
+ * Slugs of every active product — feeds /p/[slug] generateStaticParams so all detail
+ * pages prerender at build time (the build runs off-Worker, free of the Workers
+ * free-plan 10ms CPU budget that kills on-demand SSR). A failed query returns []
+ * rather than failing the build: dynamicParams then renders pages on demand.
+ */
+export async function getActiveProductSlugs(): Promise<string[]> {
+  if (isSupabaseConfigured()) {
+    const { data, error } = await supabase.from('products').select('slug').eq('is_active', true);
+    if (error || !data) return [];
+    return data.map((r: { slug: string }) => r.slug);
+  }
+  const db = loadMockDB();
+  return db.products.filter((p) => p.is_active).map((p) => p.slug);
+}
+
+/**
+ * Every category slug — major AND minor are both routable as /c/[category]
+ * (a major page aggregates its minors' products). Feeds generateStaticParams.
+ */
+export async function getAllCategorySlugs(): Promise<string[]> {
+  const cats = await getCategories();
+  return cats.map((c) => c.slug);
+}
+
+/** Skin-type slugs routable as /skin/[type]/[category]. */
+export function getSkinTypeSlugs(): string[] {
+  return Object.keys(SKIN_NAME_MAP);
+}
+
 // Scoped product detail: avoids full price_snapshots scan, grows important as crawlers run
 export const getProductDetailPageData = cache(async (slug: string): Promise<{ product: UIProduct | null; related: UIProduct[] }> => {
   if (isSupabaseConfigured()) {
-    const { data: prodRow } = await supabase
-      .from('products').select('*').eq('slug', slug).eq('is_active', true).maybeSingle();
+    // ISR: this result is baked into the route cache (build prerender + daily
+    // revalidate), so a failed query must REJECT — silently defaulting to empty
+    // would cache a wrong "제품 없음" / price-less page for a whole revalidate
+    // window. A rejection at revalidation time keeps serving the stale page.
+    return withRetry(async () => {
+      const { data: prodRow, error: prodErr } = await supabase
+        .from('products').select('*').eq('slug', slug).eq('is_active', true).maybeSingle();
+      if (prodErr) throw new Error(`[queries] detail product query failed: ${prodErr.message}`);
 
-    if (!prodRow) return { product: null, related: [] };
+      if (!prodRow) return { product: null, related: [] };
 
-    const [listRes, pbRes, catRes, selRes, badgeRes] = await Promise.all([
-      supabase.from('listings').select('*').eq('product_id', prodRow.id).eq('is_active', true),
-      supabase.from('product_badges').select('*').eq('product_id', prodRow.id),
-      supabase.from('categories').select('*'),
-      supabase.from('sellers').select('id, slug, name, is_price_comparison_enabled'),
-      supabase.from('badges').select('*'),
-    ]);
-
-    const listingIds: number[] = (listRes.data ?? []).map((l: { id: number }) => l.id);
-    const { data: lpData } = listingIds.length > 0
-      ? await supabase.from('listing_prices_public').select('*').in('listing_id', listingIds)
-      : { data: [] };
-
-    const product = mapToUIProduct(
-      productRowCompat(prodRow) as Product, (listRes.data ?? []) as Listing[], // PR-5 전환기 호환
-      (catRes.data ?? []) as Category[], (pbRes.data ?? []) as ProductBadge[],
-      (badgeRes.data ?? []) as Badge[], (lpData ?? []) as PublicListingPrice[],
-      (selRes.data ?? []) as DbSeller[],
-    );
-
-    const { data: relRowsRaw } = await supabase
-      .from('products').select('*')
-      .eq('category_id', prodRow.category_id).eq('is_active', true).neq('id', prodRow.id).limit(6);
-    const relRows = productRowsCompat(relRowsRaw); // PR-5 전환기 호환
-
-    let related: UIProduct[] = [];
-    if (relRows && relRows.length > 0) {
-      const relIds: number[] = relRows.map((p: { id: number }) => p.id);
-      const [relListRes, relPbRes] = await Promise.all([
-        supabase.from('listings').select('*').in('product_id', relIds).eq('is_active', true),
-        supabase.from('product_badges').select('*').in('product_id', relIds),
+      const [listRes, pbRes, catRes, selRes, badgeRes] = await Promise.all([
+        supabase.from('listings').select('*').eq('product_id', prodRow.id).eq('is_active', true),
+        supabase.from('product_badges').select('*').eq('product_id', prodRow.id),
+        supabase.from('categories').select('*'),
+        supabase.from('sellers').select('id, slug, name, is_price_comparison_enabled'),
+        supabase.from('badges').select('*'),
       ]);
-      const relListingIds: number[] = (relListRes.data ?? []).map((l: { id: number }) => l.id);
-      const { data: relLpData } = relListingIds.length > 0
-        ? await supabase.from('listing_prices_public').select('*').in('listing_id', relListingIds)
-        : { data: [] };
-      related = (relRows as Product[])
-        .map((p) =>
-          mapToUIProduct(
-            p, (relListRes.data ?? []) as Listing[],
-            (catRes.data ?? []) as Category[], (relPbRes.data ?? []) as ProductBadge[],
-            (badgeRes.data ?? []) as Badge[], (relLpData ?? []) as PublicListingPrice[],
-            (selRes.data ?? []) as DbSeller[],
-          )
-        )
-        .filter(hasDisplayedSellerLink)
-        .sort(byPriceThen((a, b) => b.viewtyScore - a.viewtyScore));
-    }
+      for (const [name, res] of [['listings', listRes], ['product_badges', pbRes], ['categories', catRes], ['sellers', selRes], ['badges', badgeRes]] as const) {
+        if (res.error) throw new Error(`[queries] detail ${name} query failed: ${res.error.message}`);
+      }
 
-    return { product, related };
+      const listingIds: number[] = (listRes.data ?? []).map((l: { id: number }) => l.id);
+      let lpData: PublicListingPrice[] = [];
+      if (listingIds.length > 0) {
+        const lpRes = await supabase.from('listing_prices_public').select('*').in('listing_id', listingIds);
+        if (lpRes.error) throw new Error(`[queries] detail listing_prices_public query failed: ${lpRes.error.message}`);
+        lpData = (lpRes.data ?? []) as PublicListingPrice[];
+      }
+
+      const product = mapToUIProduct(
+        productRowCompat(prodRow) as Product, (listRes.data ?? []) as Listing[], // PR-5 전환기 호환
+        (catRes.data ?? []) as Category[], (pbRes.data ?? []) as ProductBadge[],
+        (badgeRes.data ?? []) as Badge[], lpData,
+        (selRes.data ?? []) as DbSeller[],
+      );
+
+      const { data: relRowsRaw } = await supabase
+        .from('products').select('*')
+        .eq('category_id', prodRow.category_id).eq('is_active', true).neq('id', prodRow.id).limit(6);
+      const relRows = productRowsCompat(relRowsRaw); // PR-5 전환기 호환
+
+      let related: UIProduct[] = [];
+      if (relRows && relRows.length > 0) {
+        const relIds: number[] = relRows.map((p: { id: number }) => p.id);
+        const [relListRes, relPbRes] = await Promise.all([
+          supabase.from('listings').select('*').in('product_id', relIds).eq('is_active', true),
+          supabase.from('product_badges').select('*').in('product_id', relIds),
+        ]);
+        const relListingIds: number[] = (relListRes.data ?? []).map((l: { id: number }) => l.id);
+        const { data: relLpData } = relListingIds.length > 0
+          ? await supabase.from('listing_prices_public').select('*').in('listing_id', relListingIds)
+          : { data: [] };
+        related = (relRows as Product[])
+          .map((p) =>
+            mapToUIProduct(
+              p, (relListRes.data ?? []) as Listing[],
+              (catRes.data ?? []) as Category[], (relPbRes.data ?? []) as ProductBadge[],
+              (badgeRes.data ?? []) as Badge[], (relLpData ?? []) as PublicListingPrice[],
+              (selRes.data ?? []) as DbSeller[],
+            )
+          )
+          .filter(hasDisplayedSellerLink)
+          .sort(byPriceThen((a, b) => b.viewtyScore - a.viewtyScore));
+      }
+
+      return { product, related };
+    });
   }
 
   // Mock fallback — fetchAllData() is already cached, no extra cost

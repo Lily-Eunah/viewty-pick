@@ -12,12 +12,25 @@ import ProductStickyFooter from '../../../components/product/ProductStickyFooter
 import AffiliateDisclosure from '../../../components/common/AffiliateDisclosure';
 import HistoryTracker from '../../../components/product/HistoryTracker';
 import FavoriteButton from '../../../components/product/FavoriteButton';
-import { getProductDetailPageData } from '../../../lib/queries';
+import { getProductDetailPageData, getActiveProductSlugs } from '../../../lib/queries';
 import { won, updatedAt } from '../../../lib/format';
 
 interface PageProps {
   params: Promise<{ slug: string }>;
 }
+
+// Prerender every active product at BUILD time — the build runs off-Worker, so it
+// is not subject to the Workers free-plan 10ms CPU budget that intermittently kills
+// on-demand SSR (exceededCpu → 1102/503). dynamicParams (default) still renders
+// brand-new slugs on demand until the next nightly build picks them up.
+export async function generateStaticParams() {
+  const slugs = await getActiveProductSlugs();
+  return slugs.map((slug) => ({ slug }));
+}
+
+// Prices change once a day (dawn crawl → rebuild/deploy refreshes the whole cache).
+// Daily ISR is only the safety net for a missed deploy.
+export const revalidate = 86400;
 
 export async function generateMetadata({ params }: PageProps) {
   const { slug } = await params;

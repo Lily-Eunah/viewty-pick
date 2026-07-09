@@ -4,7 +4,16 @@ import AppShell from '../../../../components/layout/AppShell';
 import Header from '../../../../components/layout/Header';
 import ProductListCard from '../../../../components/product/ProductListCard';
 import Badge from '../../../../components/common/Badge';
-import { getSkinPageData } from '../../../../lib/queries';
+import { getSkinPageData, getSkinTypeSlugs, getAllCategorySlugs } from '../../../../lib/queries';
+
+// Prerender every skin×category combo at BUILD time. Without generateStaticParams a
+// dynamic-segment App Router route ignores `revalidate` and SSRs on EVERY request —
+// which intermittently exceeded the Workers free-plan 10ms CPU budget (error 1102).
+export async function generateStaticParams() {
+  const types = getSkinTypeSlugs();
+  const categories = await getAllCategorySlugs();
+  return types.flatMap((type) => categories.map((category) => ({ type, category })));
+}
 
 // ISR: serve from cache, regenerate at most daily (+ on-demand via revalidateTag
 // ('products') from the crawler). Product data is computed once globally.
