@@ -46,14 +46,70 @@ jobs:
           GEMINI_API_KEYS: ${{ secrets.GEMINI_API_KEYS }}
           GEMINI_MODEL: ${{ secrets.GEMINI_MODEL }}
 
-      # Post-crawl warmup + self-heal. The crawler's revalidate purges every route;
-      # the first render after it can transiently fail (Supabase still busy from the
-      # crawl's writes) and OpenNext then CACHES that 500 as the route response —
-      # /best stayed broken all day until a manual revalidate/deploy. Warm the key
-      # routes; on a 500, re-fire /api/revalidate and retry. Fail the job only if a
-      # route never recovers, so Discord/Actions surfaces it.
+  # Nightly rebuild + deploy. On the Workers FREE plan every on-Worker render has a
+  # 10ms CPU budget, so ISR revalidation (self-reference fetch) succeeds only by
+  # luck — pages CANNOT reliably re-render themselves with fresh prices. The build,
+  # however, runs here in CI with no CPU cap: prerender the whole catalog with the
+  # just-crawled prices and ship it, so the Worker only ever serves cache hits.
+  deploy:
+    needs: crawl
+    runs-on: ubuntu-latest
+    steps:
+      # Deploy needs CLOUDFLARE_API_TOKEN (Workers Scripts / KV / R2 edit). Skip
+      # gracefully (with a warning annotation) until the secret is configured, so
+      # the crawl job's daily green/red signal stays meaningful on its own.
+      - name: Gate on deploy secrets
+        id: gate
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -z "$CF_TOKEN" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::CLOUDFLARE_API_TOKEN not set — skipping nightly rebuild/deploy"
+          fi
+
+      - name: Checkout Repository
+        if: steps.gate.outputs.skip != 'true'
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        if: steps.gate.outputs.skip != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        if: steps.gate.outputs.skip != 'true'
+        run: npm ci
+
+      # Build-time env: the anon Supabase keys feed generateStaticParams + page
+      # prerenders (read-only). SITE_INDEXABLE is baked into the prerendered HTML
+      # (robots meta) — leave the secret unset until public launch, matching the
+      # current noindex state.
+      - name: Build & Deploy to Cloudflare Workers
+        if: steps.gate.outputs.skip != 'true'
+        run: npm run cf:deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SITE_INDEXABLE: ${{ secrets.SITE_INDEXABLE }}
+
+  # Post-crawl/deploy warmup + self-heal. The crawler's revalidate purges every
+  # route; the first render after it can transiently fail (Supabase still busy from
+  # the crawl's writes) and OpenNext then CACHES that 500 as the route response —
+  # /best stayed broken all day until a manual revalidate/deploy. Warm the key
+  # routes; on a 500, re-fire /api/revalidate and retry. Fail the job only if a
+  # route never recovers, so Discord/Actions surfaces it. Runs even when the deploy
+  # is skipped or failed — the crawl purge alone already needs the warmup.
+  verify:
+    needs: [crawl, deploy]
+    if: always() && needs.crawl.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
       - name: Warm up & self-heal key routes
-        if: always()
         env:
           REVALIDATE_SECRET: ${{ secrets.REVALIDATE_SECRET }}
         run: |
