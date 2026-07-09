@@ -12,7 +12,7 @@ interface ProductImageWithFallbackProps {
 
 function getMajorCategory(category?: string | null): string | null {
   if (!category) return null;
-  const majors = ['suncare', 'skincare', 'cleansing-care', 'maskpack', 'bodycare', 'base-makeup', 'haircare', 'Feminine Hygiene'];
+  const majors = ['suncare', 'skincare', 'cleansing-care', 'maskpack', 'bodycare', 'base-makeup', 'haircare', 'feminine-hygiene'];
   if (majors.includes(category)) return category;
 
   const mapping: Record<string, string> = {
@@ -31,7 +31,7 @@ function getMajorCategory(category?: string | null): string | null {
     'cleansing': 'cleansing-care',
     'cleansing-oil': 'cleansing-care',
     'cleansing-water': 'cleansing-care',
-    'lip&eye makeup remover': 'cleansing-care',
+    'lip-eye-makeup-remover': 'cleansing-care',
     // Maskpack
     'sheet-mask': 'maskpack',
     'pad': 'maskpack',
@@ -41,17 +41,17 @@ function getMajorCategory(category?: string | null): string | null {
     'shaving': 'bodycare',
     'shaving-cream': 'bodycare',
     'shaving-foam': 'bodycare',
-    'tanning/after-sun': 'bodycare',
+    'tanning-after-sun': 'bodycare',
     // Base Makeup
     'cushion': 'base-makeup',
     'foundation': 'base-makeup',
-    'BB/CC': 'base-makeup',
-    'Concealer': 'base-makeup',
+    'bb-cc': 'base-makeup',
+    'concealer': 'base-makeup',
     // Haircare
-    'shampoo/scaler': 'haircare',
-    'scalp tonic': 'haircare',
+    'shampoo-scaler': 'haircare',
+    'scalp-tonic': 'haircare',
     // Feminine Hygiene
-    'Intimate Care': 'Feminine Hygiene',
+    'intimate-care': 'feminine-hygiene',
   };
 
   return mapping[category] || null;
