@@ -20,6 +20,7 @@
     "ops:backup": "tsx -r dotenv/config scripts/ops/backup-json.ts",
     "ops:check-sheet": "tsx -r dotenv/config scripts/ops/check-sheet.ts",
     "ops:dryrun-import": "tsx -r dotenv/config scripts/ops/dryrun-import.ts",
+    "ops:export-titles": "tsx -r dotenv/config scripts/ops/export-listing-titles.ts",
     "crawler:sync": "tsx -r dotenv/config crawler/run.ts",
     "crawler:test": "tsx -r dotenv/config crawler/run.ts --test",
     "naver:test": "tsx -r dotenv/config crawler/naver/test.ts",
