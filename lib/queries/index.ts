@@ -5,6 +5,7 @@ import { productRowCompat, productRowsCompat } from '../supabase/columnCompat';
 import { loadMockDB } from '../supabase/mockDb';
 import { Category, UIProduct, UIStorePrice, Product, Listing, PriceSnapshot, PublicListingPrice, ProductBadge, Badge, SeoPage } from '../types';
 import { matchSeoProducts, SeoFilters } from '../seo/match';
+import { isNoImageSentinel } from '../image';
 
 /**
  * Determines if a price snapshot is valid and safe to display.
@@ -80,6 +81,9 @@ export function resolveDisplayImage(
   listings: Listing[],
   sellers: { id: number; slug: string }[]
 ): string {
+  // Explicit "no image" sentinel (`none`): operator wants NO image → not even the
+  // Coupang fallback. Return '' so ProductImageWithFallback shows the placeholder.
+  if (isNoImageSentinel(operatorImageUrl)) return '';
   if (operatorImageUrl) return operatorImageUrl;
   const coupangSellerId = sellers.find((s) => s.slug === 'coupang')?.id;
   const coupangImage = listings.find(

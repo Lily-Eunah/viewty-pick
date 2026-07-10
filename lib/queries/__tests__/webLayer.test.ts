@@ -2,9 +2,10 @@
  * Web-layer pure-helper tests: composition labels (구성) + updatedAt formatting.
  * Run: tsx lib/queries/__tests__/webLayer.test.ts
  */
-import { compositionLabel, isSellerDisplayed, discountVsRegular, hasDisplayedSellerLink, byPriceThen } from '../index';
+import { compositionLabel, isSellerDisplayed, discountVsRegular, hasDisplayedSellerLink, byPriceThen, resolveDisplayImage } from '../index';
 import { updatedAt, pricedStoreNames } from '../../format';
-import { UIProduct, UIStorePrice } from '../../types';
+import { isNoImageSentinel } from '../../image';
+import { UIProduct, UIStorePrice, Listing } from '../../types';
 
 let failed = false;
 function it(name: string, fn: () => void) {
@@ -140,6 +141,38 @@ it('sorts a mixed list: priced (by score) then price-less (by score)', () => {
   list.sort(byPriceThen((a, b) => b.viewtyScore - a.viewtyScore));
   const shape = list.map((p) => `${p.hasAnyPrice ? 'P' : '-'}${p.viewtyScore}`).join(',');
   assert(shape === 'P88,P60,-95,-80', `got ${shape}`);
+});
+
+console.log('--- isNoImageSentinel (`none` = intentional no-image) ---');
+it('none / NONE / padded → true', () => {
+  assert(isNoImageSentinel('none') === true, 'none');
+  assert(isNoImageSentinel('NONE') === true, 'NONE case-insensitive');
+  assert(isNoImageSentinel('  none  ') === true, 'trimmed');
+});
+it('empty / null / real values → false', () => {
+  assert(isNoImageSentinel('') === false, 'empty');
+  assert(isNoImageSentinel(null) === false, 'null');
+  assert(isNoImageSentinel(undefined) === false, 'undefined');
+  assert(isNoImageSentinel('https://ads-partners.coupang.com/x.jpg') === false, 'http url');
+  assert(isNoImageSentinel('nonexistent') === false, 'substring not matched');
+});
+
+console.log('--- resolveDisplayImage (`none` suppresses image incl. Coupang fallback) ---');
+const coupangSellers = [{ id: 3, slug: 'coupang' }];
+const coupangListings = [
+  { product_id: 1, seller_id: 3, is_active: true, latest_image_url: 'https://ads-partners.coupang.com/x.jpg' },
+] as unknown as Listing[];
+it('operator `none` → "" even when a Coupang listing image exists', () => {
+  assert(resolveDisplayImage('none', 1, coupangListings, coupangSellers) === '', 'sentinel wins, no fallback');
+});
+it('operator direct URL → returned as-is (regression)', () => {
+  assert(resolveDisplayImage('https://op.jpg', 1, coupangListings, coupangSellers) === 'https://op.jpg', 'operator image');
+});
+it('empty operator + Coupang listing image → Coupang fallback (regression)', () => {
+  assert(resolveDisplayImage(null, 1, coupangListings, coupangSellers) === 'https://ads-partners.coupang.com/x.jpg', 'fallback');
+});
+it('operator `none` + no listings → "" (placeholder)', () => {
+  assert(resolveDisplayImage('none', 1, [], coupangSellers) === '', 'no image at all');
 });
 
 console.log(failed ? '\nResult: FAILED' : '\nResult: ALL PASSED');
