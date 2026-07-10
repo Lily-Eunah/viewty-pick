@@ -1,6 +1,7 @@
 import { runSheetImport } from './sheets/import';
 import { CoupangAdapter, NaverAdapter, OliveYoungAdapter, RetailerAdapter, PriceOffer, FetchOutcome } from './adapters/index';
 import { resolveCoupangImageAuto, extractCoupangProductId } from './adapters/coupang';
+import { isNoImageSentinel, NO_IMAGE_SENTINEL } from '../lib/image';
 import { clearNaverSearchCache } from './adapters/naver';
 import { readInspectionRows, upsertInspection, approvalOverrides, manualParseEntries, InspectionItem } from './sheets/inspection';
 import { upsertLinkOnly, LinkOnlyItem } from './sheets/linkOnly';
@@ -790,6 +791,16 @@ export async function crawlPipeline(): Promise<void> {
   for (const prod of updatedProducts) {
     let currentImage = prod.image_url ? prod.image_url.trim() : null;
     let imageUpdated = false;
+
+    // 0. Explicit "no image" sentinel (sheet image_url = `none`): the operator wants
+    // this product to have NO image (e.g. Coupang only has messy set/promo cuts).
+    // Keep it as-is and skip both the liveness check and auto image-gathering so the
+    // crawler never re-fills it. The web layer renders a clean placeholder for a
+    // non-http value (see lib/image.ts, ProductImageWithFallback).
+    if (isNoImageSentinel(currentImage)) {
+      finalProducts.push({ ...prod, image_url: NO_IMAGE_SENTINEL });
+      continue;
+    }
 
     // 1. 이미지가 있는 경우 -> 상태 체크
     if (currentImage) {
