@@ -290,5 +290,28 @@ it('old column names still win when present (pre-migration)', () => {
   assert((r as { volume_ml?: number }).volume_ml === 50, `should keep old volume_ml, got ${(r as { volume_ml?: number }).volume_ml}`);
 });
 
+// ---------------------------------------------------------------------------
+console.log('\n--- image_url validation (URL / empty / `none` sentinel) ---');
+
+const baseRow = { name: '선스틱', brand: '토리든', category: 'sunstick', volume_ml: '20' };
+it('image_url = valid URL → passes', () => {
+  const r = simpleProductRowSchema.safeParse({ ...baseRow, image_url: 'https://ads-partners.coupang.com/x.jpg' });
+  assert(r.success, `valid URL rejected: ${r.success ? '' : JSON.stringify(r.error.issues)}`);
+});
+it('image_url = "" → passes', () => {
+  assert(simpleProductRowSchema.safeParse({ ...baseRow, image_url: '' }).success, 'empty rejected');
+});
+it('image_url = "none" sentinel → passes (was the bug: whole row dropped → orphan deactivation)', () => {
+  const r = simpleProductRowSchema.safeParse({ ...baseRow, image_url: 'none' });
+  assert(r.success, `none rejected: ${r.success ? '' : JSON.stringify(r.error.issues)}`);
+});
+it('image_url = "NONE" / " none " → passes (case-insensitive, trimmed)', () => {
+  assert(simpleProductRowSchema.safeParse({ ...baseRow, image_url: 'NONE' }).success, 'NONE rejected');
+  assert(simpleProductRowSchema.safeParse({ ...baseRow, image_url: ' none ' }).success, 'padded none rejected');
+});
+it('image_url = arbitrary non-URL garbage → still rejected', () => {
+  assert(!simpleProductRowSchema.safeParse({ ...baseRow, image_url: 'notaurl' }).success, 'garbage should be rejected');
+});
+
 console.log(failed ? '\nResult: FAILED' : '\nResult: ALL PASSED');
 if (failed) process.exit(1);
