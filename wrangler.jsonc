@@ -46,5 +46,8 @@
 	//   SUPABASE_SERVICE_ROLE_KEY  (server only: /go insert, /api/revalidate)
 	//   REVALIDATE_SECRET
 	//   SITE_INDEXABLE             (omit or "false" => noindex; "true" at launch)
+	//   NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION / NEXT_PUBLIC_NAVER_SITE_VERIFICATION
+	//                              (search-console ownership meta tokens; build-time inlined)
+	//   INDEXNOW_KEY               (served at /indexnow.txt; also set in GitHub Actions for the crawler)
 	// Crawler secrets (coupang/naver/google/discord) live in GitHub Actions only.
 }

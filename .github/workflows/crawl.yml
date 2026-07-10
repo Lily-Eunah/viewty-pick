@@ -35,6 +35,12 @@ jobs:
           GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           REVALIDATE_SECRET: ${{ secrets.REVALIDATE_SECRET }}
+          # IndexNow re-indexing (Bing·Naver·Yandex) after the daily sync. Both must be
+          # set for it to fire — INDEXNOW_KEY (the ownership key) and SITE_INDEXABLE=true
+          # (never ping while the site is still noindex). No-op otherwise.
+          INDEXNOW_KEY: ${{ secrets.INDEXNOW_KEY }}
+          SITE_INDEXABLE: ${{ secrets.SITE_INDEXABLE }}
+          NEXT_PUBLIC_SITE_URL: ${{ secrets.NEXT_PUBLIC_SITE_URL }}
           CRAWLER_USER_AGENT: ${{ secrets.CRAWLER_USER_AGENT }}
           COUPANG_ACCESS_KEY: ${{ secrets.COUPANG_ACCESS_KEY }}
           COUPANG_SECRET_KEY: ${{ secrets.COUPANG_SECRET_KEY }}
