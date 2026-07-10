@@ -48,6 +48,9 @@ cloudflare-env.d.ts
 /scripts/live-check/artifacts/
 /scripts/live-check/expectations/
 
+# ops data exports (DB dumps; URLs may carry affiliate tokens — regenerate locally)
+/scripts/ops/exports/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
@@ -56,9 +59,11 @@ next-env.d.ts
 backups/
 
 # Claude agent logs, prompts, and temporary developer documents
+.claude/
 docs/prompts/
 docs/reports/
 docs/TBD.md
+docs/blog/
 viewtypick-resume-summary.md
 
 
