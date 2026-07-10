@@ -19,6 +19,7 @@ import { writeBackNaverSubstitutions, NaverLinkSubstitution } from './sheets/lin
 import { isSupabaseServerConfigured, supabaseServer } from '../lib/supabase/server';
 import { productRowsCompat } from '../lib/supabase/columnCompat';
 import { loadMockDB, saveMockDB } from '../lib/supabase/mockDb';
+import { submitIndexNow } from './indexnow';
 import { Listing, Product, PriceSnapshot, CurrentPrice, ManualOverride, RetailerAllowlist, Badge, ProductBadge, ScoreConfig } from '../lib/types';
 
 export interface CrawlTarget {
@@ -992,6 +993,13 @@ export async function crawlPipeline(): Promise<void> {
     }
   } else {
     console.log('[Pipeline] Skipping revalidation (mock run or no real REVALIDATE_SECRET).');
+  }
+
+  // Step 8.1: IndexNow — push the updated URLs to Bing·Naver·Yandex so today's price
+  // changes get re-indexed within minutes. No-op unless INDEXNOW_KEY + SITE_INDEXABLE
+  // (guards live in submitIndexNow); real DB runs only.
+  if (useSupabase) {
+    await submitIndexNow();
   }
 
   // Step 8.5: Upsert held (warning) prices into the inspection OX tab (preserving
