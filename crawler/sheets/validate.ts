@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isNoImageSentinel } from '../../lib/image';
 
 const boolField    = z.union([z.boolean(), z.string().transform((v) => v.toLowerCase() !== 'false')]).default(true);
 // is_disabled: blank/false → active (is_active=true), 'true' → inactive (is_active=false)
@@ -79,7 +80,13 @@ export const simpleProductRowSchema = z.object({
   // 운영자 상세 원문(백업). features는 이 값을 요약·정규화한 화면용 추천 사유다.
   features_detail: z.string().optional(),
   hwahae_url:  z.string().url().or(z.literal('')).optional(),
-  image_url:   z.string().url().or(z.literal('')).optional(),
+  // URL, empty, or the `none` sentinel (= intentionally no image; see lib/image.ts).
+  // Without allowing `none`, a sentinel row fails URL validation → the whole product
+  // row is dropped and its DB product gets deactivated as an orphan.
+  image_url:   z.string().refine(
+    (v) => v === '' || isNoImageSentinel(v) || z.string().url().safeParse(v).success,
+    { message: 'image_url must be a URL, empty, or "none"' },
+  ).optional(),
   is_disabled: disabledField,
   // Optional English URL slug; blank → DB slug falls back to product_key.
   slug:        z.string().optional(),
