@@ -139,14 +139,18 @@ export default async function BestPage({ params }: PageProps) {
   const top3 = products.filter((p) => p.hasAnyPrice !== false).slice(0, 3);
 
   // JSON-LD: ItemList (the ranked products) + FAQPage + BreadcrumbList for rich results.
+  const pricedForSchema = products.filter((p) => schemaPrice(p) > 0);
   const jsonLd = {
     '@context': 'https://schema.org',
     '@graph': [
       {
         '@type': 'ItemList',
         name: page.title || h1,
-        numberOfItems: products.length,
-        itemListElement: products.map((p, i) => ({
+        // Only priced products become Product items — Google requires a Product to
+        // carry offers/review/aggregateRating, and we have no reviews. Price-less
+        // (link-only) products still render on-page but are omitted from the schema.
+        numberOfItems: pricedForSchema.length,
+        itemListElement: pricedForSchema.map((p, i) => ({
           '@type': 'ListItem',
           position: i + 1,
           item: {
@@ -155,17 +159,13 @@ export default async function BestPage({ params }: PageProps) {
             brand: { '@type': 'Brand', name: p.brand },
             ...(p.image ? { image: p.image } : {}),
             url: `${SITE_URL}/p/${p.slug}`,
-            ...(schemaPrice(p) > 0
-              ? {
-                  offers: {
-                    '@type': 'Offer',
-                    price: schemaPrice(p),
-                    priceCurrency: 'KRW',
-                    availability: 'https://schema.org/InStock',
-                    url: `${SITE_URL}/p/${p.slug}`,
-                  },
-                }
-              : {}),
+            offers: {
+              '@type': 'Offer',
+              price: schemaPrice(p),
+              priceCurrency: 'KRW',
+              availability: 'https://schema.org/InStock',
+              url: `${SITE_URL}/p/${p.slug}`,
+            },
           },
         })),
       },
