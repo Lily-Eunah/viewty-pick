@@ -21,7 +21,7 @@ export const revalidate = 86400;
 export function generateMetadata(): Metadata {
   const indexable = isSiteIndexable();
   return {
-    title: '뷰티 추천 최저가 비교 가이드 모음 | ViewtyPick',
+    title: '뷰티 추천 최저가 비교 가이드 모음',
     description: '선크림·토너·세럼·쿠션 등 카테고리·피부타입별 추천 제품을 쿠팡·올리브영·네이버 최저가로 비교한 가이드 모음.',
     alternates: { canonical: `${SITE_URL}/best` },
     robots: indexable ? { index: true, follow: true } : { index: false, follow: false },
