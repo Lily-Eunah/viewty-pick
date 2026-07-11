@@ -143,8 +143,10 @@ export default async function ProductDetailPage({ params }: PageProps) {
           majorCategory: product.majorCategory,
         }}
       />
-      {/* Dynamic JSON-LD injection */}
-      {jsonLd && (
+      {/* Dynamic JSON-LD injection — only when the Product carries offers. A
+          price-less (link-only) product would emit an offer-less Product, which
+          Google rejects (needs offers/review/aggregateRating). Skip it instead. */}
+      {jsonLd.offers && (
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
