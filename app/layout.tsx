@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { isSiteIndexable, SITE_URL } from "../lib/seo/indexable";
+import NavigationTracker from "../components/layout/NavigationTracker";
 
 export function generateMetadata(): Metadata {
   const indexable = isSiteIndexable();
@@ -77,6 +78,7 @@ export default function RootLayout({
   return (
     <html lang="ko" className="h-full antialiased">
       <body className="min-h-full flex flex-col">
+        <NavigationTracker />
         {children}
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(BRAND_JSON_LD) }} />
       </body>

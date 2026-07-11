@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { useSelectedSkinType } from '../../lib/hooks/useSelectedSkinType';
+import { getHadInAppNav } from '../../lib/nav/inAppNav';
 import {
   DrySkinIcon,
   OilySkinIcon,
@@ -30,6 +31,17 @@ export default function Header({
   const router = useRouter();
   const [selectedSkin, setSelectedSkin] = useSelectedSkinType();
   const [isSkinModalOpen, setIsSkinModalOpen] = useState(false);
+
+  // Back = in-app history when we have it, else Home. A page entered straight
+  // from an external link (e.g. an ad) has no in-app history, so router.back()
+  // would dead-end or bounce off-site — see lib/nav/inAppNav.
+  const handleBack = () => {
+    if (getHadInAppNav()) {
+      router.back();
+    } else {
+      router.push('/');
+    }
+  };
 
   if (!showBack) {
     // 1. Home / Branding Header (UI_DESIGN.md §4)
@@ -169,7 +181,7 @@ export default function Header({
     <header className="w-full h-14 bg-bg border-b border-divider px-4 flex items-center justify-between sticky top-0 z-35">
       <div className="flex items-center gap-3">
         <button
-          onClick={() => router.back()}
+          onClick={handleBack}
           className="p-1 text-title hover:bg-bg-warm rounded-full transition-colors active:scale-95"
           aria-label="Back"
         >

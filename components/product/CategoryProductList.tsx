@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import Chip from '../common/Chip';
 import ProductListCard from './ProductListCard';
 import { UIProduct, Category } from '../../lib/types';
 import { useSelectedSkinType } from '../../lib/hooks/useSelectedSkinType';
+import { useUrlParam } from '../../lib/hooks/useUrlParam';
 
 interface Props {
   initialProducts: UIProduct[];
@@ -24,8 +25,10 @@ export default function CategoryProductList({ initialProducts, minors }: Props) 
   // Skin type is shared with the home list via localStorage + a change event; the
   // hook keeps both in sync (and is hydration-safe, see useSelectedSkinType).
   const [selectedSkin, setSelectedSkin] = useSelectedSkinType();
-  const [selectedMinor, setSelectedMinor] = useState<string | null>(null);
-  const [sortBy, setSortBy] = useState<SortKey>('recommend');
+  // Sub-category and sort live in the URL (?sub, ?sort) so pressing Back from a
+  // product detail restores the view instead of snapping back to 전체/추천순.
+  const [selectedMinor, setSelectedMinor] = useUrlParam<string | null>('sub', null);
+  const [sortBy, setSortBy] = useUrlParam<SortKey>('sort', 'recommend');
 
   const handleSkinChipClick = (skin: string) => {
     setSelectedSkin(selectedSkin === skin ? null : skin);
