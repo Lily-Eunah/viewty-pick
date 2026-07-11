@@ -38,10 +38,10 @@ export default function Header({
         <header className="w-full bg-bg px-4 pt-5 pb-3 flex justify-between items-center z-30">
           <div className="flex flex-col">
             <h1 className="text-[22px] font-black text-primary tracking-tight leading-tight">
-              ViewtyPick
+              뷰티픽<span className="text-[13px] font-extrabold text-accent ml-1.5 align-middle">ViewtyPick</span>
             </h1>
             <span className="text-[12px] text-sub font-medium leading-none mt-0.5">
-              {subtitle || '믿고 사는 뷰티 최저가'}
+              {subtitle || '믿고 사는 화장품 최저가 비교'}
             </span>
           </div>
           <div className="flex items-center gap-2">

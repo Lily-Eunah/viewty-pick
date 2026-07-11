@@ -38,13 +38,13 @@ export async function generateMetadata({ params }: PageProps) {
 
   if (!product) {
     return {
-      title: '제품 없음 - ViewtyPick',
+      title: '제품 없음',
       description: '요청하신 제품 상세 정보를 찾을 수 없습니다.',
     };
   }
 
   return {
-    title: `${product.brand} ${product.name} 최저가 비교 - ViewtyPick`,
+    title: `${product.brand} ${product.name} 최저가 비교`,
     description: `${product.brand} ${product.name} (${product.volume}) 제품의 판매처별 최저가 비교 및 뷰티 스코어 분석 정보입니다. 매일 갱신.`,
     alternates: {
       canonical: `https://viewtypick.com/p/${slug}`,

@@ -80,7 +80,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const spec = SEO_PAGE_SPECS.find((s) => s.slug === slug);
   const products = applySellerFilter(rawProducts, spec?.seller);
   if (!page || products.length < MIN_SEO_PRODUCTS) {
-    return { title: 'ViewtyPick', robots: { index: false, follow: false } };
+    return { title: { absolute: '뷰티픽 ViewtyPick' }, robots: { index: false, follow: false } };
   }
   const url = `${SITE_URL}/best/${slug}`;
   const title = page.title || page.h1 || 'ViewtyPick 추천';
