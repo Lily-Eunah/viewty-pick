@@ -77,6 +77,16 @@ export async function crawlPipeline(): Promise<void> {
     return hit ? hit.slice(name.length + 3) : undefined;
   };
   const onlyKeys = getArg('only')?.split(',').map((s) => s.trim()).filter(Boolean) ?? null;
+  // Seller scoping (by seller slug). --only-seller restricts the crawl to those
+  // sellers' listings ONLY and SKIPS the product-global aggregations (current_prices,
+  // viewty_score, image resolution) — it writes just those sellers' snapshots +
+  // listing updates, so it can run out-of-band (e.g. the local headful OliveYoung
+  // page crawl) without corrupting scores or re-hitting Coupang. --skip-seller does
+  // the inverse (exclude those sellers), so the GitHub daily crawl can hand a seller
+  // off to that out-of-band run.
+  const onlySellers = getArg('only-seller')?.split(',').map((s) => s.trim()).filter(Boolean) ?? null;
+  const skipSellers = getArg('skip-seller')?.split(',').map((s) => s.trim()).filter(Boolean) ?? null;
+  const sellerScoped = !!onlySellers;
   const maxCoupangRaw = getArg('max-coupang');
   const maxCoupang = maxCoupangRaw ? parseInt(maxCoupangRaw, 10) : Infinity;
   const notifyEnabled = !argv.includes('--no-notify');
@@ -202,6 +212,27 @@ export async function crawlPipeline(): Promise<void> {
     const missing = onlyKeys.filter((k) => !products.some((p) => p.product_key === k));
     if (missing.length) console.warn(`[Pipeline] --only keys not found among active products: ${missing.join(', ')}`);
     console.log(`[Pipeline] Limited to ${products.length} products / ${listings.length} listings.`);
+  }
+
+  // Seller scoping: restrict / exclude by seller slug. --only-seller keeps ONLY those
+  // sellers' listings (product-global steps skipped downstream); --skip-seller drops
+  // them (the daily crawl hands the seller off to an out-of-band run). `products` is
+  // left intact — it is only used for per-listing lookup in the loop, and the
+  // aggregation steps that iterate it are gated by sellerScoped below.
+  if (onlySellers || skipSellers) {
+    const slugById = new Map(sellers.map((s) => [s.id, s.slug]));
+    if (onlySellers) {
+      const keep = new Set(onlySellers);
+      listings = listings.filter((l) => keep.has(slugById.get(l.seller_id) ?? ''));
+    }
+    if (skipSellers) {
+      const drop = new Set(skipSellers);
+      listings = listings.filter((l) => !drop.has(slugById.get(l.seller_id) ?? ''));
+    }
+    console.log(
+      `[Pipeline] Seller scope — only=[${onlySellers?.join(',') ?? '-'}] skip=[${skipSellers?.join(',') ?? '-'}] → ${listings.length} listings` +
+        (sellerScoped ? ' (product-global steps: current_prices/scores/images SKIPPED)' : '')
+    );
   }
 
   // Step 2.6: Inspection OX approvals → synthesized price overrides.
@@ -669,8 +700,12 @@ export async function crawlPipeline(): Promise<void> {
   }
 
   // Step 5: Price Aggregation (Determine Lowest Prices per Product)
+  // Seller-scoped runs skip this product-global aggregation: with only some sellers'
+  // snapshots this run, a per-product lowest would be wrong — current_prices stays
+  // owned by the full daily crawl. (The site reads the listing_prices_public view, not
+  // current_prices, so scoped OliveYoung prices still surface from their fresh snapshots.)
   const currentPrices: CurrentPrice[] = [];
-  for (const prod of products) {
+  if (!sellerScoped) for (const prod of products) {
     const prodListings = updatedListings.filter((l) => l.product_id === prod.id && l.is_active);
     const prodSnaps = newSnapshots.filter(
       (s) =>
@@ -754,26 +789,35 @@ export async function crawlPipeline(): Promise<void> {
     });
   }
 
-  // Step 6: Recalculate Viewty Scores (DESIGN.md 짠8)
-  console.log('[Pipeline] Calculating Viewty Scores...');
-  const calculatedScores = recalculateViewtyScores(
-    products,
-    updatedListings,
-    newSnapshots,
-    scoreConfigs,
-    productBadges,
-    badges
-  );
+  // Step 6: Recalculate Viewty Scores (DESIGN.md §8) — skipped when seller-scoped
+  // (partial snapshots → wrong scores; viewty_score stays owned by the daily crawl).
+  let updatedProducts: Product[];
+  if (sellerScoped) {
+    updatedProducts = products;
+  } else {
+    console.log('[Pipeline] Calculating Viewty Scores...');
+    const calculatedScores = recalculateViewtyScores(
+      products,
+      updatedListings,
+      newSnapshots,
+      scoreConfigs,
+      productBadges,
+      badges
+    );
+    updatedProducts = products.map((prod) => {
+      const score = calculatedScores[prod.id];
+      return {
+        ...prod,
+        viewty_score: score !== undefined ? score : prod.viewty_score,
+      };
+    });
+  }
 
-  const updatedProducts = products.map((prod) => {
-    const score = calculatedScores[prod.id];
-    return {
-      ...prod,
-      viewty_score: score !== undefined ? score : prod.viewty_score,
-    };
-  });
-
-  // Step 6.5: 이미지 유효성 검사 및 자동 매칭 (쿠팡 Partners API 활용)
+  // Step 6.5: 이미지 유효성 검사 및 자동 매칭 (쿠팡 Partners API 활용) — skipped when
+  // seller-scoped (avoids re-running Coupang image resolution / API calls; product
+  // images stay owned by the full daily crawl).
+  let finalProducts: Product[] = updatedProducts;
+  if (!sellerScoped) {
   console.log('[Pipeline] Validating and automatically gathering product images...');
   const checkImageAlive = async (url: string): Promise<boolean> => {
     if (url.startsWith('keyword:')) return true;
@@ -788,7 +832,7 @@ export async function crawlPipeline(): Promise<void> {
     }
   };
 
-  const finalProducts: Product[] = [];
+  finalProducts = [];
   for (const prod of updatedProducts) {
     let currentImage = prod.image_url ? prod.image_url.trim() : null;
     let imageUpdated = false;
@@ -851,6 +895,7 @@ export async function crawlPipeline(): Promise<void> {
       image_url: currentImage,
     });
   }
+  } // end if (!sellerScoped) — Step 6.5 image resolution
 
   // Step 7: Save Results
   if (useSupabase) {
@@ -878,8 +923,9 @@ export async function crawlPipeline(): Promise<void> {
         }).eq('id', list.id);
       }
 
-      // Upsert Products score & image_url
-      for (const prod of finalProducts) {
+      // Upsert Products score & image_url — skipped when seller-scoped (score/image
+      // unchanged this run; they stay owned by the full daily crawl).
+      if (!sellerScoped) for (const prod of finalProducts) {
         await supabaseServer.from('products').update({
           viewty_score: prod.viewty_score,
           image_url: prod.image_url,

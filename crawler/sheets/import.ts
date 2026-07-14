@@ -82,8 +82,8 @@ async function freezeProductKeys(spreadsheetId: string, rawProducts: Record<stri
 const makeProductKey = v.makeProductKey;
 
 // Seller defaults applied automatically
-const SELLER_META: Record<string, { crawl_method: 'api' | 'playwright' | 'naver_sourced'; store_name: string }> = {
-  oliveyoung: { crawl_method: 'naver_sourced', store_name: '올리브영'  },
+const SELLER_META: Record<string, { crawl_method: 'api' | 'playwright' | 'naver_sourced' | 'oliveyoung_page'; store_name: string }> = {
+  oliveyoung: { crawl_method: 'oliveyoung_page', store_name: '올리브영'  },
   coupang:    { crawl_method: 'api',           store_name: '쿠팡'     },
   naver:      { crawl_method: 'api',           store_name: '네이버'   },
   zigzag:     { crawl_method: 'playwright',    store_name: '지그재그' },

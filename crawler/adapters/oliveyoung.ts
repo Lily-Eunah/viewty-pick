@@ -21,6 +21,7 @@ import { productRowCompat } from '../../lib/supabase/columnCompat';
 import { loadMockDB } from '../../lib/supabase/mockDb';
 import { matchOliveYoungOffer, stripHtml, containsBareNJong } from './naver';
 import { resolveCuratedOyGoodsNo } from '../core/oliveyoungAnchor';
+import { crawlOliveYoungPage, goodsDetailUrl } from '../core/oliveyoungPageCrawl';
 
 function isPlaceholderKey(v: string | undefined): boolean {
   return !v || v.includes('placeholder') || v.includes('example') || v.includes('dummy') || v.trim() === '';
@@ -91,6 +92,52 @@ export class OliveYoungAdapter implements RetailerAdapter {
 
     if (isMock) {
       return this.getMockOffer(listing);
+    }
+
+    // ── Page-crawl source (OLIVEYOUNG_PAGE_CRAWL=on) ───────────────────────────
+    // Primary source: a HEADFUL crawl of OUR curated product page (operator holds
+    // OliveYoung's crawl permission). goodsNo comes from the curator affiliate_url,
+    // so the price is the exact SKU → anchored (shown directly, no inspection). Any
+    // block/timeout/parse-miss/sold-out → no_offer (link-only); never a fake price.
+    // Runs HEADFUL, so only on a real-display machine (operator desktop / mini-PC),
+    // NOT GitHub Actions — see docs/worklog/feature-oliveyoung-page-crawl.md.
+    if (process.env.OLIVEYOUNG_PAGE_CRAWL === 'on') {
+      const goodsNo = await resolveCuratedOyGoodsNo(listing.affiliate_url || listing.url);
+      if (!goodsNo) {
+        return {
+          regularPrice: null, salePrice: null, inStock: true, promoType: 'none', promoText: null,
+          sourceText: 'OliveYoung page-crawl: could not resolve goodsNo from curator link — link-only',
+          storeName: '올리브영', matchedUrl: null, matchedMallName: null, matchExcluded: true, outcome: 'no_offer',
+        };
+      }
+      const page = await crawlOliveYoungPage(goodsNo);
+      if (!page || !page.found || page.soldOut) {
+        const why = !page ? 'blocked/timeout/failed' : page.soldOut ? 'sold out' : 'no price on page';
+        console.warn(`[OliveYoung Adapter] page-crawl no price for goodsNo ${goodsNo} (${why})`);
+        return {
+          regularPrice: null, salePrice: null,
+          // sold-out → not buyable; other misses keep inStock=true so a manual_override can fill.
+          inStock: !(page?.soldOut),
+          promoType: 'none', promoText: null,
+          sourceText: `OliveYoung page-crawl: ${why} — link-only`,
+          storeName: '올리브영', matchedUrl: null, matchedMallName: null, matchExcluded: true, outcome: 'no_offer',
+        };
+      }
+      return {
+        regularPrice: page.regularPrice,
+        salePrice: page.salePrice,
+        inStock: true,
+        promoType: 'none',
+        promoText: null,
+        // title (개수/구성/용량 source) carried in sourceText; rawOfferTitle strips the prefix + goodsNo tail.
+        sourceText: `OliveYoung page-crawl: ${page.title ?? ''} — ${goodsNo}`,
+        storeName: '올리브영',
+        matchedUrl: goodsDetailUrl(goodsNo),
+        matchedMallName: '올리브영',
+        // goodsNo-exact SKU from the operator's curated link → trust it, show directly (no inspection).
+        anchored: true,
+        outcome: 'ok',
+      };
     }
 
     // Load product (Supabase or mock DB).

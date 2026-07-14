@@ -11,7 +11,7 @@ export interface Category {
 }
 
 export type CollectMethod = 'api' | 'crawl';
-export type CrawlMethod = 'api' | 'html' | 'playwright' | 'manual' | 'naver_sourced';
+export type CrawlMethod = 'api' | 'html' | 'playwright' | 'manual' | 'naver_sourced' | 'oliveyoung_page';
 
 export interface Seller {
   id: number;
