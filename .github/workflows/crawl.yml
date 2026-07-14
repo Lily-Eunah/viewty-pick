@@ -25,8 +25,14 @@ jobs:
       # separate import step here would import TWICE per workflow run — doubling
       # Coupang image-resolution calls and blowing the 50/min rate limit, which
       # left every product image unresolved (then blanked). One run = one import.
+      # --skip-seller=oliveyoung: OliveYoung is priced by a HEADFUL page crawl that must
+      # run on a real-display, residential-IP machine (Cloudflare blocks headful from
+      # this datacenter runner ~2/3 of the time). That runs out-of-band via
+      # `npm run oliveyoung:crawl:local` on the operator's machine (Windows Task
+      # Scheduler) — see docs/ops/oliveyoung-local-crawl.md. This crawl still does
+      # everything else (Naver/Coupang + current_prices/scores/images/revalidate).
       - name: Run Crawler & Recalculate Scores
-        run: npm run crawler:sync
+        run: npm run crawler:sync -- --skip-seller=oliveyoung
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}

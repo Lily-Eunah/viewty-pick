@@ -23,6 +23,7 @@
     "ops:export-titles": "tsx -r dotenv/config scripts/ops/export-listing-titles.ts",
     "crawler:sync": "tsx -r dotenv/config crawler/run.ts",
     "crawler:test": "tsx -r dotenv/config crawler/run.ts --test",
+    "oliveyoung:crawl:local": "tsx -r dotenv/config scripts/ops/oliveyoung-local-crawl.ts",
     "naver:test": "tsx -r dotenv/config crawler/naver/test.ts",
     "package:extract:test": "tsx crawler/core/packageExtractor.test.ts",
     "test:parsepackage": "tsx crawler/core/__tests__/parsePackage.test.ts",

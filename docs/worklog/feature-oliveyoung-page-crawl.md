@@ -55,14 +55,43 @@ challenge to a datacenter IP that a headful-but-automated browser cannot auto-so
 - `.github/workflows/oliveyoung-probe.yml` — workflow_dispatch; installs Playwright
   Chromium; runs the probe headful under `xvfb-run`. No secrets, no deploy.
 
-## Next steps
-- [ ] Run the CI probe; record the datacenter-IP verdict below.
-- [ ] If PASS → build the OliveYoung page-crawl adapter mirroring `naverPageCrawl.ts`:
-      headful + retry, serial + rate-limit + random delay, fail-safe → link_only (never
-      fabricate a price), title parsed only for 개수/구성/용량. Crawl = PRIMARY;
-      Naver-sourced + manual_override = FALLBACK (agreed). Add sold-out detection.
-- [ ] If BLOCKED → escalate: ask OliveYoung to whitelist the runner, or move OY crawl to
-      a non-datacenter egress.
+## Decision (2026-07-14): egress = local machine (A′)
+Datacenter IP is unreliable (1/3). OliveYoung's approval team did no WAF whitelisting.
+Repo is PUBLIC, so a self-hosted GitHub runner is unsafe (fork-PR RCE). → run OliveYoung
+out-of-band on the operator's OWN machine as a **local scheduled script** (residential IP
++ real display), NOT a GitHub runner. Naver (pending its own permission) + Coupang are
+deferred follow-ups.
+
+## Implementation (PR1–4, on this branch)
+- **PR1** `0022_add_oliveyoung_page_crawl_method.sql` — expand `listings.crawl_method`
+  CHECK + re-provenance OliveYoung rows to `oliveyoung_page`.
+- **PR2** `crawler/core/oliveyoungPageCrawl.ts` — headful parser/runner (data-qa anchors,
+  challenge retry, fail-safe). 11 pure-parser tests + live runtime check (24,000/14,400 ·
+  30,000/25,000).
+- **PR3** OliveYoungAdapter page-crawl branch (`OLIVEYOUNG_PAGE_CRAWL=on`, anchored) +
+  run.ts `--only-seller`/`--skip-seller` (scoped run skips current_prices/scores/images —
+  site reads the view, not current_prices) + offerTitle prefix + import/CrawlMethod.
+  test:all green; mock dry-run scopes to 12 OliveYoung listings + skips global steps.
+- **PR4** `scripts/ops/oliveyoung-local-crawl.ts` + `npm run oliveyoung:crawl:local` +
+  `crawl.yml --skip-seller=oliveyoung` + `docs/ops/oliveyoung-local-crawl.md` (Task
+  Scheduler + rollout order).
+
+## Operator rollout (order matters — see docs/ops/oliveyoung-local-crawl.md)
+1. Apply migration 0022 to prod.
+2. `npx playwright install chromium`; run `npm run oliveyoung:crawl:local` manually once,
+   verify OliveYoung prices on the site (GitHub crawl still Naver-sources OliveYoung here).
+3. Merge the branch → activates `--skip-seller=oliveyoung` (local becomes sole OliveYoung
+   source).
+4. Register the daily Task Scheduler job (**"run only when user is logged on"** — headful
+   needs a display).
+
+## Deferred / follow-up
+- Automatic Naver-sourced fallback when a local run is missed: NOT wired (current fallback
+  = last-good snapshot persists + manual_override). Low value for the target case (Naver
+  often has no OliveYoung offer → the exact reason we page-crawl), so deferred.
+- Naver page crawl via the same local path — separate, needs Naver's permission first
+  (we do NOT have it; robots Disallow). See [[project-naver-page-crawl]].
+- Coupang direct crawl — separate follow-up.
 
 ## CI probe result (datacenter IP) — 2026-07-14, run 29334088295
 

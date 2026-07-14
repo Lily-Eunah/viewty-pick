@@ -26,6 +26,7 @@
  * Run locally: npx playwright install chromium && npx tsx scripts/live-check/diagnose-oliveyoung-crawl.ts
  * In CI:       .github/workflows/oliveyoung-probe.yml (workflow_dispatch).
  */
+export {}; // module scope (avoid global name collisions with other script files)
 
 interface Target {
   label: string;
