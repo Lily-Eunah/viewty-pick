@@ -14,6 +14,11 @@ on:
         description: "Optional: comma-separated oy.run / OliveYoung URLs to probe (defaults to a few curated links)"
         required: false
         default: ""
+  # TEMPORARY: auto-run on push to this feature branch so we can get the datacenter-IP
+  # verdict without first landing the workflow on the default branch (workflow_dispatch
+  # is only dispatchable from main). REMOVE this push trigger before merge.
+  push:
+    branches: [feature/oliveyoung-page-crawl]
 
 jobs:
   probe:
