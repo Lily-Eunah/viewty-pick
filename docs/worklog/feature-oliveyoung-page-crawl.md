@@ -64,8 +64,33 @@ challenge to a datacenter IP that a headful-but-automated browser cannot auto-so
 - [ ] If BLOCKED → escalate: ask OliveYoung to whitelist the runner, or move OY crawl to
       a non-datacenter egress.
 
-## CI probe result (datacenter IP)
-_(pending — fill after running the workflow)_
+## CI probe result (datacenter IP) — 2026-07-14, run 29334088295
+
+Runner: ubuntu-24.04, **Azure westus (datacenter IP)**. Headful under xvfb, real
+`Chrome/148` Linux UA, ≤2 reload retries.
+
+- 아로셀 멜라 TXA → **PASS** (정가 30,000 / 할인가 25,000)
+- 스타라이크 PDRN → **403 "Just a moment…"** (challenge NOT cleared, incl. retry)
+- 이니스프리 → **403 "Just a moment…"**
+
+→ **1/3 PASS from the datacenter IP** (vs 3/3 residential). Cloudflare serves a much
+stricter challenge to datacenter IPs; a headful automated browser clears it only
+intermittently. This matches Naver's page crawl 429ing from the same runner. **Not
+reliable enough for the daily crawl** — 2/3 would fail → fall back to link_only,
+defeating the purpose. The approach (headful parse) is sound; the **egress IP** is the
+blocker.
+
+### Decision needed (adapter NOT started — its viability depends on this)
+- **Option B (recommended): fixed-IP egress + OliveYoung whitelists that one IP.** Route
+  the OY crawl through a single static IP and ask OliveYoung to whitelist it (turns the
+  business permission into real WAF access; a whitelisted IP bypasses the challenge).
+- **Option A (fallback): self-hosted runner on a residential IP** (e.g. the operator's
+  Korean home connection). Passed 3/3 locally; free-ish but needs the machine up +
+  runner setup + uptime.
+- **Option C (not recommended): residential-proxy service.** Reliable but costs money
+  (conflicts with 비용 0) and raises ToS/ethics questions.
+
+Interim: keep the current Naver-sourced + manual_override path as-is.
 
 ## Out-of-scope note
 Pre-existing `npm run typecheck` failure in `scripts/live-check/check-robots.ts:28`
