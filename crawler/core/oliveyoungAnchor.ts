@@ -33,9 +33,12 @@ function isMock(): boolean {
 }
 
 // oy.run 단축링크 해석은 1회 페치(캐시) + 전체 상한(비용/차단 방지). resolveCuratedProductNo와 동일 취지.
+// 상한은 큐레이션 OY 링크 수 이상이어야 함 — 페이지크롤(OLIVEYOUNG_PAGE_CRAWL)은 상품마다 goodsNo가
+// 필요해, 상한 미만이면 초과분이 goodsNo=null → no_offer로 조용히 빠진다(활성 OY 97개 > 옛 상한 80이
+// 14개 disappeared를 유발). 카탈로그 성장 대비 env로 조절 가능(oy.run=우리 affiliate 단축링크라 저비용).
 const curatedCache = new Map<string, string | null>();
 let resolves = 0;
-const MAX_RESOLVES = 80;
+const MAX_RESOLVES = parseInt(process.env.OLIVEYOUNG_ANCHOR_MAX_RESOLVES ?? '300', 10);
 
 export function clearOyAnchorCache(): void {
   curatedCache.clear();
