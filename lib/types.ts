@@ -318,6 +318,9 @@ export interface UIProduct {
   /** @deprecated */ priceDropRate?: number;
   source: 'directorpi' | 'hwahae' | 'oliveyoung';
   reasonItems: string[];
+  // Real curated badge details only (no boilerplate); shown as the "검증" note under
+  // the features. Empty when the product carries no badge.
+  badgeReasons?: string[];
   stores: UIStorePrice[];
   viewtyScore: number;
   features?: string[];

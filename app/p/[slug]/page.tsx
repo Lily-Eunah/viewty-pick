@@ -256,7 +256,11 @@ export default async function ProductDetailPage({ params }: PageProps) {
 
       {/* 4. Recommendation Checklist Box */}
       <section className="px-4 py-4.5 bg-bg">
-        <RecommendationReasonBox reasons={product.reasonItems} />
+        <RecommendationReasonBox
+          features={product.features}
+          reasons={product.reasonItems}
+          verifiedNotes={product.badgeReasons}
+        />
       </section>
 
       {/* Affiliate disclosure — directly above the price comparison (per-platform). */}

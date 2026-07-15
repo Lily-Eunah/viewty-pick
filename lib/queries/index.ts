@@ -273,15 +273,17 @@ function mapToUIProduct(
     ? prodLps.reduce((a, b) => (a.crawled_at > b.crawled_at ? a : b)).crawled_at
     : null;
 
-  // Reason items from badge details or fallback template.
-  const reasonItems = pBadges.map((pb) => pb.detail).filter((d): d is string => !!d);
-  if (reasonItems.length === 0) {
-    reasonItems.push(
-      '성분 안전성 통과 및 유해 가능 성분 배제',
-      '민감성 피부 대상 저자극 적합 판정',
-      '화장품 성분 분석 전문가 안심 오리지널 픽'
-    );
-  }
+  // Real curated badge details (e.g. directorpi "2026 무기자차 Top") — surfaced as a
+  // verified note beneath the features, kept separate from the boilerplate below so
+  // the UI can tell a genuine badge from the no-data fallback.
+  const badgeReasons = pBadges.map((pb) => pb.detail).filter((d): d is string => !!d);
+  // reasonItems = badge details, or a boilerplate template when the product has no
+  // badge (the RecommendationReasonBox fallback used only when features are absent).
+  const reasonItems = badgeReasons.length > 0 ? [...badgeReasons] : [
+    '성분 안전성 통과 및 유해 가능 성분 배제',
+    '민감성 피부 대상 저자극 적합 판정',
+    '화장품 성분 분석 전문가 안심 오리지널 픽',
+  ];
 
   return {
     id: prod.id.toString(),
@@ -308,6 +310,7 @@ function mapToUIProduct(
     lastUpdated,
     source,
     reasonItems,
+    badgeReasons,
     stores,
     viewtyScore: Number(prod.viewty_score) || 80,
     features: prod.features ? prod.features.split(',').map((s) => s.trim()) : [],
