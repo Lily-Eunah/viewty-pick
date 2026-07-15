@@ -1,8 +1,16 @@
 import React from 'react';
+import type { Metadata } from 'next';
 import AppShell from '../components/layout/AppShell';
 import Header from '../components/layout/Header';
 import HomeInteractiveSection from '../components/home/HomeInteractiveSection';
 import { getHomePageData } from '../lib/queries';
+
+// Self-referencing canonical for the homepage (resolved against metadataBase =
+// https://viewtypick.com). Consolidates the http/https × www/non-www variants to
+// one canonical URL; title/description/robots are inherited from the root layout.
+export const metadata: Metadata = {
+  alternates: { canonical: '/' },
+};
 
 // ISR: render from the R2 cache, regenerate at most daily. The daily crawler also
 // fires revalidateTag('products') so fresh prices appear right after each sync; this
