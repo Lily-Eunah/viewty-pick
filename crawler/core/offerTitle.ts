@@ -7,6 +7,7 @@ export function rawOfferTitle(sourceText: string | null | undefined): string {
   if (!sourceText) return '';
   let s = sourceText.trim();
   s = s
+    .replace(/^OliveYoung page-crawl:\s*/i, '')
     .replace(/^Naver-sourced OliveYoung offer:\s*/i, '')
     .replace(/^Naver API match:\s*/i, '')
     .replace(/^Naver official-store (?:fallback|match)[^:]*:\s*/i, '')

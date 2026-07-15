@@ -1,0 +1,44 @@
+name: OliveYoung Crawl Feasibility Probe
+
+# Manual, disposable probe. Answers ONE question: can a headless Playwright browser
+# running on GitHub's ubuntu-latest runner (a datacenter IP) get past OliveYoung's
+# WAF and read a product page's title + price? OliveYoung gave us crawl permission
+# but did NO technical whitelisting, and Naver's equivalent page crawl was hard-
+# blocked (429) from this same runner — so we prove the environment BEFORE building
+# the adapter. READ-ONLY: no secrets, no DB writes, no deploy.
+
+on:
+  workflow_dispatch:
+    inputs:
+      urls:
+        description: "Optional: comma-separated oy.run / OliveYoung URLs to probe (defaults to a few curated links)"
+        required: false
+        default: ""
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The probe needs a real browser binary; the daily crawl.yml does not install
+      # these today (the Naver page crawl is gated off), so install here explicitly.
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      # HEADFUL Chromium (the probe launches with headless:false to pass OliveYoung's
+      # Cloudflare managed challenge honestly) needs a virtual display on the runner.
+      - name: Probe OliveYoung from the runner (headful under xvfb)
+        run: xvfb-run -a npm run live-check:oliveyoung-crawl
+        env:
+          OY_PROBE_URLS: ${{ github.event.inputs.urls }}
