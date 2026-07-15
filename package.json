@@ -21,6 +21,8 @@
     "ops:check-sheet": "tsx -r dotenv/config scripts/ops/check-sheet.ts",
     "ops:dryrun-import": "tsx -r dotenv/config scripts/ops/dryrun-import.ts",
     "ops:export-titles": "tsx -r dotenv/config scripts/ops/export-listing-titles.ts",
+    "ops:features-list": "tsx -r dotenv/config scripts/ops/features-normalize.ts --list",
+    "ops:features-apply": "tsx -r dotenv/config scripts/ops/features-normalize.ts --apply",
     "crawler:sync": "tsx -r dotenv/config crawler/run.ts",
     "crawler:test": "tsx -r dotenv/config crawler/run.ts --test",
     "oliveyoung:crawl:local": "tsx -r dotenv/config scripts/ops/oliveyoung-local-crawl.ts",
