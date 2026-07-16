@@ -86,6 +86,17 @@ export default async function ProductDetailPage({ params }: PageProps) {
   );
   const sizesDiffer = pricedVolumes.size > 1;
 
+  // 정가 역전 가드: 1개 기준 최저가가 정가보다 높으면 그 정가는 신뢰할 수 없는 값(오기입 또는
+  // 기획/증량 구성)이라 "정가보다 비싼 최저가"로 오독된다 → 정가·할인 표기를 숨긴다.
+  // (도메인 원칙: 잘못된 가격은 no-price보다 나쁘다.)
+  const regularPriceValid =
+    product.regularPrice != null && product.regularPrice > 0 &&
+    !(product.lowestBasePrice != null && product.lowestBasePrice > 0 && product.lowestBasePrice > product.regularPrice);
+
+  // 상세 혜택 분석표는 구성(1+1/묶음)·로켓 등 비교 카드에 없는 정보를 펼칠 때만 가치가 있다.
+  // 전 판매처가 단품·프로모션 없음이면 카드와 순수 중복이므로 섹션을 숨긴다.
+  const tableAddsInfo = product.stores.some((s) => s.composition || s.isRocket || (s.quantity ?? 1) > 1);
+
   // JSON-LD structured data (Product + AggregateOffer) — priced offers only.
   const displayableOffers = product.stores.filter((s) => s.hasPrice !== false && s.price > 0);
   const basePrices = displayableOffers.map((s) => s.price).filter((p) => p > 0);
@@ -194,8 +205,8 @@ export default async function ProductDetailPage({ params }: PageProps) {
         </div>
         <span className="text-[13px] text-body opacity-80 mt-1 font-semibold">
           용량/규격: {product.volume}
-          {product.regularPrice != null && product.regularPrice > 0 ? (
-            <span className="text-sub"> · 정가 {won(product.regularPrice)}</span>
+          {regularPriceValid ? (
+            <span className="text-sub"> · 정가 {won(product.regularPrice!)}</span>
           ) : null}
         </span>
 
@@ -229,7 +240,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
                 </div>
               ) : null}
               {/* 할인 배지: 정가(시트 입력) 기준 — 정가는 용량/규격 옆에 표기, 여기선 % 만 */}
-              {product.regularPrice != null && product.discountVsRegular != null && product.discountVsRegular > 0 ? (
+              {regularPriceValid && product.discountVsRegular != null && product.discountVsRegular > 0 ? (
                 <div className="flex flex-col justify-end">
                   <span className="text-[12px] text-discount bg-accent-soft font-extrabold px-2.5 py-1 rounded-full">
                     정가 대비 {product.discountVsRegular}% 할인
@@ -246,10 +257,9 @@ export default async function ProductDetailPage({ params }: PageProps) {
             </span>
           )}
 
-          {/* Freshness + 결제가 안내 */}
+          {/* Freshness (결제가·프로모션 안내는 아래 제휴 고지 박스로 이동) */}
           <span className="text-[10px] text-sub font-semibold mt-2 leading-relaxed">
             {product.lastUpdated ? `매일 오전 갱신 · 마지막 갱신 ${updatedAt(product.lastUpdated)}` : '매일 오전 자동 집계'}
-            {' · '}실제 결제가와 프로모션 조건은 판매처에서 확인하세요.
           </span>
         </div>
       </section>
@@ -285,8 +295,9 @@ export default async function ProductDetailPage({ params }: PageProps) {
         )}
       </section>
 
-      {/* 6. Comparison Table (detailed breakdown) */}
-      {product.stores.length > 0 && (
+      {/* 6. Comparison Table — only when it adds info beyond the cards (구성/로켓/묶음).
+             All-단품·no-promo products would just duplicate the cards, so it's hidden. */}
+      {product.stores.length > 0 && tableAddsInfo && (
         <section className="px-4 py-4 bg-bg flex flex-col gap-3">
           <h3 className="text-[15px] font-black text-title tracking-tight">
             상세 혜택 분석표
