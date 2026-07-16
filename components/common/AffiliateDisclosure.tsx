@@ -13,18 +13,22 @@ export default function AffiliateDisclosure({ sellerSlugs }: { sellerSlugs: stri
   if (shown.length === 0) return null;
   return (
     <div className="bg-[#F0EEE2] border border-line rounded-lg px-3.5 py-2.5 flex flex-col gap-1.5">
-      {/* Reassurance first: an affiliate link never changes the buyer's price. */}
-      <p className="flex items-start gap-1.5 text-[11.5px] font-black text-primary leading-snug">
+      <span className="text-[10px] font-black text-sub tracking-wide">제휴 수수료 고지</span>
+      {/* Reassurance: names the buyer's exact suspicion ("링크라서 비싼 것 아냐?") and
+          negates it — the commission never changes what the buyer pays. */}
+      <p className="flex items-start gap-1.5 text-[11.5px] leading-snug">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 shrink-0 mt-px text-success">
           <path fillRule="evenodd" d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12Zm13.36-1.814a.75.75 0 1 0-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 0 0-1.06 1.06l2.5 2.5a.75.75 0 0 0 1.14-.082l4-5.6Z" clipRule="evenodd" />
         </svg>
-        제휴 링크로 구매해도 구매자가 내는 가격은 동일합니다.
+        <span className="flex flex-col gap-0.5">
+          <span className="font-black text-primary">제휴 링크라고 더 비싸지 않아요.</span>
+          <span className="font-semibold text-text-secondary">수수료는 판매처가 부담하며, 구매 금액에는 차이가 없습니다.</span>
+        </span>
       </p>
       <p className="text-[10px] text-sub font-semibold leading-snug">
         실제 결제가·프로모션 조건은 판매처에서 최종 확인하세요.
       </p>
       <div className="mt-0.5 pt-1.5 border-t border-line/70 flex flex-col gap-1">
-        <span className="text-[10px] font-black text-sub tracking-wide">제휴 수수료 고지</span>
         {shown.map((s) => (
           <p key={s} className="text-[10.5px] text-text-secondary font-semibold leading-snug">
             {DISCLOSURES[s]}
