@@ -86,11 +86,11 @@ export default function PriceTable({ stores }: PriceTableProps) {
                     href={store.url}
                     target="_blank"
                     rel="sponsored nofollow"
-                    className={`inline-flex items-center justify-center w-[52px] py-1.5 rounded-md text-[10px] font-black transition-colors ${
+                    className={`inline-flex items-center justify-center whitespace-nowrap px-2.5 py-1.5 rounded-md text-[10px] font-black transition-colors ${
                       store.isBest ? 'bg-accent text-[#7A5B00]' : 'bg-primary-light text-primary-dark hover:bg-opacity-90'
                     }`}
                   >
-                    {linkOnly ? '보기' : '이동'}
+                    {linkOnly ? '보기' : '구매하기'}
                   </a>
                 </td>
               </tr>
