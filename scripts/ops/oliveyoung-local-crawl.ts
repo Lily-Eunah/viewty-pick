@@ -24,8 +24,13 @@ process.env.CRAWLER_ALLOW_PROD_WRITE = 'true';
 
 // Scope to OliveYoung + skip the sheet import (the daily GitHub crawl already imports;
 // this run only reads the already-imported OliveYoung listings and prices them).
-for (const arg of ['--only-seller=oliveyoung', '--skip-import']) {
-  if (!process.argv.includes(arg)) process.argv.push(arg);
+// --max-listings: crawl only N (least-recently-crawled) OliveYoung pages per run so we
+// stay UNDER Cloudflare's rate escalation (all ~100 in one burst trips an interactive
+// challenge). The rest keep their last price and get refreshed on following days.
+const maxPerRun = process.env.OLIVEYOUNG_MAX_PER_RUN ?? '20';
+for (const arg of ['--only-seller=oliveyoung', '--skip-import', `--max-listings=${maxPerRun}`]) {
+  const key = arg.split('=')[0]; // don't duplicate a flag the caller already passed
+  if (!process.argv.some((a) => a === key || a.startsWith(key + '='))) process.argv.push(arg);
 }
 
 // Import AFTER the env is set (async IIFE — this project transpiles to CJS, so no

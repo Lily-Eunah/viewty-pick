@@ -85,6 +85,26 @@ deferred follow-ups.
 4. Register the daily Task Scheduler job (**"run only when user is logged on"** — headful
    needs a display).
 
+## Cloudflare rate escalation — 2026-07-18 (first scheduled run)
+First real scheduled run (04:18, after days idle) revealed the real limit: the first
+**~26** OliveYoung pages crawled fine (managed challenge auto-cleared), then Cloudflare
+**escalated to the INTERACTIVE "verify you're human" challenge** and the remaining ~77
+all failed → link-only (fail-safe, no fake prices; but their prior price got a `no_offer`
+snapshot → dropped from the view). Even the operator's MANUAL checkbox clicks then looped
+= the IP was hard-flagged for the rest of the burst. It is **rate-based** (a burst of
+~100 headful hits trips it), not a permanent block — days idle didn't prevent it, and
+verification (2 crawls days earlier) had passed ~95/97, so OliveYoung likely tightened the
+threshold.
+- ⛔ Auto-clicking the challenge is OFF the table: it's CAPTCHA/bot-detection bypass
+  (against our own `규정 준수` rule + Cloudflare ToS) AND wouldn't work (manual clicks loop).
+- **Mitigation (this change):** (1) pace pages at a random **4–8s** (was fixed 1.8s);
+  (2) `--max-listings` LRU — the local run crawls only **20/day** (`OLIVEYOUNG_MAX_PER_RUN`),
+  cycling the ~103 catalog over ~5 days, staying under the ~26 escalation point.
+  Scheduled task DISABLED until the IP cools + a manual test confirms 20/day stays clean.
+- **Durable fix (recommended, not yet done):** OliveYoung whitelists our egress IP in
+  Cloudflare (business permission does NOT reach Cloudflare). The 2026-07-18 log
+  (escalation at ~26 requests) is concrete evidence to give their tech team.
+
 ## Deferred / follow-up
 - Automatic Naver-sourced fallback when a local run is missed: NOT wired (current fallback
   = last-good snapshot persists + manual_override). Low value for the target case (Naver

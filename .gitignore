@@ -72,3 +72,6 @@ viewtypick-resume-summary.md
 
 # scripts/ 하위의 임시 개발용 스크립트들 (앞에 _가 붙은 파일)
 scripts/**/_*
+
+# local OliveYoung crawl log (scheduled task)
+oy-crawl.log
