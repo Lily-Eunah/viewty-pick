@@ -4,8 +4,15 @@ import ProductImage from '../common/ProductImage';
 import Badge from '../common/Badge';
 import PriceText from '../common/PriceText';
 import { UIProduct } from '../../lib/types';
-import { pricedStoreNames } from '../../lib/format';
 import FavoriteButton from './FavoriteButton';
+
+// Sellers we ship a logo for. Others (zigzag/ably) are skipped rather than
+// falling back to text, so the row stays a fixed width and never wraps.
+const SELLER_LOGOS: Record<string, string> = {
+  naver: '/images/sellers/naver.png',
+  coupang: '/images/sellers/coupang.png',
+  oliveyoung: '/images/sellers/oliveyoung.png',
+};
 
 interface ProductListCardProps {
   product: UIProduct;
@@ -13,9 +20,12 @@ interface ProductListCardProps {
 }
 
 export default function ProductListCard({ product, rank }: ProductListCardProps) {
-  // Comparison tagline (e.g. "쿠팡 · 올리브영 비교") names only priced sellers;
-  // empty when none → label hidden.
-  const storeNames = pricedStoreNames(product);
+  // Logos stand in for the old "○○ · ○○ 비교" tagline; priced sellers only.
+  const logoSellers = product.stores
+    .filter((s) => s.hasPrice && SELLER_LOGOS[s.sellerSlug])
+    .slice(0, 3);
+  const discount =
+    product.discountVsRegular && product.discountVsRegular > 0 ? product.discountVsRegular : null;
 
   return (
     <div className="relative w-full">
@@ -46,20 +56,18 @@ export default function ProductListCard({ product, rank }: ProductListCardProps)
       />
 
       {/* 3. Right Details */}
-      <div className="flex-grow flex flex-col justify-between py-0.5 min-h-[92px] overflow-hidden pr-10">
-        <div className="flex flex-col gap-0.5">
-          {/* Badge & Tags */}
+      <div className="flex-grow flex flex-col justify-between py-0.5 min-h-[92px] overflow-hidden">
+        {/* pr-10 is on this block only — the favorite button is pinned to the card's
+            top-right, so the price row below can use the full width. */}
+        <div className="flex flex-col gap-0.5 pr-10">
+          {/* Badge & Tags — product traits only; the discount lives with the price
+              below, so this row keeps room for future badges (화해/올영 랭킹). */}
           <div className="flex items-center gap-1.5 flex-wrap">
             {product.badges.slice(0, 1).map((b, idx) => (
               <Badge key={idx} type="trust" className="py-0.5">
                 {b}
               </Badge>
             ))}
-            {product.discountVsRegular && product.discountVsRegular > 0 ? (
-              <Badge type="accent" className="py-0.5">
-                정가 대비 {product.discountVsRegular}%↓
-              </Badge>
-            ) : null}
           </div>
 
           {/* Brand & Name */}
@@ -86,17 +94,28 @@ export default function ProductListCard({ product, rank }: ProductListCardProps)
               <span className="text-[13px] font-black text-sub mt-0.5">판매처에서 보기</span>
             ) : (
               <div className="flex items-baseline gap-1 mt-0.5">
+                {discount ? (
+                  <span className="text-[11px] text-[#8A1238] font-black">{discount}%↓</span>
+                ) : null}
                 <PriceText price={product.lowestPrice} size="sm" />
                 {product.bestIsMultipack && <span className="text-[9px] text-sub font-bold">/개</span>}
               </div>
             )}
           </div>
 
-          {storeNames && (
-            <div className="flex flex-col items-end">
-              <span className="text-[10px] text-text-secondary font-black tracking-tight max-w-[150px] truncate leading-none">
-                {storeNames} 비교
-              </span>
+          {logoSellers.length > 0 && (
+            <div className="flex items-center gap-[3px] shrink-0">
+              {logoSellers.map((s) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  key={s.sellerSlug}
+                  src={SELLER_LOGOS[s.sellerSlug]}
+                  alt={s.name}
+                  width={20}
+                  height={20}
+                  className="block w-5 h-5"
+                />
+              ))}
             </div>
           )}
         </div>
