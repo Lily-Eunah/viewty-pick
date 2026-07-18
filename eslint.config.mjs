@@ -16,6 +16,8 @@ const eslintConfig = defineConfig([
     ".open-next/**",
     // wrangler build/temp output (gitignored): not source, never lint.
     ".wrangler/**",
+    // Local underscore-prefixed scripts are gitignored developer probes.
+    "scripts/**/_*",
   ]),
 ]);
 
