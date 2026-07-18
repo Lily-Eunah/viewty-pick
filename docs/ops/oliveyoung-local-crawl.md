@@ -16,6 +16,14 @@ everything else and skips OliveYoung (`crawl.yml` → `--skip-seller=oliveyoung`
   touched (they stay owned by the daily GitHub crawl).
 - `OLIVEYOUNG_PAGE_CRAWL=on` → the OliveYoung adapter uses the headful page crawl (by
   `goodsNo` from the curated link) instead of the Naver-sourced fallback.
+- `--max-listings=20` (env `OLIVEYOUNG_MAX_PER_RUN`, default 20) → crawls only the 20
+  **least-recently-crawled** OliveYoung pages per run (LRU), cycling the whole catalog
+  over several days. This keeps a run UNDER OliveYoung's Cloudflare **rate escalation**:
+  hitting all ~100 pages in one burst trips the managed challenge up to an INTERACTIVE
+  "verify you're human" one (observed at ~26 requests) that we neither can nor may
+  auto-solve. Un-crawled listings keep their last snapshot (still shown), so nothing goes
+  dark. Also paced with a random 4–8s gap between pages (`OLIVEYOUNG_CRAWL_INTERVAL_MS` /
+  `_JITTER_MS`).
 - Fail-safe: any Cloudflare block / timeout / parse miss / sold-out → the listing stays
   link-only (no price written). It never fabricates a price.
 - The site reads the `listing_prices_public` view, so a fresh OliveYoung snapshot shows
