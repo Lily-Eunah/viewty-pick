@@ -15,6 +15,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: SITE_URL, lastModified: now, changeFrequency: 'daily', priority: 1 },
     { url: `${SITE_URL}/best`, lastModified: now, changeFrequency: 'daily', priority: 0.9 },
     { url: `${SITE_URL}/search`, lastModified: now, changeFrequency: 'weekly', priority: 0.5 },
+    // 피부타입 테스트 랜딩(결과·퀴즈 페이지는 noindex, 랜딩만 노출).
+    { url: `${SITE_URL}/skin-test`, lastModified: now, changeFrequency: 'monthly', priority: 0.7 },
   ];
 
   try {
