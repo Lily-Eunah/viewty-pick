@@ -18,8 +18,8 @@ export default function QuestionIllustration({ src, fallbackEmoji, alt = '' }: Q
 
   if (missing) {
     return (
-      <div className="w-24 h-24 mx-auto rounded-full bg-accent-light border border-line flex items-center justify-center">
-        <span className="text-[44px] leading-none" aria-hidden>
+      <div className="w-36 h-36 sm:w-40 sm:h-40 mx-auto shrink-0 rounded-full bg-accent-light border border-line flex items-center justify-center">
+        <span className="text-[56px] sm:text-[64px] leading-none" aria-hidden>
           {fallbackEmoji}
         </span>
       </div>
@@ -30,7 +30,7 @@ export default function QuestionIllustration({ src, fallbackEmoji, alt = '' }: Q
     <img
       src={src}
       alt={alt}
-      className="w-28 h-28 mx-auto object-contain"
+      className="w-36 h-36 sm:w-40 sm:h-40 mx-auto shrink-0 object-contain"
       onError={() => setMissing(true)}
     />
   );

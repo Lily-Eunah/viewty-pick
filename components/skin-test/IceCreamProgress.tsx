@@ -4,9 +4,9 @@ import React from 'react';
 
 /**
  * 아이스크림 프로그레스바 — 답할 때마다 트랙이 차오르고, 맨 앞의 아이스크림이
- * 파트를 지날 때마다 다른 맛으로 변신한다. 고민 토핑(마지막)·보너스는 전용 이모지.
+ * 문항마다 다른 맛으로 변신한다. 고민 토핑(마지막)·보너스는 전용 이모지(🍒/🍓).
  */
-const PART_EMOJI = ['🍦', '🍧', '🍨', '🍡'];
+const STEP_EMOJI = ['🍦', '🍧', '🍨', '🍡', '🧁', '🍰', '🍪', '🍩', '🍫', '🍭'];
 
 interface IceCreamProgressProps {
   /** 현재 문항 인덱스(0-based). */
@@ -19,7 +19,7 @@ interface IceCreamProgressProps {
 
 export default function IceCreamProgress({ step, total, emoji }: IceCreamProgressProps) {
   const pct = Math.min(100, Math.round(((step + 1) / total) * 100));
-  const icon = emoji ?? PART_EMOJI[Math.min(Math.floor((step / total) * PART_EMOJI.length), PART_EMOJI.length - 1)];
+  const icon = emoji ?? STEP_EMOJI[step % STEP_EMOJI.length];
 
   return (
     <div className="flex items-center gap-3">

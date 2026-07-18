@@ -27,6 +27,7 @@ export interface ToppingResult {
   concern: string;
   copy: string;
   asset: string;
+  heroClassName: string;
 }
 
 export const BASE_RESULTS: Record<BaseKey, BaseResult> = {
@@ -41,7 +42,7 @@ export const BASE_RESULTS: Record<BaseKey, BaseResult> = {
       '계절이 바뀔 때 보습 강도만 미세 조정',
       '자외선 차단은 균형 피부에게도 유일한 필수 숙제',
     ],
-    asset: '/images/skin-test/base-normal.png',
+    asset: '/images/skin-test/v2/base-normal.png',
     skinName: null,
     skinSlug: null,
   },
@@ -56,7 +57,7 @@ export const BASE_RESULTS: Record<BaseKey, BaseResult> = {
       '에어컨·히터 앞에선 미스트보다 수분크림 덧바르기',
       '각질 제거는 주 1회 이하로 순하게',
     ],
-    asset: '/images/skin-test/base-normal-dehydrated.png',
+    asset: '/images/skin-test/v2/base-normal-dehydrated.png',
     skinName: '수부지',
     skinSlug: 'dehydrated',
   },
@@ -71,7 +72,7 @@ export const BASE_RESULTS: Record<BaseKey, BaseResult> = {
       '세안 후 물기가 마르기 전 3분 안에 보습',
       '겨울엔 슬리핑팩·페이스오일로 한 겹 더',
     ],
-    asset: '/images/skin-test/base-dry.png',
+    asset: '/images/skin-test/v2/base-dry.png',
     skinName: '건성',
     skinSlug: 'dry',
   },
@@ -86,7 +87,7 @@ export const BASE_RESULTS: Record<BaseKey, BaseResult> = {
       '새 제품은 턱·귀 뒤에 2~3일 테스트 후 도입',
       '세라마이드·판테놀 등 장벽 강화 성분 최우선',
     ],
-    asset: '/images/skin-test/base-dry-sensitive.png',
+    asset: '/images/skin-test/v2/base-dry-sensitive.png',
     skinName: '민감성',
     skinSlug: 'sensitive',
   },
@@ -101,7 +102,7 @@ export const BASE_RESULTS: Record<BaseKey, BaseResult> = {
       '주 1~2회 BHA로 모공·피지 결 정리',
       '과한 세안은 피지 리바운드 — 하루 2회면 충분',
     ],
-    asset: '/images/skin-test/base-oily.png',
+    asset: '/images/skin-test/v2/base-oily.png',
     skinName: '지성',
     skinSlug: 'oily',
   },
@@ -116,7 +117,7 @@ export const BASE_RESULTS: Record<BaseKey, BaseResult> = {
       '알코올 비중 높은 토너·하루 3회 이상 세안 금지',
       '가벼운 수분크림을 얇게, 필요하면 여러 번',
     ],
-    asset: '/images/skin-test/base-oily-dehydrated.png',
+    asset: '/images/skin-test/v2/base-oily-dehydrated.png',
     skinName: '수부지',
     skinSlug: 'dehydrated',
   },
@@ -131,7 +132,7 @@ export const BASE_RESULTS: Record<BaseKey, BaseResult> = {
       '클렌징은 T존 위주로 꼼꼼히, 볼은 가볍게',
       '밸런싱 토너로 전체 결을 고르게 정리',
     ],
-    asset: '/images/skin-test/base-combo.png',
+    asset: '/images/skin-test/v2/base-combo.png',
     skinName: '복합성',
     skinSlug: 'combination',
   },
@@ -146,7 +147,7 @@ export const BASE_RESULTS: Record<BaseKey, BaseResult> = {
       '각질 제거·고농도 액티브는 컨디션 좋은 날만',
       '피부가 뒤집어진 주엔 루틴을 반으로 줄이기',
     ],
-    asset: '/images/skin-test/base-combo-sensitive.png',
+    asset: '/images/skin-test/v2/base-combo-sensitive.png',
     skinName: '민감성',
     skinSlug: 'sensitive',
   },
@@ -158,35 +159,40 @@ export const TOPPING_RESULTS: Record<ToppingKey, ToppingResult> = {
     concern: '트러블·여드름',
     copy:
       '팝핑캔디처럼 예고 없이 톡톡 올라오는 트러블 메이트. 손대지 않기 + 진정 스팟 케어가 기본이고, 염증성 여드름이 잦다면 피부과가 가장 빠른 길이에요.',
-    asset: '/images/skin-test/pet-trouble.png',
+    asset: '/images/skin-test/v2/pet-trouble.png',
+    heroClassName: '-right-11 bottom-1 h-20 -rotate-3',
   },
   pores: {
     petName: '돼지바',
     concern: '모공·피지',
     copy:
       '크런치처럼 도드라진 모공·블랙헤드 짝꿍. 억지로 짜기보다 BHA·클레이로 녹여내고, 유분 컨트롤과 자외선 차단으로 모공 늘어짐을 막아주세요.',
-    asset: '/images/skin-test/pet-pores.png',
+    asset: '/images/skin-test/v2/pet-pores.png',
+    heroClassName: '-right-14 bottom-0 h-[72px] rotate-0',
   },
   texture: {
     petName: '쿠키오',
     concern: '각질·피부결',
     copy:
       '부스러기를 흘리고 다니는 까끌 각질 메이트. 벅벅 밀기보다 순한 각질 케어를 주기적으로, 그리고 그 직후엔 보습을 두 배로 챙기는 게 결 관리의 정석이에요.',
-    asset: '/images/skin-test/pet-texture.png',
+    asset: '/images/skin-test/v2/pet-texture.png',
+    heroClassName: '-right-16 bottom-0 h-16 -rotate-[2deg]',
   },
   redness: {
     petName: '수박바',
     concern: '홍조·붉어짐',
     copy:
       '볼이 새빨개지는 수박바 단짝. 온도차·자극을 줄이고 진정·쿨링 케어를 기본으로 — 붉은기가 몇 주째 가라앉지 않는다면 피부과 상담이 정답입니다.',
-    asset: '/images/skin-test/pet-redness.png',
+    asset: '/images/skin-test/v2/pet-redness.png',
+    heroClassName: '-right-10 bottom-0 h-20 rotate-0',
   },
   elasticity: {
     petName: '찰떡 트윈스',
     concern: '탄력·영양',
     copy:
       '눌러도 다시 통통해지는 찰떡 같은 탄력을 위해 — 보습·영양·자외선 차단 삼박자가 핵심이에요. 특히 자외선 차단이 최고의 안티에이징입니다.',
-    asset: '/images/skin-test/pet-elasticity.png',
+    asset: '/images/skin-test/v2/pet-elasticity.png',
+    heroClassName: '-right-13 bottom-[-2px] h-[74px] rotate-0',
   },
 };
 

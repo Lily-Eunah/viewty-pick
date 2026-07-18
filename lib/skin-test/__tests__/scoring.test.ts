@@ -139,7 +139,7 @@ it('모든 베이스·토핑 결과에 카피와 에셋이 있다', () => {
     assert(b.flavor && b.typeName && b.desc && b.care.length >= 2 && b.asset, `base ${k}`);
   }
   for (const t of Object.values(TOPPING_RESULTS)) {
-    assert(t.petName && t.copy && t.asset, `topping ${t.petName}`);
+    assert(t.petName && t.copy && t.asset && t.heroClassName, `topping ${t.petName}`);
   }
 });
 it('Q10 토핑 선택지가 TOPPING_RESULTS와 1:1', () => {

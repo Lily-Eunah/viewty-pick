@@ -74,7 +74,7 @@ export default async function SkinTestResultPage({ params }: PageProps) {
             <img
               src={toppingMeta.asset}
               alt={`${toppingMeta.petName} 펫`}
-              className="absolute -right-12 bottom-0 h-20 w-auto object-contain rotate-6 drop-shadow-[0_6px_10px_rgba(65,0,22,0.15)]"
+              className={`absolute w-auto object-contain drop-shadow-[0_6px_10px_rgba(65,0,22,0.15)] ${toppingMeta.heroClassName}`}
             />
           )}
         </div>

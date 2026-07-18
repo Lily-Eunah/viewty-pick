@@ -5,61 +5,62 @@ import AppShell from '../../components/layout/AppShell';
 import Header from '../../components/layout/Header';
 
 export const metadata: Metadata = {
-  title: '내 피부는 무슨 아이스크림 맛? | 뷰티픽 피부타입 테스트',
+  title: '90초 피부타입 테스트 | 내 피부에 맞는 화장품 찾기 | 뷰티픽',
   description:
-    '유분·수분·민감 3축 10문항, 90초 피부타입 테스트. 내 피부 아이스크림 캐릭터와 타입 맞춤 검증템 최저가까지 한 번에 확인하세요.',
+    '유분·수분·민감도를 바탕으로 지금의 피부타입과 추가 고민을 확인해보세요. 10문항, 약 90초면 케어 방향과 타입 맞춤 검증템까지 알려드려요.',
   openGraph: {
-    title: '내 피부는 무슨 아이스크림 맛?',
-    description: '10문항 90초 — 피부타입 캐릭터 테스트',
-    images: ['/images/skin-test/base-normal.png'],
+    title: '화장품 실패를 줄이는 90초 피부타입 테스트',
+    description: '기억 속 피부가 아닌, 오늘의 피부 상태를 확인해보세요.',
+    images: ['/images/skin-test/v2/base-normal.png'],
   },
 };
-
-// 랜딩 히어로에 세워둘 캐릭터 미리보기(결과 스포일러를 줄이려 4종만).
-const HERO_CHARACTERS = [
-  { src: '/images/skin-test/base-normal.png', alt: '투게더 바닐라 캐릭터', cls: 'h-20 -rotate-6' },
-  { src: '/images/skin-test/base-oily.png', alt: '폴라포 캐릭터', cls: 'h-24 translate-y-1' },
-  { src: '/images/skin-test/base-dry.png', alt: '빵또아 캐릭터', cls: 'h-22 rotate-3' },
-  { src: '/images/skin-test/base-combo.png', alt: '월드콘 캐릭터', cls: 'h-24 rotate-6 translate-y-0.5' },
-];
 
 export default function SkinTestLandingPage() {
   return (
     <AppShell activeTab="home">
-      <Header showBack title="피부 아이스크림 테스트" />
+      <Header showBack title="내 피부타입 찾기" />
 
-      <section className="bg-background-warm px-4 pt-8 pb-10 border-b border-line rounded-b-[28px] shadow-sm flex flex-col items-center text-center gap-4">
+      <section className="bg-background-warm px-4 pt-7 pb-9 border-b border-line rounded-b-[28px] shadow-sm flex flex-col items-center text-center gap-3">
         <span className="px-3 py-1 rounded-pill bg-white text-primary text-[11px] font-black border border-line">
-          10문항 · 90초
+          회원가입 없이 무료 · 10문항 · 약 90초
         </span>
         <h1 className="text-[26px] font-black text-title leading-tight tracking-tight">
-          내 피부는<br />무슨 아이스크림 맛?
+          내 피부타입을 모르고<br />화장품을 고르고 계셨나요?
         </h1>
-        <p className="text-[12px] text-body opacity-85 font-semibold leading-relaxed">
-          유분·수분·민감 3축으로 알아보는 내 피부 타입.<br />
-          결과에서 타입 맞춤 <b>검증템 최저가</b>까지 바로 이어져요.
+        <p className="text-[12px] text-body opacity-90 font-semibold leading-relaxed">
+          &lsquo;나는 원래 지성이야&rsquo;라고 몇 년째 같은 타입으로 알고 있진 않나요?<br />
+          반도 못 쓴 화장품이 쌓여간다면, 지금 피부부터 다시 확인해보세요.
         </p>
 
-        <div className="flex items-end justify-center gap-1.5 mt-2">
-          {HERO_CHARACTERS.map((c) => (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img key={c.src} src={c.src} alt={c.alt} className={`w-auto object-contain ${c.cls}`} />
-          ))}
+        <div className="w-full max-w-[310px] h-[166px] mt-1 flex items-center justify-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/images/skin-test/v2/landing-hero-group.png"
+            alt="피부요정 주위로 투게더, 요맘때, 빵또아, 월드콘 친구들이 다정하게 모여 있는 모습"
+            className="w-full h-full object-contain"
+          />
         </div>
+
+        <p className="text-[11px] text-primary font-black tracking-tight">
+          기본 피부타입 + 지금의 피부 고민 + 케어 방향
+        </p>
 
         <Link
           href="/skin-test/quiz"
-          className="w-full max-w-[320px] mt-3 py-4 rounded-btn bg-primary text-white text-[15px] font-black shadow-[0_10px_24px_rgba(65,0,22,0.25)] active:scale-[0.98] transition-transform"
+          className="w-full max-w-[320px] py-4 rounded-btn bg-primary text-white text-[15px] font-black shadow-[0_10px_24px_rgba(65,0,22,0.25)] active:scale-[0.98] transition-transform"
         >
-          테스트 시작하기 🍦
+          90초 만에 내 피부타입 찾기
         </Link>
+        <p className="-mt-1 text-[10px] text-sub font-bold">
+          기억 속 피부가 아닌, 오늘의 피부를 기준으로 답해주세요.
+        </p>
       </section>
 
       <section className="px-4 py-6 flex flex-col gap-3">
         {[
-          ['🍦', '8가지 아이스크림 캐릭터', '유분×수분×민감 조합으로 내 피부를 캐릭터 하나로 정리해줘요.'],
-          ['🐷', '고민 토핑 펫', '트러블·모공·각질·홍조·탄력 — 요즘 최대 고민이 작은 펫으로 붙어요.'],
-          ['🏷️', '결과 맞춤 검증템 최저가', '내 타입에 맞는 검증 제품의 오늘 최저가를 결과에서 바로 비교해요.'],
+          ['🪞', '내 피부타입, 언제 확인했나요?', '한번 정한 타입은 계속 그대로 믿기 쉽지만, 유분·수분·민감도와 필요한 케어는 계절과 컨디션에 따라 달라질 수 있어요.'],
+          ['💧', '유분·수분·민감도를 함께 확인해요', '겉으로 보이는 번들거림만으로는 수분부족 지성이나 복합성을 구분하기 어려워요.'],
+          ['🎁', '90초 뒤 알 수 있어요', '8가지 기본 피부타입과 지금의 추가 고민, 내 피부에 맞는 관리 방향과 검증템을 알려드려요.'],
         ].map(([emoji, title, desc]) => (
           <div key={title} className="flex items-start gap-3 bg-surface border border-line rounded-card p-4 shadow-sm">
             <span className="text-[24px] leading-none" aria-hidden>{emoji}</span>
