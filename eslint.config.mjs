@@ -16,6 +16,8 @@ const eslintConfig = defineConfig([
     ".open-next/**",
     // wrangler build/temp output (gitignored): not source, never lint.
     ".wrangler/**",
+    // Temporary development scripts prefixed with `_` (gitignored): not source.
+    "scripts/**/_*",
   ]),
 ]);
 
