@@ -1,318 +1,147 @@
-# ViewtyPick (View + Beauty + Pick) - 검증된 화장품 최저가 큐레이션 서비스
+# ViewtyPick
 
-## 1. 서비스 소개
+**A trust-first Korean beauty discovery and price-comparison product.**
 
-ViewtyPick은 소비자가 신뢰할 수 있는 화장품을 쉽고 빠르게 찾고, 검증된 판매처 중 가장 합리적인 가격으로 구매할 수 있도록 돕는 화장품 큐레이션 및 가격 비교 서비스이다.
+ViewtyPick helps shoppers discover curated cosmetics and compare prices only across verified retailers. The system treats product identity and price as high-risk data: uncertain matches are withheld for review instead of being shown as a potentially wrong bargain.
 
-기존 가격 비교 서비스는 수많은 상품과 판매처를 제공하지만 어떤 제품을 선택해야 하는지 판단하기 어렵고, 검증되지 않은 판매처가 포함되는 경우도 많다.
+[Live app](https://www.viewtypick.com) · [Source](https://github.com/Lily-Eunah/viewty-pick)
 
-반면 ViewtyPick은 실제 사용자들이 많이 찾는 화장품, 전문가와 소비자에게 검증받은 화장품만 선별하여 제공한다.
+<img width="300" height="600" alt="image" src="https://github.com/user-attachments/assets/d0c1e815-99d0-4bb4-a58a-8b40524ea99b" /><img width="300" height="600" alt="image" src="https://github.com/user-attachments/assets/7759d9ea-72b7-408e-9a85-b8029de3bfbf" /><img width="300" height="600" alt="image" src="https://github.com/user-attachments/assets/53a19b77-488a-4f96-be5b-c3701f3e262a" />
+<img width="300" height="600" alt="image" src="https://github.com/user-attachments/assets/e23ac1c2-ff29-4fb3-b9ec-223c65e5151d" /><img width="300" height="600" alt="image" src="https://github.com/user-attachments/assets/12f34e61-885b-4d9b-b393-7642fa05e1b7" />
 
-또한 올리브영, 쿠팡 로켓배송, 네이버 공식 브랜드스토어 등 신뢰할 수 있는 판매처만 가격 비교 대상으로 사용하여 사용자가 안심하고 구매할 수 있도록 지원한다.
 
-ViewtyPick은 단순히 가장 저렴한 제품을 찾는 서비스가 아니라, 사용자가 신뢰할 수 있는 화장품을 발견하고 가장 합리적인 가격으로 구매할 수 있도록 돕는 구매 의사결정 플랫폼을 목표로 한다.
 
----
 
-# 2. 핵심 가치
 
-## 2.1 검증된 화장품만 제공
+## What this project demonstrates
 
-모든 화장품을 수집하지 않는다.
+- **Trust-aware data engineering:** retailer offers pass identity, seller, quantity, and confidence checks before publication.
+- **Production price collection:** adapters normalize data from Naver Shopping, Coupang Partners, and OliveYoung-linked sources.
+- **Fail-safe operations:** missing or uncertain data becomes `no price` or a review item; the system never fabricates a price.
+- **Edge-first delivery:** Next.js runs on Cloudflare Workers through OpenNext, backed by Supabase/PostgreSQL.
+- **Search-driven product design:** statically generated catalog and intent pages expose complete, indexable buying guidance.
 
-사용자가 실제로 구매를 고려하는 대표 제품만 선별하여 제공한다.
+## Selected outcomes
 
-선별 기준 예시
+| Area | Result |
+| --- | --- |
+| Matching quality | Recorded validation reached **0 wrong-product prices across the catalog**, with roughly **85% offer coverage** at that snapshot |
+| LLM efficiency | A regex-first, LLM-fallback title parser reduced Gemini traffic from **54% to 28%** in shadow validation |
+| Web data access | Server components and batched queries reduced browser-visible Supabase requests from **8–9 to 0** |
+| Edge reliability | Reworked dynamic catalog routes into build-time output after tracing failures to Cloudflare Workers' CPU limit |
+| Personalization | Shipped a 10-question skin-type flow with deterministic scoring and **48 statically generated result pages** |
 
-* 전문가 추천 제품
-* 뷰티 플랫폼 인기 제품
-* 베스트셀러 제품
-* 커뮤니티에서 지속적으로 언급되는 제품
-* 검색량이 높은 인기 제품
+Metrics above describe recorded validation snapshots and should be updated as the catalog changes.
 
-초기 MVP에서는 디렉터파이 언급 제품을 중심으로 운영한다.
+## Data pipeline
 
----
+```mermaid
+flowchart LR
+    S[Verified retailer sources] --> A[Retailer adapters]
+    A --> N[Normalize title, seller, price, and quantity]
+    N --> M[Confidence-gated product matching]
+    M -->|High confidence| P[(Append-only price snapshots)]
+    M -->|Uncertain| R[Inspection queue]
+    P --> V[Public RLS-preserving projection]
+    V --> W[Next.js catalog and product pages]
+    W --> C[Cloudflare Workers]
+    P --> I[On-demand revalidation / rebuild]
+```
 
-## 2.2 검증된 판매처만 비교
+The central rule is simple: **a wrong price is worse than no price**. The pipeline keeps the last known good image and price where appropriate, isolates uncertain identity matches, and requires explicit opt-in before any crawler can write to production.
 
-최저가만 추구하지 않는다.
+## Core engineering decisions
 
-사용자가 안심하고 구매할 수 있도록 검증된 판매처만 가격 비교 대상으로 사용한다.
+### Confidence-gated matching
 
-### 비교 대상
-* 올리브영
-* 쿠팡 로켓배송
-* 네이버 공식 브랜드 스토어
-* 지그재그
-* 에이블리
+Offers are evaluated through multiple identity signals rather than title similarity alone. Seller trust, normalized brand and product names, package quantity, and retailer-specific identifiers determine whether an offer is published or sent for inspection.
 
-### 보조 (가격 비교 제외, 정보 링크만)
-* 브랜드 공식몰 — 유지보수 비용·불명확한 가격 기준(회원가·쿠폰)으로 가격 비교에서 제외하고, 제품 상세의 "공식 정보 보기" 링크로만 제공 (DESIGN §4.1)
+### Canonical quantity model
 
-### 제외 대상
-* 컬리
-* 개인 스마트스토어
-* 검증되지 않은 오픈마켓 판매자
-* 출처가 불명확한 판매처
+Retailer-specific package expressions are converted through one canonical-unit gateway. This makes per-unit comparisons possible across `ml`, `g`, and sheet-count products without scattering parsing rules through the UI.
 
----
+### Append-only pricing
 
-## 2.3 신뢰 가능한 최저가 제공
+Price observations are stored as history rather than overwritten in place. The public web layer reads through a restricted projection so product pages can show current offers without exposing operational columns.
 
-"인터넷 최저가"가 아니라
+### Compliance-aware collection
 
-"검증된 판매처 기준 최저가"
+The crawler respects retailer constraints, rate limits, and source-specific collection paths. A WAF-protected retailer is collected through a locally scheduled, headful workflow after read-only probes showed datacenter traffic was blocked. Failure paths preserve prior good data and never invent results.
 
-를 제공한다.
+### Edge deployment
 
-사용자는 가격과 신뢰성을 동시에 확보할 수 있다.
+The application runs on Cloudflare Workers through OpenNext. Catalog pages are generated ahead of time where possible, while crawler-triggered rebuilds and revalidation keep data fresh within the platform's CPU budget.
 
----
+## Product surface
 
-## 2.4 한눈에 보는 추천 정보
+- Curated product and category discovery
+- Verified-retailer price comparison
+- Canonical per-unit pricing and discount context
+- Evidence and recommendation badges
+- Search and 40+ intent-focused SEO landing pages
+- Ten-question skin-type assessment with personalized product recommendations
+- Operator workflows for catalog maintenance, inspection, backups, and crawl control
 
-사용자가 여러 플랫폼을 직접 비교하지 않아도 제품의 신뢰도를 빠르게 확인할 수 있도록 지원한다.
+## Tech stack
 
-### 추천 뱃지 예시
+| Layer | Technology |
+| --- | --- |
+| Application | Next.js 16, React 19, TypeScript |
+| Edge runtime | Cloudflare Workers, OpenNext, Wrangler |
+| Data | Supabase, PostgreSQL, Row Level Security |
+| Collection | Retailer adapters, Playwright, scheduled workflows |
+| Validation | Zod, deterministic matching tests, shadow evaluation |
+| Operations | GitHub Actions, Google Sheets operator workflows, Discord alerts |
 
-* 디렉터파이 언급
-* 화해 랭킹
-* 올리브영 베스트셀러
+## Repository structure
 
-사용자는 익숙한 신뢰 지표를 통해 제품을 빠르게 판단할 수 있다.
+```text
+app/                  Next.js routes and server-rendered product surfaces
+components/           Product, commerce, search, and skin-test UI
+crawler/              Retailer adapters, normalization, matching, and tests
+lib/queries/          Restricted public-data access layer
+scripts/ops/          Backup, audit, import, and controlled maintenance tools
+scripts/live-check/   Read-only production verification
+supabase/migrations/  Additive database migrations and public projections
+```
 
----
+## Run locally
 
-# 3. 주요 사용자
+### Prerequisites
 
-## 화장품 추천 콘텐츠 소비자
+- Node.js 20 or newer
+- npm
 
-* 유튜브 추천 영상을 보고 제품을 찾는 사용자
-* SNS 뷰티 콘텐츠를 참고하는 사용자
+```bash
+npm ci
+npm run dev
+```
 
-## 화장품 정보 서비스 이용자
+The local application runs at `http://localhost:3000`.
 
-* 화해를 참고하는 사용자
-* 올리브영 랭킹을 참고하는 사용자
+Production-backed collection and operator commands require external credentials. Keep them in an untracked local environment file. Do not run `crawler:sync` against real credentials unless a production write is intentional, backed up, and explicitly enabled.
 
-## 가격 민감 사용자
+## Verify changes
 
-* 같은 제품을 더 저렴하게 구매하고 싶은 사용자
-* 정품을 안심하고 구매하고 싶은 사용자
+```bash
+npm run lint
+npm run typecheck
+npm run test:all
+npm run build
+```
 
----
+For changes that depend on the Cloudflare runtime, also run:
 
-# 4. MVP 범위
+```bash
+npm run cf:build
+```
 
-## 제품 수
+The crawler's safe local path is `npm run crawler:test`; live checks under `scripts/live-check/` are intended to be read-only diagnostics.
 
-초기에는 약 50~100개의 대표 화장품만 운영한다.
+## Author
 
-무분별하게 제품 수를 늘리지 않고 실제 수요가 높은 제품 위주로 관리한다.
+Built by [Eunah (Lily) Yang](https://www.linkedin.com/in/eunah-yang-3a86553a4/).
 
----
+## License
 
-## 추천 출처
-
-### MVP
-
-* 디렉터파이 언급 제품
-
-### 향후 확장
-
-* 화해 랭킹 제품
-* 올리브영 베스트셀러
-* 기타 뷰티 인플루언서
-* 커뮤니티 인기 제품
-
----
-
-## 주요 카테고리
-
-* 선크림
-* 토너
-* 로션
-* 세럼
-* 크림
-* 클렌징
-
----
-
-# 5. 서비스 구조
-
-## 카테고리 페이지
-
-제품군별 탐색 기능 제공
-
-예시
-
-* 선크림
-* 토너
-* 세럼
-* 크림
-
----
-
-## 피부 타입 필터
-
-사용자가 자신의 피부 특성에 맞는 제품을 쉽게 찾을 수 있도록 지원
-
-예시
-
-* 민감성
-* 지성
-* 건성
-* 복합성
-* 수부지
-* 여드름성 피부
-
----
-
-## 제품 리스트 페이지
-
-사용자가 여러 제품을 빠르게 비교할 수 있는 화면
-
-### 제공 정보
-
-* 제품명
-* 브랜드
-* 대표 이미지
-* 최저가
-* 용량
-* ml당 가격
-* 추천 뱃지
-
-### 추천 뱃지
-
-* 디렉터파이 언급
-* 화해 랭킹
-* 올리브영 베스트셀러
-
-### 정렬 기준
-
-사용자에게는 노출되지 않지만 내부적으로는 Viewty Score를 활용하여 추천 순서를 결정한다.
-
----
-
-## 제품 상세 페이지
-
-### 제품 정보
-
-* 브랜드
-* 용량
-* 제품 특징
-* 피부 타입
-
-### 추천 정보
-
-* 디렉터파이 언급 여부
-* 화해 랭킹 여부
-* 올리브영 베스트셀러 여부
-
-### 가격 정보
-
-* 판매처별 가격
-* 최저가 판매처
-* 구매 링크
-
-### 외부 정보
-
-* 화해 성분 분석 보기
-* 브랜드 공식 홈페이지
-
----
-
-# 6. Viewty Score
-
-Viewty Score는 제품의 신뢰도와 가격 경쟁력을 종합적으로 평가하는 내부 추천 알고리즘이다.
-
-사용자에게는 추천 뱃지와 가격 정보를 우선 제공하며, Viewty Score는 제품 정렬 및 추천 순위 산정에 활용된다.
-
-### 평가 요소
-
-#### 추천 신뢰도
-
-* 전문가 추천 여부
-* 뷰티 플랫폼 랭킹 여부
-* 베스트셀러 여부
-
-#### 가격 경쟁력
-
-* 현재 판매 가격
-* 용량 대비 가격
-* 카테고리 내 가격 경쟁력
-
-### 목적
-
-사용자가 가장 신뢰할 수 있고 가격 경쟁력이 높은 제품을 먼저 발견할 수 있도록 돕는다.
-
----
-
-# 7. SEO 전략
-
-## 추천 기반 페이지
-
-예시
-
-* 디렉터파이 추천 선크림 모음
-* 디렉터파이 언급 토너 가격 비교
-* 디렉터파이 추천 세럼 최저가
-
----
-
-## 피부 고민 기반 페이지
-
-예시
-
-* 민감성 선크림 추천
-* 지성 피부 선크림 추천
-* 수부지 선크림 추천
-* 여드름 피부 토너 추천
-
----
-
-## 제품 기반 페이지
-
-예시
-
-* 라운드랩 자작나무 선크림 최저가
-* 닥터지 선크림 가격 비교
-* 토리든 세럼 최저가
-
----
-
-# 8. 수익 모델
-
-## 어필리에이트
-
-* 네이버 쇼핑 커넥트 (직접 5~20% / 간접 1.8%)
-* 쿠팡 파트너스 (3%)
-* 올리브영 큐레이터 (직접 7% / 간접 3%)
-* 지그재그 공유리워드 (7~10%)
-* 에이블리 크리에이터 (2%)
-
-사용자가 구매 링크를 통해 제품을 구매할 경우 수익이 발생한다. 수수료가 높은 네이버 쇼핑 커넥트·지그재그·올리브영을 우선 연동한다. (수수료·정산 조건 및 약관 적용 가능성은 DESIGN §12 참조)
-
----
-
-## 광고
-
-* Google AdSense
-* 디스플레이 광고
-
-SEO 기반 트래픽을 활용하여 광고 수익을 창출한다.
-
----
-
-# 9. 서비스 비전
-
-ViewtyPick은 화장품 쇼핑몰이 아니다.
-
-또한 모든 화장품을 수집하는 대형 가격 비교 플랫폼도 아니다.
-
-"사람들이 실제로 찾는 검증된 화장품만 선별하여, 검증된 판매처 중 가장 합리적인 가격으로 구매할 수 있도록 돕는 화장품 구매 가이드"
-
-를 목표로 한다.
-
-사용자는 복잡한 검색 과정을 거치지 않고도 신뢰할 수 있는 추천 정보와 가격 정보를 한 번에 확인할 수 있다.
+No open-source license is currently granted. The source is publicly available for portfolio review; all rights are reserved unless a license is added.
