@@ -25,14 +25,20 @@ jobs:
       # separate import step here would import TWICE per workflow run — doubling
       # Coupang image-resolution calls and blowing the 50/min rate limit, which
       # left every product image unresolved (then blanked). One run = one import.
-      # --skip-seller=oliveyoung: OliveYoung is priced by a HEADFUL page crawl that must
-      # run on a real-display, residential-IP machine (Cloudflare blocks headful from
-      # this datacenter runner ~2/3 of the time). That runs out-of-band via
-      # `npm run oliveyoung:crawl:local` on the operator's machine (Windows Task
-      # Scheduler) — see docs/ops/oliveyoung-local-crawl.md. This crawl still does
-      # everything else (Naver/Coupang + current_prices/scores/images/revalidate).
+      # --skip-seller=naver: with the Shopping Search API terminated (2026-07-31) Naver
+      # is priced by a HEADFUL page crawl — Naver serves headless clients a 429 throttle
+      # page — and headful needs a real display, which this runner does not have. Naver
+      # therefore runs out-of-band via `npm run naver:crawl:local` on the operator's
+      # machine (Windows Task Scheduler).
+      #
+      # OliveYoung is NOT skipped any more, even though its automated price collection is
+      # suspended (WAF block + whitelisting declined). It must be PROCESSED so each run
+      # writes a no_offer snapshot: listing_prices_public only surfaces a listing whose
+      # LATEST snapshot is 'ok', so this is what retires the stale pre-suspension prices
+      # and keeps the row link-only. It costs nothing — the adapter returns immediately
+      # without any network call.
       - name: Run Crawler & Recalculate Scores
-        run: npm run crawler:sync -- --skip-seller=oliveyoung
+        run: npm run crawler:sync -- --skip-seller=naver
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
