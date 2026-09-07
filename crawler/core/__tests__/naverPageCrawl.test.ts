@@ -92,14 +92,37 @@ it('saleStatus SUSPENSION → soldOut (no buyable price even if price present)',
   const r = parseNaverPagePrices(html);
   assert(r.soldOut === true, 'suspension → soldOut');
 });
-it('stockQuantity 0 → soldOut', () => {
-  assert(detectSoldOut(`{"stockQuantity":0}`) === true, 'stock 0 sold out');
+// detectSoldOut is scoped to the MAIN product node, anchored on the first
+// `"salePrice":<2+ digits>` — the same anchor the price parser uses. So these
+// fixtures carry that anchor, exactly like a real page does.
+it('stockQuantity 0 in the main node → soldOut', () => {
+  assert(detectSoldOut(`{"salePrice":30000,"stockQuantity":0}`) === true, 'stock 0 sold out');
 });
-it('outOfStock true → soldOut', () => {
-  assert(detectSoldOut(`{"outOfStock":true}`) === true, 'outOfStock sold out');
+it('outOfStock true in the main node → soldOut', () => {
+  assert(detectSoldOut(`{"salePrice":30000,"outOfStock":true}`) === true, 'outOfStock sold out');
 });
 it('in-stock SALE → not soldOut', () => {
-  assert(detectSoldOut(`{"saleStatus":"SALE","stockQuantity":12}`) === false, 'SALE not soldOut');
+  assert(
+    detectSoldOut(`{"salePrice":30000,"saleStatus":"SALE","stockQuantity":12}`) === false,
+    'SALE not soldOut'
+  );
+});
+
+// ── Regression: the false positive that made the page crawl "recover 0 prices" ──
+// Live 2026-09 (에뛰드 순정 / 이니스프리): the main node said productStatusType="SALE"
+// while an UNRELATED "stockQuantity":0 (option row / related-product card) sat ~7KB
+// away. The old whole-document test marked both products sold out, and naver.ts's
+// `!crawled.soldOut` gate then discarded a perfectly good price.
+it('stray stockQuantity 0 FAR from the main node → NOT soldOut (regression)', () => {
+  const far = `{"stockQuantity":0}` + 'x'.repeat(7000) + `{"salePrice":20000,"productStatusType":"SALE"}`;
+  assert(detectSoldOut(far) === false, 'a neighbour node must not mark the product sold out');
+});
+it('decoy "salePrice":0 does not become the anchor', () => {
+  const decoy = `{"salePrice":0,"stockQuantity":0}` + 'x'.repeat(7000) + `{"salePrice":20000,"productStatusType":"SALE"}`;
+  assert(detectSoldOut(decoy) === false, 'the 1-digit decoy node must be skipped, like firstStateNumber does');
+});
+it('no main product node → not soldOut (caller goes link-only anyway)', () => {
+  assert(detectSoldOut(`{"stockQuantity":0}`) === false, 'no anchor → no meaningful verdict');
 });
 
 console.log('\n--- title (og:title) + DOM fallback ---');

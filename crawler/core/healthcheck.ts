@@ -174,10 +174,15 @@ export function handleConsecutiveFailures(
   } else if (newFailCount === 2) {
     should_notify = true;
     use_previous_price = true;
-  } else if (newFailCount === 3) {
+  } else if (newFailCount >= 3) {
+    // `>= 3`, not `=== 3`. With the equality check a listing that ever got PAST 3
+    // (reactivated by an operator without resetting fail_count, or a write that did
+    // not land) could NEVER be deactivated again — it just failed forever. Measured
+    // 2026-09: 116 Naver listings sat at fail_count=34 with is_active=true, failing
+    // silently every day since the Shopping API shut down. Deactivation is
+    // idempotent, so re-asserting it on each further failure is safe, and
+    // should_notify keeps firing (the old `>= 5` branch is now subsumed).
     is_active = false;
-    should_notify = true;
-  } else if (newFailCount >= 5) {
     should_notify = true;
   }
 
