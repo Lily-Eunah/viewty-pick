@@ -162,6 +162,19 @@ export function isNaverStorefrontUrl(url: string | null | undefined): boolean {
   return /(?:^|\/\/|\.)(?:brand\.naver\.com|(?:m\.)?smartstore\.naver\.com|naver\.me)\b/i.test(url);
 }
 
+/**
+ * The affiliate commission tracker a naver.me shortlink lands on before forwarding to
+ * the real product page. It carries `?channelProductNo=N` but no product state, so it
+ * must never be parsed — only waited out.
+ */
+export function isAffiliateIntermediary(url: string | null | undefined): boolean {
+  if (!url) return false;
+  return /brandconnect\.naver\.com/i.test(url);
+}
+
+// How long to let the brandconnect tracker forward to the storefront. Observed ~3-10s.
+const FORWARD_TIMEOUT_MS = parseInt(process.env.NAVER_FORWARD_TIMEOUT_MS ?? '20000', 10);
+
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 // Serial pacing across the whole run (run.ts processes listings sequentially, but
@@ -216,19 +229,53 @@ export async function crawlNaverPagePrice(url: string): Promise<NaverPageParseRe
     for (let attempt = 1; attempt <= NAV_ATTEMPTS; attempt++) {
       const page = await context.newPage();
       try {
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: CRAWL_TIMEOUT_MS });
+        const resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: CRAWL_TIMEOUT_MS });
+        const status = resp ? resp.status() : null;
+
+        // A naver.me affiliate shortlink does NOT land on the product page directly:
+        // it stops at brandconnect.naver.com/affiliates/<id>?channelProductNo=N (the
+        // commission tracker) and forwards to the storefront a few seconds later,
+        // client-side. Checking the host straight after domcontentloaded therefore saw
+        // brandconnect and gave up — that alone cost 29 of 116 listings in the first
+        // 2026-09 run; waiting recovered 24 of those 30 on the re-run.
+        if (isAffiliateIntermediary(page.url())) {
+          await page
+            .waitForURL((u) => isNaverStorefrontUrl(u.toString()) && !isAffiliateIntermediary(u.toString()), {
+              timeout: FORWARD_TIMEOUT_MS,
+            })
+            .catch(() => {
+              /* stayed on the tracker → handled by the storefront check below */
+            });
+        }
 
         // The redirect (naver.me) must land on a Naver storefront; bail otherwise.
         const finalUrl = page.url();
-        if (!isNaverStorefrontUrl(finalUrl)) {
-          console.warn(`[Naver Crawl] resolved to a non-Naver host (${finalUrl}) — link-only`);
+        if (!isNaverStorefrontUrl(finalUrl) || isAffiliateIntermediary(finalUrl)) {
+          console.warn(`[Naver Crawl] resolved to a non-storefront host (${finalUrl}) — link-only`);
+          return null;
+        }
+
+        // Distinguish a THROTTLE from a parse miss. Naver answers a rate-limited
+        // client with an HTTP 429 "[에러] 에러페이지 - 시스템오류" page, which parses
+        // perfectly well as "no price" — so without this check the log said
+        // "no price found" and a throttled run looked identical to Naver changing its
+        // markup. Measured 2026-09: smartstore.naver.com/main/products/N is throttled
+        // hard (429 on every attempt) at the same moment brand.naver.com/<shop>/
+        // products/N returns 200, so this is per-URL-shape, not a backoff we could
+        // wait out. The outcome is unchanged (link-only, never a fabricated price) —
+        // the difference is that the daily log now says WHICH failure it was.
+        if (status !== null && status !== 200) {
+          console.warn(
+            `[Naver Crawl] HTTP ${status} for ${finalUrl}` +
+              `${status === 429 ? ' (rate-limited by Naver)' : ''} — link-only`
+          );
           return null;
         }
 
         const html = await page.content();
         const parsed = parseNaverPagePrices(html);
         if (!parsed.found) {
-          console.warn(`[Naver Crawl] no price found on ${finalUrl} — link-only`);
+          console.warn(`[Naver Crawl] HTTP 200 but no price keys matched on ${finalUrl} — link-only`);
         }
         return parsed;
       } catch (e) {
