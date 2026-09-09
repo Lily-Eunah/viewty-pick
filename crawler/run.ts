@@ -87,6 +87,11 @@ export async function crawlPipeline(): Promise<void> {
   const onlySellers = getArg('only-seller')?.split(',').map((s) => s.trim()).filter(Boolean) ?? null;
   const skipSellers = getArg('skip-seller')?.split(',').map((s) => s.trim()).filter(Boolean) ?? null;
   const sellerScoped = !!onlySellers;
+  // --max-listings=N: after all filtering, crawl only the N least-recently-crawled
+  // listings (LRU rotation over several days). Keeps a capped run UNDER a seller's
+  // anti-bot rate escalation (see the OliveYoung page crawl).
+  const maxListingsRaw = getArg('max-listings');
+  const maxListings = maxListingsRaw ? parseInt(maxListingsRaw, 10) : Infinity;
   const maxCoupangRaw = getArg('max-coupang');
   const maxCoupang = maxCoupangRaw ? parseInt(maxCoupangRaw, 10) : Infinity;
   const notifyEnabled = !argv.includes('--no-notify');
@@ -233,6 +238,24 @@ export async function crawlPipeline(): Promise<void> {
       `[Pipeline] Seller scope — only=[${onlySellers?.join(',') ?? '-'}] skip=[${skipSellers?.join(',') ?? '-'}] → ${listings.length} listings` +
         (sellerScoped ? ' (product-global steps: current_prices/scores/images SKIPPED)' : '')
     );
+  }
+
+  // --max-listings=N: crawl only the N least-recently-crawled remaining listings (LRU),
+  // so a capped run rotates through the rest over the following days. The local
+  // OliveYoung crawl uses this to stay UNDER Cloudflare's rate/anti-bot escalation —
+  // hitting all ~100 pages in one burst trips an interactive "verify you're human"
+  // challenge (~26 requests in today's run) that we neither can nor may auto-solve;
+  // ~20/day stays under it and cycles the whole catalog. Un-crawled listings keep their
+  // last snapshot (still shown via the view), so nothing goes dark.
+  if (Number.isFinite(maxListings) && listings.length > maxListings) {
+    listings = [...listings]
+      .sort((a, b) => {
+        const ta = a.last_crawled_at ? Date.parse(a.last_crawled_at) : 0; // never-crawled sorts first
+        const tb = b.last_crawled_at ? Date.parse(b.last_crawled_at) : 0;
+        return ta - tb;
+      })
+      .slice(0, maxListings);
+    console.log(`[Pipeline] --max-listings=${maxListings}: crawling the ${listings.length} least-recently-crawled (LRU rotation).`);
   }
 
   // Step 2.6: Inspection OX approvals → synthesized price overrides.

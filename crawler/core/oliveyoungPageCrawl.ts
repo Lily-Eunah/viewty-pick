@@ -115,8 +115,15 @@ export function goodsDetailUrl(goodsNo: string): string {
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 // Serial pacing across the whole run (guard so two crawls never fire back-to-back).
+// Gentle, human-ish spacing: a base interval + RANDOM jitter between pages (≈4–8s by
+// default). Cloudflare escalates its managed challenge (auto-clears for a real browser)
+// to an INTERACTIVE "verify you're human" one — which we neither can nor may auto-solve
+// — when it sees sustained, fixed-rate automated hits. Even with OliveYoung's permission
+// (which does not reach their Cloudflare), staying slow + jittered + once/day keeps us
+// under that escalation threshold. Tune via OLIVEYOUNG_CRAWL_INTERVAL_MS / _JITTER_MS.
 let lastCrawlAt = 0;
-const MIN_CRAWL_INTERVAL_MS = parseInt(process.env.OLIVEYOUNG_CRAWL_INTERVAL_MS ?? '1800', 10);
+const MIN_CRAWL_INTERVAL_MS = parseInt(process.env.OLIVEYOUNG_CRAWL_INTERVAL_MS ?? '4000', 10);
+const CRAWL_JITTER_MS = parseInt(process.env.OLIVEYOUNG_CRAWL_JITTER_MS ?? '4000', 10);
 const CRAWL_TIMEOUT_MS = parseInt(process.env.OLIVEYOUNG_CRAWL_TIMEOUT_MS ?? '45000', 10);
 const CHALLENGE_ATTEMPTS = 2;
 
@@ -132,10 +139,11 @@ const PRICE_ANCHOR =
 export async function crawlOliveYoungPage(goodsNo: string): Promise<OyPageParseResult | null> {
   if (!goodsNo) return null;
 
-  // Rate limit: keep ≥ MIN_CRAWL_INTERVAL_MS between successive page loads.
+  // Rate limit: base interval + random jitter between successive page loads.
+  const target = MIN_CRAWL_INTERVAL_MS + Math.floor(Math.random() * Math.max(0, CRAWL_JITTER_MS));
   const elapsed = Date.now() - lastCrawlAt;
-  if (lastCrawlAt !== 0 && elapsed < MIN_CRAWL_INTERVAL_MS) {
-    await sleep(MIN_CRAWL_INTERVAL_MS - elapsed);
+  if (lastCrawlAt !== 0 && elapsed < target) {
+    await sleep(target - elapsed);
   }
   lastCrawlAt = Date.now();
 
