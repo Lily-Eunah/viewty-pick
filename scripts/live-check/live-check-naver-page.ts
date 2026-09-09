@@ -37,8 +37,15 @@ async function main() {
     process.exit(1);
   }
 
-  // Headful, matching crawlNaverPagePrice. NO UA spoofing, NO anti-detection flags.
-  const browser = await chromium.launch({ headless: false });
+  // Headful by default, matching crawlNaverPagePrice. NO UA spoofing, NO anti-detection
+  // flags. NAVER_CRAWL_HEADFUL=off forces headless — the same switch the crawler reads,
+  // so a caller can run BOTH modes back to back and see which one Naver refuses. That
+  // comparison is the whole point of the CI probe: headless-429 + headful-200 means the
+  // block is the browser fingerprint (so any always-on runner works), while both failing
+  // means it is the IP (so the crawl must stay on a residential machine).
+  const headful = (process.env.NAVER_CRAWL_HEADFUL ?? 'on') !== 'off';
+  console.log(`mode: ${headful ? 'HEADFUL' : 'headless'}`);
+  const browser = await chromium.launch({ headless: !headful });
   let anyFail = false;
   try {
     const ctx = await browser.newContext();

@@ -1,0 +1,113 @@
+name: Naver Headful Feasibility Probe
+
+# Manual, disposable probe. Answers ONE question: can this GitHub runner read a curated
+# Naver product page, so the daily Naver crawl can move OFF the operator's desktop?
+#
+# WHY IT MIGHT WORK. Naver's block looks like a BROWSER-FINGERPRINT block, not an IP
+# block. Measured 2026-09-07 on one machine, one IP, minutes apart:
+#     plain fetch        -> 429 "[에러] 에러페이지 - 시스템오류"
+#     headless Chromium  -> 429 (same page)
+#     HEADFUL Chromium   -> 200 with a complete __PRELOADED_STATE__
+# The IP never changed, so headless is what Naver refuses. If that holds here, a
+# datacenter runner with a virtual display is enough and no always-on PC is needed.
+# (OliveYoung is the opposite case — Cloudflare there is IP-sensitive and blocks headful
+# too, which is why oliveyoung-probe.yml reached a different conclusion. Do not assume
+# one result transfers to the other retailer.)
+#
+# WHY IT MATTERS. Naver currently runs via `npm run naver:crawl:local` on the operator's
+# desktop because headful needs a real display. That machine is not always on — a
+# scheduled task does not fire while it sleeps — so prices silently go stale. A PASS here
+# lets crawl.yml drop `--skip-seller=naver` and run Naver in CI daily, for free.
+#
+# READ-ONLY: no secrets, no DB writes, no deploy. It only loads product pages and runs
+# the production parser over them. Compliance is unchanged from the crawler — serial,
+# rate-limited, real browser UA, NO spoofing and NO anti-detection flags.
+
+on:
+  workflow_dispatch:
+    inputs:
+      urls:
+        description: "Optional: space-separated curated Naver product URLs (defaults to the two brand.naver.com SKUs baked into the live-check)"
+        required: false
+        default: ""
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The probe needs a real browser binary; crawl.yml does not install these today.
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      # CONTROL. Establishes what this runner's IP looks like to Naver when the only
+      # variable is the fingerprint. Expected to FAIL with 429 — that is the baseline the
+      # headful step is compared against, so `continue-on-error` keeps the job going.
+      - name: A. headless (expected 429 — control)
+        id: headless
+        continue-on-error: true
+        env:
+          NAVER_CRAWL_HEADFUL: 'off'
+        run: npm run live-check:naver-page -- ${{ github.event.inputs.urls }}
+
+      # THE ACTUAL QUESTION. Headful under a virtual display, exactly as the crawler runs
+      # it on the operator's desktop. xvfb-run supplies the display the runner lacks.
+      - name: B. HEADFUL under xvfb (the question)
+        id: headful
+        continue-on-error: true
+        run: xvfb-run -a npm run live-check:naver-page -- ${{ github.event.inputs.urls }}
+
+      # Turn the two outcomes into the decision they imply, so the run page states the
+      # conclusion instead of leaving it to be reconstructed from logs.
+      - name: Verdict
+        run: |
+          HEADLESS='${{ steps.headless.outcome }}'
+          HEADFUL='${{ steps.headful.outcome }}'
+          echo "headless: $HEADLESS | headful: $HEADFUL"
+          {
+            echo "## Naver headful probe"
+            echo ""
+            echo "| mode | outcome |"
+            echo "| --- | --- |"
+            echo "| A. headless (control) | \`$HEADLESS\` |"
+            echo "| B. HEADFUL under xvfb | \`$HEADFUL\` |"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$HEADFUL" = "success" ]; then
+            {
+              echo "### ✅ PASS — the block is the fingerprint, not the IP"
+              echo ""
+              echo "This runner can read curated Naver pages headful. Next steps:"
+              echo "- drop \`--skip-seller=naver\` from \`crawl.yml\` and add the Playwright install + \`xvfb-run\` to the crawl job"
+              echo "- retire \`naver:crawl:local\` and unschedule it from Task Scheduler"
+              echo "- the operator's desktop is no longer in the daily path"
+            } >> "$GITHUB_STEP_SUMMARY"
+            if [ "$HEADLESS" = "success" ]; then
+              echo "> Note: headless ALSO passed, so Naver may have relaxed its throttle. Re-check before simplifying the crawler's headful default." >> "$GITHUB_STEP_SUMMARY"
+            fi
+            exit 0
+          fi
+
+          {
+            echo "### ❌ FAIL — headful did not get through from this runner"
+            echo ""
+            echo "The block is (at least partly) IP-based here, unlike on the operator's machine."
+            echo "Naver must stay on the local headful run. Because that machine sleeps and"
+            echo "misses scheduled runs, pair it with:"
+            echo "- Task Scheduler → Conditions → *Wake the computer to run this task*"
+            echo "- Task Scheduler → Settings → *Run task as soon as possible after a scheduled start is missed*"
+            echo "- an absolute staleness guard on \`listing_prices_public\`, so a skipped day shows no price instead of a stale one"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1

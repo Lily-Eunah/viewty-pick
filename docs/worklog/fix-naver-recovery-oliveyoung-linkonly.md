@@ -69,6 +69,21 @@
 2. 확인되면 Windows 작업 스케줄러에 `naver:crawl:local` **등록**, `oliveyoung:crawl:local` **해제**.
 3. 다음 GitHub 크롤에서 올리브영 행이 link-only로 바뀌고 묵은 가격이 사라지는지 확인.
 
+## 후속: 로컬 머신 의존을 없앨 수 있는가 (프로브 추가)
+
+로컬 헤드풀 배치에는 운영 문제가 있다 — **운영자 PC가 절전에 들어가면 예약 작업이 실행되지 않는다**(올리브영에서 실제로 겪음). 그러면 "매일 갱신"이 사실이 아니게 된다.
+
+그런데 네이버 차단은 **IP가 아니라 브라우저 지문 기반**으로 보인다. 2026-09-07 같은 머신·같은 IP에서 몇 분 간격으로: plain fetch 429 · headless 429 · **headful 200**. IP가 변수가 아니었다면 가상 디스플레이를 쓰는 CI 러너로도 충분할 수 있다.
+
+`.github/workflows/naver-headful-probe.yml`(`workflow_dispatch`, read-only, 시크릿 없음)이 이를 측정한다. 러너에서 A) headless(컨트롤) → B) `xvfb-run` 헤드풀을 연달아 돌리고 결과를 `$GITHUB_STEP_SUMMARY`에 결론까지 써 준다.
+
+- **B 성공** → 지문 문제 확정. `crawl.yml`에서 `--skip-seller=naver`를 빼고 Playwright 설치 + `xvfb-run`을 crawl 잡에 추가, `naver:crawl:local`은 은퇴시키고 작업 스케줄러에서 해제. 운영자 PC가 일일 경로에서 빠진다.
+- **B 실패** → 러너에서는 IP도 변수. 로컬 실행 유지 + 절전 대응(작업 스케줄러의 "작업 실행을 위해 절전 모드 해제", "예약 시작을 놓친 경우 가능한 대로 빨리 실행") + 신선도 가드가 필요하다.
+
+올리브영 결과(headful도 403)를 네이버에 그대로 전이시키면 안 된다 — Cloudflare는 IP에 민감하고 네이버는 지문에 민감해 차단 성격이 다르다.
+
+지원 변경: `live-check:naver-page`가 크롤러와 같은 `NAVER_CRAWL_HEADFUL` 스위치를 읽는다(기본 headful, `off`면 headless). 로컬 실측 — headless는 429 ×3, 헤드풀은 두 건 다 OK.
+
 ## 남은 이슈 / TODO
 
 - **신선도 가드 미적용(운영자 판단으로 보류).** 뷰에 절대 상한(`crawled_at > now() - interval`)이 없어, 크롤이 아예 멈추면 여전히 묵은 `ok` 스냅샷이 최저가로 노출된다. 이번 변경은 올리브영·네이버 두 케이스를 개별적으로 막을 뿐 구조적 방어는 아니다.
