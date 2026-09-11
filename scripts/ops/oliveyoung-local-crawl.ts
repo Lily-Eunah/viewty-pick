@@ -1,13 +1,11 @@
 /**
  * LOCAL scheduled OliveYoung page crawl (HEADFUL).
  *
- * ⚠️ DORMANT (2026-09). OliveYoung's automated price collection is suspended: the
- * managed challenge now blocks headful Playwright too (403 on every curated goodsNo,
- * re-measured 2026-09) and OliveYoung declined IP whitelisting. The adapter short-
- * circuits to link-only unless OLIVEYOUNG_PRICE_COLLECTION=on, so this script currently
- * prices nothing — UNSCHEDULE it from Windows Task Scheduler. It is kept, not deleted,
- * so collection can be restored the day OliveYoung grants technical access.
- * See crawler/adapters/oliveyoung.ts and docs/ops/oliveyoung-local-crawl.md.
+ * ⚠️ If this stops recovering prices, the adapter has a kill switch:
+ * OLIVEYOUNG_PRICE_COLLECTION=off makes every OliveYoung listing link-only (and retires
+ * the stale prices rather than leaving them up). A 2026-09-07 re-measurement got 403 on
+ * every curated goodsNo even headful, so that possibility is live — see
+ * crawler/adapters/oliveyoung.ts for what that reading is and is not evidence of.
  *
  * Runs on the operator's OWN machine — a real display + a residential IP. NOT GitHub
  * Actions: the Cloudflare managed challenge blocks a headful browser from GitHub's

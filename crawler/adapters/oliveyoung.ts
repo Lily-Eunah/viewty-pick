@@ -14,11 +14,9 @@
  * has no OliveYoung offer the price is left absent so a manual_override can fill
  * it (applied later in run.ts); until then the listing is link-only.
  *
- * ⚠️ CURRENT STATE (2026-09): automated price collection is SUSPENDED and every
- * listing is link-only — see the OLIVEYOUNG_PRICE_COLLECTION gate in fetchOffer for
- * the measurements and the reasoning. The tier model, the Naver-sourced path and the
- * page-crawl path below are all retained behind that switch; nothing was deleted, so
- * collection can be restored the day OliveYoung grants technical access.
+ * ⚠️ Automated collection has a kill switch: OLIVEYOUNG_PRICE_COLLECTION=off makes
+ * every listing link-only without a deploy. It defaults ON — see the gate in
+ * fetchOffer for when to reach for it and what it does to stale prices.
  */
 import { Listing, Product } from '../../lib/types';
 import { PriceOffer, RetailerAdapter } from './index';
@@ -100,30 +98,35 @@ export class OliveYoungAdapter implements RetailerAdapter {
       return this.getMockOffer(listing);
     }
 
-    // ── Automated price collection SUSPENDED (operator decision, 2026-09) ──────
-    // Both compliant sources are gone:
+    // ── Kill switch for automated price collection (default ON) ────────────────
+    // OliveYoung pricing is fragile enough to need a one-flag way to stop it without a
+    // deploy, but it is NOT off by default — #130's pacing + 20-per-run LRU cap is the
+    // current attempt to stay under Cloudflare's rate escalation, and it deserves to
+    // run. Set OLIVEYOUNG_PRICE_COLLECTION=off to make every OliveYoung listing
+    // link-only immediately.
+    //
+    // Context for whoever flips it. Both automated sources are under pressure:
     //   1. Naver-sourced — the Naver Shopping Search API was terminated 2026-07-31
     //      with no replacement, so matchOliveYoungOffer has nothing to read.
-    //   2. Page crawl — oliveyoung.co.kr's managed challenge now blocks every
-    //      automated client we can honestly present. Re-measured 2026-09: headless
-    //      Playwright 403, HEADFUL Playwright 403 (×3 curated goodsNo), an ordinary
-    //      agent-driven browser never cleared the challenge in 50s+. OliveYoung was
-    //      asked for IP whitelisting / a feed and DECLINED, so the earlier
-    //      "permission granted, headful+residential passes" path is closed.
-    // Closing the remaining gap would mean faking a non-automated fingerprint —
-    // detection evasion, which this project rejects (see AGENTS.md 규정 준수 수집).
+    //   2. Page crawl — a 2026-09-07 re-measurement got 403 on all three curated
+    //      goodsNo with HEADFUL Playwright, and an agent-driven browser never cleared
+    //      the challenge in 50s+. That reading is NOT clean, though: the same session
+    //      had already hit oliveyoung.co.kr repeatedly, so the IP may have been
+    //      escalated before the measurement. #130's "~100 in one burst trips it"
+    //      explanation fits the evidence at least as well.
+    // OliveYoung was asked for IP whitelisting / a feed and declined. If pacing turns
+    // out not to be enough, the honest options are link-only (this switch) or another
+    // approach to the retailer — NOT faking a non-automated fingerprint, which this
+    // project rejects (see AGENTS.md 규정 준수 수집).
     //
-    // So OliveYoung is deliberately link-only: no_offer every run. That is not a
-    // cosmetic choice — `listing_prices_public` only surfaces a listing whose LATEST
-    // snapshot is 'ok', so writing no_offer is what actively RETIRES the stale
-    // pre-suspension prices (one product was still advertising a 7/15 price as
-    // "🏆 최저가" seven weeks later). Simply not crawling would leave them up forever.
-    //
-    // The curator affiliate_url still renders as the buy link, so 쇼핑 큐레이터
-    // commission is unaffected, and manual_override (tier 3) still fills a price if
-    // the operator wants one. Set OLIVEYOUNG_PRICE_COLLECTION=on to re-enable
-    // automated collection if OliveYoung ever grants technical access.
-    if ((process.env.OLIVEYOUNG_PRICE_COLLECTION ?? 'off') !== 'on') {
+    // When off, note what the switch does and does not do. It returns no_offer every
+    // run, and because `listing_prices_public` only surfaces a listing whose LATEST
+    // snapshot is 'ok', that write is what actively RETIRES stale prices — simply not
+    // crawling leaves them up forever (one product was still advertising a 7/15 price
+    // as "🏆 최저가" seven weeks later). The curator affiliate_url still renders as the
+    // buy link either way, so 쇼핑 큐레이터 commission is unaffected, and
+    // manual_override (tier 3) still fills a price if the operator wants one.
+    if ((process.env.OLIVEYOUNG_PRICE_COLLECTION ?? 'on') === 'off') {
       return {
         regularPrice: null,
         salePrice: null,

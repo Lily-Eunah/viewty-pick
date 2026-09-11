@@ -37,18 +37,27 @@
   - 페이지 크롤 게이트 **기본 on**(`NAVER_PAGE_CRAWL=off`로 비활성화).
 - `crawler/core/healthcheck.ts` — `newFailCount === 3` → **`>= 3`**. 비활성화는 멱등이므로 이후 실패마다 재확정해도 안전하고, 기존 `>= 5` 알림 분기는 흡수된다.
 
-### 올리브영 링크 전용
-- `crawler/adapters/oliveyoung.ts` — `OLIVEYOUNG_PRICE_COLLECTION`(기본 off) 게이트를 mock 분기 뒤에 추가. 네트워크 호출 없이 즉시 `no_offer` 반환.
-  - **`no_offer`를 쓰는 것이 핵심.** `listing_prices_public`은 최신 스냅샷이 `ok`인 리스팅만 노출하므로, 스냅샷을 쓰는 행위가 곧 **정지 이전의 묵은 가격을 회수**하는 동작이다. 단순히 크롤을 안 돌리면 옛 가격이 영원히 남는다(실제로 한 제품이 7/15 가격을 7주 뒤까지 "🏆 최저가"로 노출 중이었다).
-  - `inStock: true` 유지 → `manual_override`(tier 3)로 운영자가 가격을 채울 수 있는 경로는 보존.
+### 올리브영 — kill switch (기본 ON, 운영자 결정)
+
+작업 도중 `main`에 #130(`decf7c1`, 페이싱 + 20건/회 LRU 캡)이 머지되면서 방향이 겹쳤다. 본 브랜치는 원래 수집을 **기본 정지**시키려 했으나, **운영자 결정으로 #130을 살려두는 쪽(기본 ON)으로 변경**했다. 근거:
+
+- 본 브랜치의 403 측정(헤드풀 ×3)은 **깨끗한 증거가 아니다.** 같은 세션에서 이미 oliveyoung.co.kr을 여러 차례 두드린 뒤라 IP가 선(先)에스컬레이션됐을 수 있다. #130의 "~100건을 한 번에 몰면 챌린지가 뜬다"는 해석이 최소한 동등하게 증거에 부합한다.
+- 방금 랜딩한 동료 작업을 측정 신뢰도가 낮은 근거로 꺼버리는 것은 합리적이지 않다.
+
+- `crawler/adapters/oliveyoung.ts` — `OLIVEYOUNG_PRICE_COLLECTION`(**기본 on**, `off`면 즉시 링크 전용) 게이트를 mock 분기 뒤에 추가. 배포 없이 되돌릴 수 있는 비상 스위치.
+  - **끄면 `no_offer`를 쓴다는 점이 핵심.** `listing_prices_public`은 최신 스냅샷이 `ok`인 리스팅만 노출하므로, 스냅샷을 쓰는 행위가 곧 **묵은 가격을 회수**하는 동작이다. 단순히 크롤을 안 돌리면 옛 가격이 영원히 남는다(실제로 한 제품이 7/15 가격을 7주 뒤까지 "🏆 최저가"로 노출 중이었다).
+  - `inStock: true` 유지 → `manual_override`(tier 3) 경로 보존.
   - 큐레이터 `affiliate_url`은 그대로 구매 링크로 렌더 → **쇼핑 큐레이터 수수료 영향 없음.**
 
+⚠️ #130은 20건/회 회전이라 리스팅당 갱신 주기가 약 5일이다. 신선도 가드가 없는 현재 구조에서는 **최대 5일 된 가격이 현재가로 노출**된다.
+
 ### 실행 위치 재배치
-- `.github/workflows/crawl.yml` — `--skip-seller=oliveyoung` → **`--skip-seller=naver`**.
-  - 네이버는 헤드풀이 필요해 러너에서 못 돈다 → 로컬로.
-  - 올리브영은 이제 **건너뛰지 않는다.** 매 런 `no_offer`를 남겨야 묵은 가격이 회수되고, 어댑터가 즉시 반환하므로 비용이 없다.
+- `.github/workflows/crawl.yml` — `--skip-seller=oliveyoung` → **`--skip-seller=naver,oliveyoung`**. 두 판매처 모두 헤드풀이 필요해 러너에서 못 돌고, 각자 로컬 러너로 나간다.
+  - ⚠️ **로컬 러너가 살아 있는 판매처를 이 목록에서 빼지 말 것.** 어댑터가 데이터센터 IP에서 크롤을 시도해 실패하고 `no_offer`를 쓰는데, 뷰가 리스팅별 **최신** 스냅샷을 취하므로 로컬 러너가 방금 모은 가격을 덮어버린다.
 - `scripts/ops/naver-local-crawl.ts` (신규) + `naver:crawl:local` — `--only-seller=naver --skip-import`, `NAVER_PAGE_CRAWL=on`, 자기 자신에 한해 `CRAWLER_ALLOW_PROD_WRITE=true`. 기존 올리브영 로컬 러너와 동일한 패턴.
-- `scripts/ops/oliveyoung-local-crawl.ts` — **DORMANT** 표기. 삭제하지 않음(재개 대비). **Windows 작업 스케줄러에서 등록 해제 필요.**
+- `scripts/ops/oliveyoung-local-crawl.ts` — kill switch 안내만 추가. **스케줄러 등록은 유지**(#130이 활성).
+
+**작업 스케줄러: 네이버 러너를 추가 등록**한다(올리브영 해제 아님). 헤드풀이라 둘 다 "사용자가 로그온했을 때만 실행"이어야 한다.
 
 ### 검증 도구
 - `scripts/live-check/live-check-naver-page.ts` (신규) + `live-check:naver-page` — 프로덕션 파서를 실제 페이지에 돌리는 read-only 검증. `.env` 불필요. 다음에 네이버가 구조를 바꿨을 때 "네이버가 바뀐 건가, 우리 크롤이 깨진 건가"를 5초에 판정한다.
