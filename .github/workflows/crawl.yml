@@ -25,14 +25,24 @@ jobs:
       # separate import step here would import TWICE per workflow run — doubling
       # Coupang image-resolution calls and blowing the 50/min rate limit, which
       # left every product image unresolved (then blanked). One run = one import.
-      # --skip-seller=oliveyoung: OliveYoung is priced by a HEADFUL page crawl that must
-      # run on a real-display, residential-IP machine (Cloudflare blocks headful from
-      # this datacenter runner ~2/3 of the time). That runs out-of-band via
-      # `npm run oliveyoung:crawl:local` on the operator's machine (Windows Task
-      # Scheduler) — see docs/ops/oliveyoung-local-crawl.md. This crawl still does
-      # everything else (Naver/Coupang + current_prices/scores/images/revalidate).
+      # Both retailers below need a HEADFUL browser on a real display, which this runner
+      # does not have, so each is handed off to an out-of-band local run.
+      #
+      # naver: with the Shopping Search API terminated (2026-07-31) Naver is priced by a
+      # page crawl, and Naver serves HEADLESS clients a 429 throttle page — measured on
+      # one machine and IP: fetch 429, headless 429, headful 200. Runs via
+      # `npm run naver:crawl:local`. (Whether a runner can do this under xvfb is exactly
+      # what naver-headful-probe.yml measures; a PASS there lets naver come back here.)
+      #
+      # oliveyoung: headful page crawl behind Cloudflare, paced + LRU-capped per #130.
+      # Runs via `npm run oliveyoung:crawl:local`.
+      #
+      # ⚠️ Do NOT drop a seller from this skip list while its local run is active. The
+      # adapter would attempt the crawl from this datacenter IP, fail, and write a
+      # no_offer — and because listing_prices_public takes each listing's LATEST
+      # snapshot, that clobbers the price the local run had just collected.
       - name: Run Crawler & Recalculate Scores
-        run: npm run crawler:sync -- --skip-seller=oliveyoung
+        run: npm run crawler:sync -- --skip-seller=naver,oliveyoung
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}

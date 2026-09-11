@@ -579,11 +579,40 @@ export function clearNaverSearchCache(): void {
   redirectResolves = 0;
 }
 
+/**
+ * ⚠️ The Naver Shopping Search API was TERMINATED on 2026-07-31 with no official
+ * replacement (쇼핑·책·전문자료 were excluded from the NAVER API HUB migration). Every
+ * call now fails, and because this function used to THROW on a non-OK response, the
+ * throw propagated out of fetchOffer into run.ts's per-listing catch — which advances
+ * fail_count but writes NO snapshot. With no snapshot the public view keeps serving the
+ * last pre-shutdown 'ok' row, so the site silently showed July prices for weeks.
+ *
+ * So the API path is now OPT-IN and OFF by default: it returns [] instead of throwing,
+ * every caller degrades to an anchor-miss, and the (headful) page crawl supplies the
+ * price. Set NAVER_SHOPPING_API=on only to test a revived/replacement endpoint.
+ *
+ * This is deliberately a switch, not a deletion: removing the ~1,300 lines of API
+ * matching (Tier-1/2/3, fallbackPolicy, official-mall gate) is a separate refactor so
+ * that a regression here is not entangled with a large diff.
+ */
+const NAVER_SHOPPING_API_ENABLED = (process.env.NAVER_SHOPPING_API ?? 'off') === 'on';
+let naverApiDisabledLogged = false;
+
 async function searchNaverShopping(
   query: string,
   clientId: string,
   clientSecret: string
 ): Promise<NaverShoppingItem[]> {
+  if (!NAVER_SHOPPING_API_ENABLED) {
+    if (!naverApiDisabledLogged) {
+      console.warn(
+        '[Naver Adapter] Shopping Search API disabled (terminated 2026-07-31) — ' +
+          'all matching falls through to the page crawl. Set NAVER_SHOPPING_API=on to re-enable.'
+      );
+      naverApiDisabledLogged = true;
+    }
+    return [];
+  }
   const cached = naverSearchCache.get(query);
   if (cached) return cached;
   // display=100 (API max): more candidates → higher tier-1 anchor hit-rate
@@ -1174,15 +1203,21 @@ export class NaverAdapter implements RetailerAdapter {
     const result = await matchNaverOffer(product, allowedStoreName, clientId as string, clientSecret as string, anchorProductNo);
 
     if (!result.matched) {
-      // ── DORMANT page-crawl fallback (gated OFF) ────────────────────────────
-      // Direct page crawl proved HARD-BLOCKED (HTTP 429 anti-bot on brand.naver.com;
-      // naver.me → brandconnect affiliate; see diagnose-naver-crawl) → recovery 0.
-      // The anchor-miss recovery now happens via matchNaverOffer's Tier-2/Tier-3
-      // (official-store / catalog) above, which is robots-clean. The crawl is kept
-      // behind NAVER_PAGE_CRAWL=on (default off) so it costs no Playwright timeout
-      // per anchor-miss product, but the parser stays available if Naver relents.
+      // ── PRIMARY page-crawl path (default ON) ───────────────────────────────
+      // This was gated OFF on the conclusion that the page crawl was "HARD-BLOCKED
+      // (HTTP 429) → recovery 0". That measurement was taken HEADLESS, and headless is
+      // exactly what Naver throttles: re-measured 2026-09 on one machine/IP, plain
+      // fetch → 429, headless Chromium → 429, HEADFUL Chromium → 200 with a complete
+      // __PRELOADED_STATE__ from which the existing parser recovered 정가/할인가 exactly
+      // (에뛰드 20000/14000-class values). The parser was never the problem; the browser
+      // mode was. crawlNaverPagePrice is headful now — see naverPageCrawl.ts.
+      //
+      // With the Shopping API terminated (2026-07-31) matchNaverOffer always misses, so
+      // this is no longer a fallback — it is THE Naver price path. Default ON;
+      // NAVER_PAGE_CRAWL=off disables it (diagnostics / a headless environment).
       // A KNOWN set (needsInspection) is never crawled (its page price is a set price).
-      if (process.env.NAVER_PAGE_CRAWL === 'on' && !isMock && !result.needsInspection && isNaverStorefrontUrl(listing.url)) {
+      const pageCrawlEnabled = (process.env.NAVER_PAGE_CRAWL ?? 'on') !== 'off';
+      if (pageCrawlEnabled && !isMock && !result.needsInspection && isNaverStorefrontUrl(listing.url)) {
         const crawled = await crawlNaverPagePrice(listing.url);
         if (crawled && crawled.found && !crawled.soldOut && crawled.salePrice !== null) {
           // 정가만 있으면 sale=정가 (parser already collapses that). Keep regular only

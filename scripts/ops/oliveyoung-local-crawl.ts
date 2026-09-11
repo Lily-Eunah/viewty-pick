@@ -1,6 +1,12 @@
 /**
  * LOCAL scheduled OliveYoung page crawl (HEADFUL).
  *
+ * ⚠️ If this stops recovering prices, the adapter has a kill switch:
+ * OLIVEYOUNG_PRICE_COLLECTION=off makes every OliveYoung listing link-only (and retires
+ * the stale prices rather than leaving them up). A 2026-09-07 re-measurement got 403 on
+ * every curated goodsNo even headful, so that possibility is live — see
+ * crawler/adapters/oliveyoung.ts for what that reading is and is not evidence of.
+ *
  * Runs on the operator's OWN machine — a real display + a residential IP. NOT GitHub
  * Actions: the Cloudflare managed challenge blocks a headful browser from GitHub's
  * datacenter IP ~2/3 of the time (probe: 1/3 pass vs 3/3 residential), so the daily
